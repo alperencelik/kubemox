@@ -1,0 +1,12 @@
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: ManagedVirtualMachine
+metadata:
+  labels:
+    app.kubernetes.io/name: managedvirtualmachine
+    app.kubernetes.io/instance: managedvirtualmachine-sample
+    app.kubernetes.io/part-of: kubemox
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: kubemox
+  name: managedvirtualmachine-sample
+spec:
+  # TODO(user): Add fields here
