@@ -18,13 +18,27 @@ package proxmox
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
+	"github.com/alperencelik/kubemox/pkg/kubernetes"
+	"github.com/alperencelik/kubemox/pkg/proxmox"
+)
+
+const (
+	// virtualMachineFinalizerName is the name of the finalizer
+	managedvirtualMachineFinalizerName = "managedvirtualmachine.proxmox.alperen.cloud/finalizer"
+	ManagedVMreconcilationPeriod       = 15
+	ManagedVMmaxConcurrentReconciles   = 5
 )
 
 // ManagedVirtualMachineReconciler reconciles a ManagedVirtualMachine object
@@ -51,13 +65,77 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 	_ = log.FromContext(ctx)
 
 	// TODO(user): your logic here
+	managedVM := &proxmoxv1alpha1.ManagedVirtualMachine{}
+	err := r.Get(ctx, req.NamespacedName, managedVM)
+	if err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	// Check if the ManagedVM instance is marked to be deleted, which is indicated by the deletion timestamp being set.
+	if managedVM.ObjectMeta.DeletionTimestamp.IsZero() {
+		if !controllerutil.ContainsFinalizer(managedVM, managedvirtualMachineFinalizerName) {
+			controllerutil.AddFinalizer(managedVM, managedvirtualMachineFinalizerName)
+			if err := r.Update(ctx, managedVM); err != nil {
+			}
+		}
+	} else {
+		// The object is being deleted
+		if controllerutil.ContainsFinalizer(managedVM, managedvirtualMachineFinalizerName) {
+			// Delete the VM
+			// Create the event
+			kubernetes.CreateManagedVMKubernetesEvent(managedVM, Clientset, "Deleting")
+			proxmox.DeleteVM(managedVM.Name, managedVM.Spec.NodeName)
+		}
+		// Delete VM from Proxmox
 
-	return ctrl.Result{}, nil
+		// Remove finalizer
+		controllerutil.RemoveFinalizer(managedVM, managedvirtualMachineFinalizerName)
+		if err := r.Update(ctx, managedVM); err != nil {
+			log.Log.Info(fmt.Sprintf("Error updatin ManagedVirtualMachine %s", managedVM.Name))
+		}
+		return ctrl.Result{}, nil
+	}
+	// // Update ManagedVM
+	proxmox.UpdateManagedVM(managedVM.Name, proxmox.GetNodeOfVM(managedVM.Name), managedVM)
+	r.Update(context.Background(), managedVM)
+	// Update ManagedVMStatus
+	var managedVMStatus proxmoxv1alpha1.ManagedVirtualMachineStatus
+	nodeName := proxmox.GetNodeOfVM(managedVM.Name)
+	managedVMStatus.State, managedVMStatus.ID, managedVMStatus.Uptime, managedVMStatus.Node, managedVMStatus.Name, managedVMStatus.IPAddress, managedVMStatus.OSInfo = proxmox.UpdateVMStatus(managedVM.Name, nodeName)
+	managedVM.Status = managedVMStatus
+	err = r.Status().Update(context.Background(), managedVM)
+	if err != nil {
+		log.Log.Info(fmt.Sprintf("ManagedVMStatus %v could not be updated", managedVM.Name))
+	}
+
+	return ctrl.Result{Requeue: true, RequeueAfter: ManagedVMreconcilationPeriod * time.Second}, nil
+
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ManagedVirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
+
+	// Get all VMs with Proxmox API
+	AllVMs := proxmox.GetProxmoxVMs()
+	ControllerVMs := proxmox.GetControllerVMs()
+	// AllVMs - ControllerVMs = VMs that are not managed by the controller
+	ManagedVMs := proxmox.SubstractSlices(AllVMs, ControllerVMs)
+	for _, ManagedVM := range ManagedVMs {
+		if proxmox.CheckManagedVMExists(ManagedVM) != true {
+			log.Log.Info(fmt.Sprintf("ManagedVM %v does not exist so creating it", ManagedVM))
+			managedVM := proxmox.CreateManagedVM(ManagedVM)
+			err := r.Create(context.Background(), managedVM)
+			if err != nil {
+				log.Log.Info(fmt.Sprintf("ManagedVM %v could not be created", ManagedVM))
+			}
+		}
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.ManagedVirtualMachine{}).
-		Complete(r)
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: ManagedVMmaxConcurrentReconciles}).
+		Complete(&ManagedVirtualMachineReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+		})
 }

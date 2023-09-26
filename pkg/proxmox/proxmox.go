@@ -123,7 +123,8 @@ func CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine) {
 		panic(err)
 	}
 	for logEntry := range logChan {
-		log.Log.Info(logEntry)
+		// log.Log.Info(logEntry)
+		log.Log.Info(fmt.Sprintf("Virtual Machine %s, creation process: %s", vm.Name, logEntry))
 	}
 
 	// 	logChan, err := task.Watch(0)
@@ -713,7 +714,7 @@ func CreateManagedVM(ManagedVM string) *proxmoxv1alpha1.ManagedVirtualMachine {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      strings.ToLower(ManagedVM),
-			Namespace: "default",
+			Namespace: os.Getenv("POD_NAMESPACE"),
 		},
 		Spec: proxmoxv1alpha1.ManagedVirtualMachineSpec{
 			Name:     ManagedVM,
@@ -811,4 +812,37 @@ func UpdateManagedVM(managedVMName, nodeName string, managedVM *proxmoxv1alpha1.
 			}
 		}
 	}
+}
+
+func SubstractSlices(slice1, slice2 []string) []string {
+	elements := make(map[string]bool)
+	for _, elem := range slice2 {
+		elements[elem] = true
+	}
+	// Create a result slice to store the difference
+	var difference []string
+	// Iterate through slice1 and check if the element is present in slice2
+	for _, elem := range slice1 {
+		if !elements[elem] {
+			difference = append(difference, elem)
+		}
+	}
+	return difference
+}
+
+func SubstractLowercaseSlices(slice1, slice2 []string) []string {
+	elementMap := make(map[string]bool)
+
+	for _, elem := range slice2 {
+		elementMap[strings.ToLower(elem)] = true
+	}
+	// Create a result slice to store the difference
+	var difference []string
+	// Iterate through slice1 and check if the element is present in slice2
+	for _, elem := range slice1 {
+		if !elementMap[strings.ToLower(elem)] {
+			difference = append(difference, elem)
+		}
+	}
+	return difference
 }

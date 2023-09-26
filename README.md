@@ -1,94 +1,96 @@
-# kubemox
-// TODO(user): Add simple overview of use/purpose
+# Kubemox
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+Kubemox is a Proxmox operator for Kubernetes. It allows you to create and manage Proxmox VMs from Kubernetes.
 
-## Getting Started
-You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster.
-**Note:** Your controller will automatically use the current context in your kubeconfig file (i.e. whatever cluster `kubectl cluster-info` shows).
 
-### Running on the cluster
-1. Install Instances of Custom Resources:
+## Installation
 
-```sh
-kubectl apply -f config/samples/
+### Prerequisites
+
+- Kubernetes cluster with version 1.16+
+- Helm 3+
+- Proxmox Cluster with version 6.3+
+
+### Install Kubemox with Helm
+
+To install Kubemox you can use the following command:
+
+```bash
+git clone https://github.com/alperencelik/kubemox.git
+cd kubemox/charts/kubemox
+# Edit values.yaml file (Proxmox credentials, etc.)
+vim values.yaml
+helm install kubemox ./ -f values.yaml -n $NAMESPACE
 ```
 
-2. Build and push your image to the location specified by `IMG`:
+## Usage
 
-```sh
-make docker-build docker-push IMG=<some-registry>/kubemox:tag
+Currently Kubemox brings two different CRDs for only VirtualMachines in Proxmox. These are `VirtualMachine` and `ManagedVirtualMachine`. You can use these CRDs to create and manage VirtualMachine(s) in Proxmox. 
+
+`ManagedVirtualMachine` is a way to bring your existing VirtualMachines in Proxmox to Kubernetes. As an user you don't need to create `ManagedVirtualMachine` resource. Kubemox will create it for you after the deployment at startup of controller. `ManagedVirtualMachine` is also reconciled by the operator so if you do any change on those (delete, update, etc.) it will be reflected to Proxmox. 
+
+`VirtualMachine` is a way to create new VirtualMachines in Proxmox via operator. You can create `VirtualMachine` resource and Kubemox will create it for you in Proxmox. `VirtualMachine` is also reconciled by the operator which means every change on `VirtualMachine` resource will be reflected to Proxmox as well. 
+
+### Create a Virtual Machine
+
+To create a VirtualMachine you can use the following `VirtualMachine` resource:
+
+```yaml
+apiVersion: proxmox.alperen.cloud/v1alpha1 
+kind: VirtualMachine
+metadata:
+  name: test-vm
+spec:
+  name: test-vm
+  nodeName: proxmox-node
+  template:
+    name: ubuntu-20.04-cloudinit-template
+    cores: 4
+    sockets: 1
+    memory: 4096
+    disk:
+      - size: 50G
+        storage: local-lvm
+        type: scsi
+    network:
+      - model: virtio
+        bridge: vmbr0
 ```
 
-3. Deploy the controller to the cluster with the image specified by `IMG`:
+To learn more about `VirtualMachine` resource you can check `charts/kubemox/samples/`
 
-```sh
-make deploy IMG=<some-registry>/kubemox:tag
+
+## Developing 
+
+You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster. The project is using [Kubebuilder](book.kubebuilder.io) to generate the controller and CRDs. For Proxmox interaction the project is using [go-proxmox](https://github.com/luthermonson/go-proxmox) project. The controllers are located under `internal/controllers/proxmox` directory and the external packages `proxmox` and `kubernetes` are located under `pkg` directory.
+
+- To create a new controller you can use the following command:
+
+```bash
+kubebuilder create api --group proxmox --version v1alpha1 --kind NewKind 
 ```
 
-### Uninstall CRDs
-To delete the CRDs from the cluster:
+- Define the spec and status of your new kind in `api/proxmox/v1alpha1/newkind_types.go` file.
 
-```sh
-make uninstall
-```
+- Define the controller logic in `internal/controllers/proxmox/newkind_controller.go` file.
 
-### Undeploy controller
-UnDeploy the controller from the cluster:
 
-```sh
-make undeploy
-```
+## Roadmap
+
+- [ ] Add more CRDs for Proxmox resources (LXC(Containers), Storage, Networking etc.)
+- [ ] Add more options for Proxmox client (TLS and different authentication methods)
+- [ ] Add more features to the operator (HA, configuration, etc.)
+- [ ] Add metrics for the operator
+- [ ] Add more tests
+- [ ] Add more documentation
+- [ ] Add more examples
+
 
 ## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
 
-### How it works
-This project aims to follow the Kubernetes [Operator pattern](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/).
+Thank you for considering contributing to this project! To get started, please follow these guidelines:
 
-It uses [Controllers](https://kubernetes.io/docs/concepts/architecture/controller/),
-which provide a reconcile function responsible for synchronizing resources until the desired state is reached on the cluster.
-
-### Test It Out
-1. Install the CRDs into the cluster:
-
-```sh
-make install
-```
-
-2. Run your controller (this will run in the foreground, so switch to a new terminal if you want to leave it running):
-
-```sh
-make run
-```
-
-**NOTE:** You can also run this in one step by running: `make install run`
-
-### Modifying the API definitions
-If you are editing the API definitions, generate the manifests such as CRs or CRDs using:
-
-```sh
-make manifests
-```
-
-**NOTE:** Run `make --help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
-
-## License
-
-Copyright 2023.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
+- If you find a bug or have a feature request, please [open an issue](https://github.com/alperencelik/kubemox/issues).
+- If you'd like to contribute code, please fork the repository and create a pull request.
+- Please follow our [developing.md](developing.md) in all your interactions with the project. 
+- Before submitting a pull request, make sure to run the tests and ensure your code adheres to our coding standards.
