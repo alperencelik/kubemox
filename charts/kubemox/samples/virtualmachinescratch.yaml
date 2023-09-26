@@ -1,0 +1,23 @@
+# This manifest is used to create a VirtualMachine from scratch.
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachine
+metadata:
+  labels:
+  name: virtualmachine-sample-scratch
+spec:
+  name: virtualmachine-sample-scratch
+  # Name of the node where the VM will be created
+  nodeName: lowtower
+  # Spec for the VM
+  vmSpec: 
+    cores: 2
+    memory: 4096
+    disk: 
+      name: scsi0 
+      value: "local-lvm:40"
+    network:
+      name: net0
+      value: virtio,bridge=vmbr0
+    osImage:
+      name: ide2 
+      value: local:iso/ubuntu-23.04-live-server-amd64.iso 
