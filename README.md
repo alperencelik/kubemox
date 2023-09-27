@@ -2,6 +2,10 @@
 
 Kubemox is a Proxmox operator for Kubernetes. It allows you to create and manage Proxmox VMs from Kubernetes.
 
+<div style="text-align:center;">
+  <img src="docs/images/kubemox.jpg" alt="Logo" width="150" height="150">
+</div>
+
 
 ## Installation
 
