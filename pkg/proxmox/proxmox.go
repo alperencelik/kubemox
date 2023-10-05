@@ -29,6 +29,8 @@ var (
 	ProxmoxSkipTls = os.Getenv("PROXMOX_SKIP_TLS")
 )
 
+var mutex = &sync.Mutex{}
+
 const (
 	// The tag that will be added to VMs in Proxmox cluster
 	virtualMachineTag = "kube-proxmox-operator"
@@ -111,10 +113,13 @@ func CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine) {
 	CloneOptions.Name = vm.Name
 	CloneOptions.Target = nodeName
 	log.Log.Info(fmt.Sprintf("Creating VM from template: %s", templateVMName))
+	// Make sure that not two VMs are created at the exact time
+	mutex.Lock()
 	newID, task, err := templateVM.Clone(&CloneOptions)
 	log.Log.Info(fmt.Sprintf("New VM %s has been creating with ID: %d", vm.Name, newID))
+	mutex.Unlock()
 	// Lock VM creation process
-	LockVM(vm.Spec.Name)
+	// LockVM(vm.Spec.Name)
 	// UPID := task.UPID
 	// log.Log.Info(fmt.Sprintf("VM creation task UPID: %s", UPID))
 	// TODO: Implement a better way to watch the task
@@ -140,20 +145,22 @@ func CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine) {
 	// 	}()
 	// 	wg.Add(500)
 	// 	wg.Wait()
+	mutex.Lock()
 	_, taskCompleted, taskErr := task.WaitForCompleteStatus(virtualMachineCreateTimesNum, virtualMachineCreateSteps)
 	if taskCompleted == false {
 		log.Log.Error(taskErr, "Error creating VM")
 	} else if taskCompleted == true {
 		log.Log.Info(fmt.Sprintf("VM %s has been created", vm.Name))
 		// Unlock VM creation process
-		UnlockVM(vm.Spec.Name)
+		// UnlockVM(vm.Spec.Name)
 	} else {
 		log.Log.Info("VM creation task is still running")
 	}
+
 	// Add tag to VM
 	VirtualMachine, err := node.VirtualMachine(newID)
 	VirtualMachine.AddTag(virtualMachineTag)
-
+	mutex.Unlock()
 	if err != nil {
 		panic(err)
 	}
@@ -249,7 +256,8 @@ func GetVMUptime(vmName, nodeName string) string {
 	return uptime
 }
 
-func DeleteVM(vmName, nodeName string) *proxmox.Task {
+func DeleteVM(vmName, nodeName string) {
+	// mutex.Lock()
 	node, err := Client.Node(nodeName)
 	if err != nil {
 		panic(err)
@@ -289,7 +297,7 @@ func DeleteVM(vmName, nodeName string) *proxmox.Task {
 	if err != nil {
 		panic(err)
 	}
-	return task
+	// mutex.Unlock()
 }
 
 func StartVM(vmName, nodeName string) {
@@ -706,6 +714,12 @@ func CreateManagedVM(ManagedVM string) *proxmoxv1alpha1.ManagedVirtualMachine {
 
 	nodeName := GetNodeOfVM(ManagedVM)
 	cores, memory, disk := GetManagedVMSpec(ManagedVM, nodeName)
+
+	// IF POD_NAMESPACE is not set, set it to default
+	if os.Getenv("POD_NAMESPACE") == "" {
+		os.Setenv("POD_NAMESPACE", "default")
+	}
+
 	// Create VM object
 	VirtualMachine := &proxmoxv1alpha1.ManagedVirtualMachine{
 		TypeMeta: metav1.TypeMeta{

@@ -2,4 +2,5 @@
 resources:
 - proxmox_v1alpha1_virtualmachine.yaml
 - proxmox_v1alpha1_managedvirtualmachine.yaml
+- proxmox_v1alpha1_virtualmachineset.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

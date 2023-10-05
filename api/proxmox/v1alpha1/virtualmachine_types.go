@@ -117,6 +117,7 @@ type VirtualMachineStatus struct {
 type VirtualMachine struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
+	OwnerReferences   []metav1.OwnerReference `json:"ownerReferences,omitempty"`
 
 	Spec   VirtualMachineSpec   `json:"spec,omitempty"`
 	Status VirtualMachineStatus `json:"status,omitempty"`
