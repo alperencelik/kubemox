@@ -4,6 +4,7 @@
 resources:
 - bases/proxmox.alperen.cloud_virtualmachines.yaml
 - bases/proxmox.alperen.cloud_managedvirtualmachines.yaml
+- bases/proxmox.alperen.cloud_virtualmachinesets.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:
@@ -11,12 +12,14 @@ patches:
 # patches here are for enabling the conversion webhook for each CRD
 #- path: patches/webhook_in_virtualmachines.yaml
 #- path: patches/webhook_in_managedvirtualmachines.yaml
+#- path: patches/webhook_in_virtualmachinesets.yaml
 #+kubebuilder:scaffold:crdkustomizewebhookpatch
 
 # [CERTMANAGER] To enable cert-manager, uncomment all the sections with [CERTMANAGER] prefix.
 # patches here are for enabling the CA injection for each CRD
 #- path: patches/cainjection_in_virtualmachines.yaml
 #- path: patches/cainjection_in_managedvirtualmachines.yaml
+#- path: patches/cainjection_in_virtualmachinesets.yaml
 #+kubebuilder:scaffold:crdkustomizecainjectionpatch
 
 # the following config is for teaching kustomize how to do kustomization for CRDs.

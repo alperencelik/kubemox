@@ -1,0 +1,25 @@
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachineSet
+metadata:
+  labels:
+    app.kubernetes.io/name: virtualmachineset
+    app.kubernetes.io/instance: virtualmachineset-sample
+    app.kubernetes.io/part-of: kubemox
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: kubemox
+  name: virtualmachineset2-test
+spec:
+  replicas: 2
+  nodeName: lowtower
+  template:
+    name: centos-template-new
+    cores: 4
+    socket: 1
+    memory: 4096 
+    disk: 
+      - storage: nvme 
+        size: 50 # As GB
+        type: scsi
+    network:
+      - model: virtio
+        bridge: vmbr0

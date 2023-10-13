@@ -18,38 +18,6 @@ var (
 	Clientset, DynamicClient = GetKubeconfig()
 )
 
-// Clientset ---> Outside the Kubernetes cluster
-// func GetKubeconfig() (*kubernetes.Clientset, dynamic.Interface) {
-// 	// Set new flag for every call
-// 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-
-// 	var kubeconfig *string
-// 	if home := homedir.HomeDir(); home != "" {
-// 		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-// 	} else {
-// 		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-// 	}
-// 	flag.Parse()
-
-// 	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
-// 	if err != nil {
-// 		panic(err.Error())
-// 	}
-
-// 	// Dynamic client
-// 	dynamicClient, err := dynamic.NewForConfig(config)
-// 	if err != nil {
-// 		panic(err.Error())
-// 	}
-
-// 	// create the clientset
-// 	clientset, err := kubernetes.NewForConfig(config)
-// 	if err != nil {
-// 		panic(err.Error())
-// 	}
-// 	return clientset, dynamicClient
-// }
-
 func GetKubeconfig() (*kubernetes.Clientset, dynamic.Interface) {
 	config, err := rest.InClusterConfig()
 	if err != nil {

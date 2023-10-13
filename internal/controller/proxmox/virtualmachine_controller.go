@@ -66,7 +66,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	vm := &proxmoxv1alpha1.VirtualMachine{}
 	err := r.Get(ctx, req.NamespacedName, vm)
 	if err != nil {
-		Log.Error(err, "unable to fetch VirtualMachine")
+		// Log.Error(err, "unable to fetch VirtualMachine")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -81,8 +81,13 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// The object is being deleted
 		if controllerutil.ContainsFinalizer(vm, virtualMachineFinalizerName) {
 			// Delete the VM
-			kubernetes.CreateVMKubernetesEvent(vm, kubernetes.Clientset, "Deleting")
-			proxmox.DeleteVM(vm.Spec.Name, vm.Spec.NodeName)
+			deletionKey := fmt.Sprintf("%s/%s-deletion", vm.Namespace, vm.Name)
+			if isProcessed(deletionKey) {
+			} else {
+				kubernetes.CreateVMKubernetesEvent(vm, kubernetes.Clientset, "Deleting")
+				proxmox.DeleteVM(vm.Spec.Name, vm.Spec.NodeName)
+				processedResources[deletionKey] = true
+			}
 			// Remove finalizer
 			controllerutil.RemoveFinalizer(vm, virtualMachineFinalizerName)
 			if err := r.Update(ctx, vm); err != nil {
@@ -91,7 +96,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 		}
 		// Stop reconciliation as the item is being deleted
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	resourceKey := fmt.Sprintf("%s/%s", vm.Namespace, vm.Name)
@@ -145,7 +150,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		Log.Error(err, "Error updating VirtualMachine status")
 	}
 
-	return ctrl.Result{Requeue: true, RequeueAfter: VMreconcilationPeriod * time.Second}, nil
+	return ctrl.Result{Requeue: true, RequeueAfter: VMreconcilationPeriod * time.Second}, client.IgnoreNotFound(err)
 
 }
 

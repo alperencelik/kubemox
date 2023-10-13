@@ -68,3 +68,29 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - virtualmachinesets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - virtualmachinesets/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - virtualmachinesets/status
+  verbs:
+  - get
+  - patch
+  - update
