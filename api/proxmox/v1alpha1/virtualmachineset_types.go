@@ -38,6 +38,7 @@ type VirtualMachineSetSpec struct {
 type VirtualMachineSetStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	Condition string `json:"condition"`
 }
 
 //+kubebuilder:object:root=true

@@ -257,14 +257,15 @@ func GetVMUptime(vmName, nodeName string) string {
 }
 
 func DeleteVM(vmName, nodeName string) {
-	// mutex.Lock()
 	node, err := Client.Node(nodeName)
 	if err != nil {
 		panic(err)
 	}
 	// Get VMID
+	mutex.Lock()
 	vmID := GetVMID(vmName, nodeName)
 	VirtualMachine, err := node.VirtualMachine(vmID)
+	mutex.Unlock()
 	// Stop VM
 	vmStatus := VirtualMachine.Status
 	if vmStatus == "running" {
@@ -277,7 +278,6 @@ func DeleteVM(vmName, nodeName string) {
 		if taskCompleted == false {
 			log.Log.Error(taskErr, "Can't stop VM")
 		} else if taskCompleted == true {
-
 			log.Log.Info(fmt.Sprintf("VM %s has been stopped", vmName))
 		} else {
 			log.Log.Info("VM is already stopped")
@@ -285,7 +285,10 @@ func DeleteVM(vmName, nodeName string) {
 	}
 	// Delete VM
 	task, err := VirtualMachine.Delete()
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(10, 20)
+	if err != nil {
+		panic(err)
+	}
+	_, taskCompleted, taskErr := task.WaitForCompleteStatus(3, 20)
 	if taskCompleted == false {
 		log.Log.Error(taskErr, "Can't delete VM")
 	} else if taskCompleted == true {
@@ -293,11 +296,6 @@ func DeleteVM(vmName, nodeName string) {
 	} else {
 		log.Log.Info("VM is already deleted")
 	}
-
-	if err != nil {
-		panic(err)
-	}
-	// mutex.Unlock()
 }
 
 func StartVM(vmName, nodeName string) {

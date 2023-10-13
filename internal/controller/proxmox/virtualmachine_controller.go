@@ -81,8 +81,13 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// The object is being deleted
 		if controllerutil.ContainsFinalizer(vm, virtualMachineFinalizerName) {
 			// Delete the VM
-			kubernetes.CreateVMKubernetesEvent(vm, kubernetes.Clientset, "Deleting")
-			proxmox.DeleteVM(vm.Spec.Name, vm.Spec.NodeName)
+			deletionKey := fmt.Sprintf("%s/%s-deletion", vm.Namespace, vm.Name)
+			if isProcessed(deletionKey) {
+			} else {
+				kubernetes.CreateVMKubernetesEvent(vm, kubernetes.Clientset, "Deleting")
+				proxmox.DeleteVM(vm.Spec.Name, vm.Spec.NodeName)
+				processedResources[deletionKey] = true
+			}
 			// Remove finalizer
 			controllerutil.RemoveFinalizer(vm, virtualMachineFinalizerName)
 			if err := r.Update(ctx, vm); err != nil {
