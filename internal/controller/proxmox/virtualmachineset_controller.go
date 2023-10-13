@@ -157,6 +157,17 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	} else {
 		// Do nothing
 		// log.Log.Info("VMSet has the same number of VMs as replicas")
+		// Check if the CPU and Memory values are the same
+		// If not, update the VMs
+		for _, vm := range vmList.Items {
+			if vm.Spec.Template.Cores != vmSet.Spec.Template.Cores || vm.Spec.Template.Memory != vmSet.Spec.Template.Memory {
+				vm.Spec.Template.Cores = vmSet.Spec.Template.Cores
+				vm.Spec.Template.Memory = vmSet.Spec.Template.Memory
+				if err := r.Update(ctx, &vm); err != nil {
+					return ctrl.Result{}, err
+				}
+			}
+		}
 		vmSet.Status.Condition = "Available"
 		if err := r.Status().Update(ctx, vmSet); err != nil {
 			return ctrl.Result{}, err
