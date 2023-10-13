@@ -22,12 +22,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
@@ -45,6 +47,23 @@ const (
 
 var (
 	Clientset, DynamicClient = kubernetes.GetKubeconfig()
+	virtualMachineCount      = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "kubemox_virtualmachine_count",
+		Help: "The number of VirtualMachines objects that exists.",
+	})
+	virtualMachineRunningCount = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "kubemox_virtualmachine_running_count",
+		Help: "The number of VirtualMachines objects that are running.",
+	})
+	virtualMachineCpuCores = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "virtualmachine_cpu_cores",
+		Help: "The number of CPU cores for the VirtualMachine",
+	}, []string{"name", "namespace"})
+
+	virtualMachineMemory = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "virtualmachine_memory",
+		Help: "The amount of memory for the VirtualMachine",
+	}, []string{"name", "namespace"})
 )
 
 // VirtualMachineReconciler reconciles a VirtualMachine object
@@ -57,6 +76,13 @@ type VirtualMachineReconciler struct {
 //+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachines/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachines/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch;delete
+
+func init() {
+	// Register custom metrics with the global prometheus registry
+	metrics.Registry.MustRegister(virtualMachineCount)
+	metrics.Registry.MustRegister(virtualMachineCpuCores)
+	metrics.Registry.MustRegister(virtualMachineMemory)
+}
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -86,6 +112,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			} else {
 				kubernetes.CreateVMKubernetesEvent(vm, kubernetes.Clientset, "Deleting")
 				proxmox.DeleteVM(vm.Spec.Name, vm.Spec.NodeName)
+				virtualMachineCount.Dec()
 				processedResources[deletionKey] = true
 			}
 			// Remove finalizer
@@ -98,6 +125,12 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// Stop reconciliation as the item is being deleted
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	prometheusKey := fmt.Sprintf("%s/%s-prometheus", vm.Namespace, vm.Name)
+	if isProcessed(prometheusKey) {
+	} else {
+		virtualMachineCount.Inc()
+		processedResources[prometheusKey] = true
+	}
 
 	resourceKey := fmt.Sprintf("%s/%s", vm.Namespace, vm.Name)
 
@@ -105,6 +138,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	vmName := vm.Spec.Name
 	nodeName := vm.Spec.NodeName
 	vmExists := proxmox.CheckVM(vmName, nodeName)
+	VMType := proxmox.CheckVMType(vm)
 	if vmExists == true {
 		// If exists, update the VM
 		vmState := proxmox.GetVMState(vmName, nodeName)
@@ -123,13 +157,12 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	} else {
 		// If not exists, create the VM
 		Log.Info(fmt.Sprintf("VirtualMachine %s doesn't exist", vmName))
-		vmType := proxmox.CheckVMType(vm)
-		if vmType == "template" {
+		if VMType == "template" {
 			kubernetes.CreateVMKubernetesEvent(vm, Clientset, "Creating")
 			proxmox.CreateVMFromTemplate(vm)
 			proxmox.StartVM(vmName, nodeName)
 			kubernetes.CreateVMKubernetesEvent(vm, Clientset, "Created")
-		} else if vmType == "scratch" {
+		} else if VMType == "scratch" {
 			kubernetes.CreateVMKubernetesEvent(vm, Clientset, "Creating")
 			proxmox.CreateVMFromScratch(vm)
 			proxmox.StartVM(vmName, nodeName)
@@ -141,6 +174,25 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// If template and created VM has different resources then update the VM with new resources the function itself decides if VM restart needed or not
 	proxmox.UpdateVM(vmName, nodeName, vm)
 	r.Update(context.Background(), vm)
+	if VMType == "template" {
+		virtualMachineCpuCores.With(prometheus.Labels{
+			"name":      vm.Name,
+			"namespace": vm.Namespace,
+		}).Set(float64(vm.Spec.Template.Cores))
+		virtualMachineMemory.With(prometheus.Labels{
+			"name":      vm.Name,
+			"namespace": vm.Namespace,
+		}).Set(float64(vm.Spec.Template.Memory))
+	} else if VMType == "scratch" {
+		virtualMachineCpuCores.With(prometheus.Labels{
+			"name":      vm.Name,
+			"namespace": vm.Namespace,
+		}).Set(float64(vm.Spec.VmSpec.Cores))
+		virtualMachineMemory.With(prometheus.Labels{
+			"name":      vm.Name,
+			"namespace": vm.Namespace,
+		}).Set(float64(vm.Spec.VmSpec.Memory))
+	}
 	// Update the status of VirtualMachine resource
 	var Status proxmoxv1alpha1.VirtualMachineStatus
 	Status.State, Status.ID, Status.Uptime, Status.Node, Status.Name, Status.IPAddress, Status.OSInfo = proxmox.UpdateVMStatus(vmName, nodeName)

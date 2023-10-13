@@ -27,11 +27,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -39,6 +41,17 @@ const (
 	managedvirtualMachineFinalizerName = "managedvirtualmachine.proxmox.alperen.cloud/finalizer"
 	ManagedVMreconcilationPeriod       = 15
 	ManagedVMmaxConcurrentReconciles   = 5
+)
+
+var (
+	managedVirtualMachineCount = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "kubemox_managedvirtualmachine_count",
+		Help: "The number of ManagedVirtualMachines objects that exists.",
+	})
+	managedVirtualMachineRunningCount = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "kubemox_managedvirtualmachine_running_count",
+		Help: "The number of ManagedVirtualMachines objects that are running.",
+	})
 )
 
 // ManagedVirtualMachineReconciler reconciles a ManagedVirtualMachine object
@@ -61,6 +74,11 @@ type ManagedVirtualMachineReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
+func init() {
+	// Register custom metrics with the global prometheus registry
+	metrics.Registry.MustRegister(managedVirtualMachineCount)
+}
+
 func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
@@ -82,8 +100,13 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 		if controllerutil.ContainsFinalizer(managedVM, managedvirtualMachineFinalizerName) {
 			// Delete the VM
 			// Create the event
-			kubernetes.CreateManagedVMKubernetesEvent(managedVM, Clientset, "Deleting")
-			proxmox.DeleteVM(managedVM.Name, managedVM.Spec.NodeName)
+			deletionKey := fmt.Sprintf("%s/%s-deletion", managedVM.ObjectMeta.Namespace, managedVM.Name)
+			if isProcessed(deletionKey) {
+			} else {
+				kubernetes.CreateManagedVMKubernetesEvent(managedVM, Clientset, "Deleting")
+				proxmox.DeleteVM(managedVM.Name, managedVM.Spec.NodeName)
+				managedVirtualMachineCount.Dec()
+			}
 		}
 		// Delete VM from Proxmox
 
@@ -128,6 +151,7 @@ func (r *ManagedVirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) err
 				log.Log.Info(fmt.Sprintf("ManagedVM %v could not be created", ManagedVM))
 			}
 		}
+		managedVirtualMachineCount.Inc()
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
