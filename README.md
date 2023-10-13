@@ -29,13 +29,15 @@ helm install kubemox ./ -f values.yaml -n $NAMESPACE
 
 ## Usage
 
-Currently Kubemox brings two different CRDs for only VirtualMachines in Proxmox. These are `VirtualMachine` and `ManagedVirtualMachine`. You can use these CRDs to create and manage VirtualMachine(s) in Proxmox. 
-
-`ManagedVirtualMachine` is a way to bring your existing VirtualMachines in Proxmox to Kubernetes. As an user you don't need to create `ManagedVirtualMachine` resource. Kubemox will create it for you after the deployment at startup of controller. `ManagedVirtualMachine` is also reconciled by the operator so if you do any change on those (delete, update, etc.) it will be reflected to Proxmox. 
+Currently Kubemox brings three different CRDs for only VirtualMachines in Proxmox. These are `VirtualMachine`, `VirtualMachineSet`, `ManagedVirtualMachine`. You can use these CRDs to create and manage VirtualMachine(s) in Proxmox. 
 
 `VirtualMachine` is a way to create new VirtualMachines in Proxmox via operator. You can create `VirtualMachine` resource and Kubemox will create it for you in Proxmox. `VirtualMachine` is also reconciled by the operator which means every change on `VirtualMachine` resource will be reflected to Proxmox as well. 
 
-### Create a Virtual Machine
+`VirtualMachineSet` is a way to create multiple VirtualMachines in Proxmox. The relationship between `VirtualMachineSet` and `VirtualMachine` is similar to the relationship between `Deployment` and `Pod`. `VirtualMachineSet` creates multiple `VirtualMachine` resources and Kubemox will create them for you in Proxmox. You can only use `VirtualMachineSet` with templates. Creating multiple VirtualMachines from scratch is not supported yet. 
+
+`ManagedVirtualMachine` is a way to bring your existing VirtualMachines in Proxmox to Kubernetes. As an user you don't need to create `ManagedVirtualMachine` resource. Kubemox will create it for you after the deployment at startup of controller. `ManagedVirtualMachine` is also reconciled by the operator so if you do any change on those (delete, update, etc.) it will be reflected to Proxmox. 
+
+### Create a VirtualMachine
 
 To create a VirtualMachine you can use the following `VirtualMachine` resource:
 
@@ -60,8 +62,33 @@ spec:
       - model: virtio
         bridge: vmbr0
 ```
+### Create a VirtualMachineSet
 
-To learn more about `VirtualMachine` resource you can check `charts/kubemox/samples/`
+To create a VirtualMachineSet you can use the following `VirtualMachineSet` resource:
+
+```yaml
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachineSet
+metadata:
+  name: test-vmset
+spec:
+  replicas: 3
+  nodeName: lowtower
+  template:
+    name: ubuntu-20.04-cloudinit-template
+    cores: 4
+    sockets: 1
+    memory: 4096
+    disk:
+      - size: 50G
+        storage: local-lvm
+        type: scsi
+    network:
+      - model: virtio
+        bridge: vmbr0
+```
+
+To learn more about `VirtualMachine` and `VirtualMachineSet` resources you can check `charts/kubemox/samples/`
 
 
 ## Developing 
