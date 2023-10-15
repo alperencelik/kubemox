@@ -90,14 +90,15 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				log.Log.Info(fmt.Sprintf("Creating a new VirtualMachine %s for VirtualMachineSet %s : ", vmSet.Name+"-"+strconv.Itoa(i), vmSet.Name))
 				processedResources[resourceKey] = true
 			}
+			// Get labels of the VMSet
+			labels := vmSet.ObjectMeta.Labels
+			labels["owner"] = vmSet.Name
 			vm := &proxmoxv1alpha1.VirtualMachine{}
 			vm = &proxmoxv1alpha1.VirtualMachine{
 				ObjectMeta: ctrl.ObjectMeta{
 					Name:      vmSet.Name + "-" + strconv.Itoa(i),
 					Namespace: vmSet.Namespace,
-					Labels: map[string]string{
-						"owner": vmSet.Name,
-					},
+					Labels:    labels,
 					OwnerReferences: []metav1.OwnerReference{{
 						APIVersion: vmSet.APIVersion,
 						Controller: &[]bool{true}[0],
