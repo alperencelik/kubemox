@@ -29,7 +29,7 @@ helm install kubemox ./ -f values.yaml -n $NAMESPACE
 
 ## Usage
 
-Currently Kubemox brings three different CRDs for only VirtualMachines in Proxmox. These are `VirtualMachine`, `VirtualMachineSet`, `ManagedVirtualMachine`. You can use these CRDs to create and manage VirtualMachine(s) in Proxmox. 
+Currently Kubemox brings five different CRDs for only VirtualMachines in Proxmox. These are `VirtualMachine`, `VirtualMachineSet`, `ManagedVirtualMachine`, `VirtualMachineSnapshot` and `VirtualMachineSnapshotPolicy`. You can use these CRDs to create and manage VirtualMachine(s) in Proxmox. 
 
 `VirtualMachine` is a way to create new VirtualMachines in Proxmox via operator. You can create `VirtualMachine` resource and Kubemox will create it for you in Proxmox. `VirtualMachine` is also reconciled by the operator which means every change on `VirtualMachine` resource will be reflected to Proxmox as well. 
 
@@ -37,6 +37,9 @@ Currently Kubemox brings three different CRDs for only VirtualMachines in Proxmo
 
 `ManagedVirtualMachine` is a way to bring your existing VirtualMachines in Proxmox to Kubernetes. As an user you don't need to create `ManagedVirtualMachine` resource. Kubemox will create it for you after the deployment at startup of controller. `ManagedVirtualMachine` is also reconciled by the operator so if you do any change on those (delete, update, etc.) it will be reflected to Proxmox. 
 
+`VirtualMachineSnapshot` is helping to create snapshots for `VirtualMachine` object. This object mostly considered for the milestone snapshots. This will create only one snapshot for the `VirtualMachine` object. Also deleting the `VirtualMachineSnapshot` object won't be deleting the snapshot from Proxmox since the current proxmox client the project uses doesn't have an implementation for deleting snapshots.
+
+`VirtualMachineSnapshotPolicy` is helping to create snapshots for `VirtualMachine` object periodically. This object mostly considered for the scheduled snapshots. The schedule and the selectors that you specify matches with the `VirtualMachine` objects and according to the schedule it will create snapshots for those `VirtualMachine` objects. `VirtualMachineSnapshotPolicy` will be spawning `VirtualMachineSnapshot` objects for each `VirtualMachine` object that matches with the selectors. Also deleting the `VirtualMachineSnapshotPolicy` object also won't be deleting the snapshots from Proxmox but it will stop creating new `VirtualMachineSnapshot` objects for the `VirtualMachine` objects that matches with the selectors.
 ### Create a VirtualMachine
 
 To create a VirtualMachine you can use the following `VirtualMachine` resource:
@@ -88,7 +91,39 @@ spec:
         bridge: vmbr0
 ```
 
-To learn more about `VirtualMachine` and `VirtualMachineSet` resources you can check `charts/kubemox/samples/`
+
+### Create a VirtualMachineSnapshot
+
+To create a VirtualMachineSnapshot you can use the following `VirtualMachineSnapshot` resource:
+
+```yaml
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachineSnapshot
+metadata:
+  name: test-vm-snapshot
+spec:
+  vmName: test-vm
+  # snapshotName is optional ( if you don't specify it will create a snapshot with the current date )
+  snapshotName: test-vm-snapshot
+```
+
+### Create a VirtualMachineSnapshotPolicy
+
+To create a VirtualMachineSnapshotPolicy you can use the following `VirtualMachineSnapshotPolicy` resource:
+
+```yaml
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachineSnapshotPolicy
+metadata:
+  name: test-vm-snapshot-policy
+spec:
+  schedule: "*/30 * * * *" # Create a snapshot every 30 minutes
+  namespaceSelector: ["my-namespace"]
+    matchLabels:
+      my-label: my-virtualmachine
+```
+
+To learn more about `VirtualMachine`, `VirtualMachineSet` and `VirtualMachineSnapshot` resources you can check `charts/kubemox/samples/`
 
 
 ## Developing 
