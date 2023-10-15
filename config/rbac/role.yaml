@@ -94,3 +94,55 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - virtualmachinesnapshotpolicies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - virtualmachinesnapshotpolicies/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - virtualmachinesnapshotpolicies/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - virtualmachinesnapshots
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - virtualmachinesnapshots/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - virtualmachinesnapshots/status
+  verbs:
+  - get
+  - patch
+  - update

@@ -1,0 +1,19 @@
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachineSnapshotPolicy
+metadata:
+  labels:
+    app.kubernetes.io/name: virtualmachinesnapshotpolicy
+    app.kubernetes.io/instance: virtualmachinesnapshotpolicy-sample
+    app.kubernetes.io/part-of: kubemox
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: kubemox
+  name: virtualmachinesnapshotpolicy-sample
+spec:
+  snapshotSchedule: "*/30 * * * *" # Every 30 minutes
+  namespaceSelector:
+    namespaces: ["default", "my-namespace"]
+  labelSelector:
+    matchLabels:
+      owner: virtualmachineset2-test
+  
+  # TODO(user): Add fields here
