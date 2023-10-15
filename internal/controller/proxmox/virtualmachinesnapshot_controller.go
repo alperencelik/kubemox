@@ -44,6 +44,12 @@ var (
 	StatusCode int
 )
 
+const (
+	// Controller settings
+	VMSnapshotreconcilationPeriod     = 10
+	VMSnapshotmaxConcurrentReconciles = 3
+)
+
 //+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinesnapshots,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinesnapshots/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinesnapshots/finalizers,verbs=update
@@ -118,7 +124,7 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, nil
 	}
 
-	return ctrl.Result{Requeue: true, RequeueAfter: 5 * time.Second}, client.IgnoreNotFound(r.Get(ctx, req.NamespacedName, &proxmoxv1alpha1.VirtualMachineSnapshotPolicy{}))
+	return ctrl.Result{Requeue: true, RequeueAfter: VMSnapshotreconcilationPeriod * time.Second}, client.IgnoreNotFound(r.Get(ctx, req.NamespacedName, &proxmoxv1alpha1.VirtualMachineSnapshotPolicy{}))
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -126,7 +132,7 @@ func (r *VirtualMachineSnapshotReconciler) SetupWithManager(mgr ctrl.Manager) er
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.VirtualMachineSnapshot{}).
 		WithEventFilter(predicate.GenerationChangedPredicate{}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: VMSnapshotmaxConcurrentReconciles}).
 		Complete(&VirtualMachineSnapshotReconciler{
 			Client: mgr.GetClient(),
 			Scheme: mgr.GetScheme(),
