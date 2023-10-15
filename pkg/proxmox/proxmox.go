@@ -858,3 +858,31 @@ func SubstractLowercaseSlices(slice1, slice2 []string) []string {
 	}
 	return difference
 }
+
+func CreateVMSnapshot(vmName, snapshotName string) (statusCode int) {
+
+	nodeName := GetNodeOfVM(vmName)
+	node, err := Client.Node(nodeName)
+	if err != nil {
+		panic(err)
+	}
+	// Get VMID
+	vmID := GetVMID(vmName, nodeName)
+	VirtualMachine, err := node.VirtualMachine(vmID)
+	// Create snapshot
+	task, err := VirtualMachine.NewSnapshot(snapshotName)
+	if err != nil {
+		panic(err)
+	}
+	_, taskCompleted, taskErr := task.WaitForCompleteStatus(3, 10)
+	if taskCompleted == false {
+		log.Log.Error(taskErr, "Can't create snapshot for the VirtualMachine %s", vmName)
+		return 1
+	} else if taskCompleted == true {
+		log.Log.Info(fmt.Sprintf("VirtualMachine %s has been snapshotted with %s name", vmName, snapshotName))
+		return 0
+	} else {
+		log.Log.Info("VirtualMachine has already a snapshot with the same name")
+		return 2
+	}
+}

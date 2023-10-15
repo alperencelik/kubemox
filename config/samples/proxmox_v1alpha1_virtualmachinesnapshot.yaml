@@ -1,0 +1,14 @@
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachineSnapshot
+metadata:
+  labels:
+    app.kubernetes.io/name: virtualmachinesnapshot
+    app.kubernetes.io/instance: virtualmachinesnapshot-sample
+    app.kubernetes.io/part-of: kubemox
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: kubemox
+  name: virtualmachinesnapshot-sample
+spec:
+  virtualMachineName: "virtualmachineset2-test-2"
+  snapshotName: "test-snapshot"
+  # TODO(user): Add fields here
