@@ -21,13 +21,18 @@ import (
 
 var (
 	// Create Proxmox client
-	Client         = CreateProxmoxClient()
-	ProxmoxIP      = os.Getenv("PROXMOX_IP")
-	ProxmoxURL     = fmt.Sprintf("https://%s:8006/api2/json", ProxmoxIP)
-	ProxmoxTokenID = os.Getenv("PROXMOX_TOKEN_ID")
-	ProxmoxSecret  = os.Getenv("PROXMOX_SECRET")
-	ProxmoxSkipTls = os.Getenv("PROXMOX_SKIP_TLS")
+	Client = CreateProxmoxClient()
 )
+
+type ProxmoxConfig struct {
+	Endpoint              string
+	APIEndpoint           string
+	InsecureSkipTLSVerify bool
+	Username              string
+	Password              string
+	TokenID               string
+	Secret                string
+}
 
 var mutex = &sync.Mutex{}
 
@@ -54,25 +59,45 @@ const (
 
 func CreateProxmoxClient() *proxmox.Client {
 	// Create a new client
-	proxmoxIP := os.Getenv("PROXMOX_IP")
-	proxmoxURL := fmt.Sprintf("https://%s:8006/api2/json", proxmoxIP)
-	// Retrieve proxmox credentials from secret
-
-	insecureHTTPClient := http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
-		},
+	endpoint := os.Getenv("PROXMOX_ENDPOINT")
+	ProxmoxConfig := &ProxmoxConfig{
+		Endpoint:    os.Getenv("PROXMOX_ENDPOINT"),
+		APIEndpoint: fmt.Sprintf("https://%s:8006/api2/json", endpoint),
+		Username:    os.Getenv("PROXMOX_USERNAME"),
+		Password:    os.Getenv("PROXMOX_PASSWORD"),
+		TokenID:     os.Getenv("PROXMOX_TOKEN_ID"),
+		Secret:      os.Getenv("PROXMOX_SECRET"),
 	}
-	proxmoxTokenID := os.Getenv("PROXMOX_TOKEN_ID")
-	proxmoxSecret := os.Getenv("PROXMOX_SECRET")
-	//	tokenID := "root@pam!alp"
-	//	secret := "0e409a4b-44b9-49d2-8de0-d50e4e56eaee"
-	client := proxmox.NewClient(proxmoxURL,
-		proxmox.WithClient(&insecureHTTPClient),
-		proxmox.WithAPIToken(proxmoxTokenID, proxmoxSecret),
-	)
+
+	var httpClient *http.Client
+	if os.Getenv("PROXMOX_INSECURE_SKIP_TLS_VERIFY") == "true" {
+		ProxmoxConfig.InsecureSkipTLSVerify = true
+		httpClient = &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+			},
+		}
+	}
+
+	var client *proxmox.Client
+	if ProxmoxConfig.Username != "" && ProxmoxConfig.Password != "" {
+		client = proxmox.NewClient(ProxmoxConfig.APIEndpoint,
+			proxmox.WithCredentials(&proxmox.Credentials{
+				Username: ProxmoxConfig.Username,
+				Password: ProxmoxConfig.Password,
+			}),
+			proxmox.WithHTTPClient(httpClient),
+		)
+	} else if ProxmoxConfig.TokenID != "" && ProxmoxConfig.Secret != "" {
+		client = proxmox.NewClient(ProxmoxConfig.APIEndpoint,
+			proxmox.WithAPIToken(ProxmoxConfig.TokenID, ProxmoxConfig.Secret),
+			proxmox.WithHTTPClient(httpClient),
+		)
+	} else {
+		panic("Proxmox credentials are not defined")
+	}
 	return client
 }
 
