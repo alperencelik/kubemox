@@ -20,7 +20,7 @@ image:
   repository: alperencelik/kubemox 
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "0.2"
+  tag: "0.3"
 
 imagePullSecrets: []
 nameOverride: ""
