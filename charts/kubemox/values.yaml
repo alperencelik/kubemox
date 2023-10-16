@@ -5,10 +5,16 @@
 replicaCount: 1
 
 proxmox:
-  IPAddress: "10.0.0.99" 
-  # Those used for authentication on Proxmox
-  tokenId: "root@pam!alp"
+  endpoint: "proxmox.alperen.cloud" 
+  # endpoint: 10.0.0.99
+  # insecureSkipTLSVerify: true
+  insecureSkipTLSVerify: false
+  # Either tokenID/secret or username/password must be set
+  tokenID: "root@pam!alp"
   secret: ""
+  # Both username and password must be set if tokenID/secret is not set
+  username: "root@pam"
+  password: ""
 
 image:
   repository: alperencelik/kubemox 
