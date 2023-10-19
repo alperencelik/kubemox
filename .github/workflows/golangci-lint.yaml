@@ -1,0 +1,22 @@
+name: GolangCI-Lint
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Set Up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.20.5 # Replace with the Go version you're using
+
+      - name: Run Linter
+        run: golangci-lint run

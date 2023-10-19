@@ -104,22 +104,34 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 		// Set the status to created
 		if StatusCode == 0 {
 			vmSnapshot.Spec.Timestamp = metav1.Now()
-			r.Update(ctx, vmSnapshot)
+			err = r.Update(ctx, vmSnapshot)
+			if err != nil {
+				return ctrl.Result{}, client.IgnoreNotFound(err)
+			}
 			vmSnapshot.Status.Status = "Created"
-			r.Status().Update(ctx, vmSnapshot)
+			err = r.Status().Update(ctx, vmSnapshot)
+			if err != nil {
+				return ctrl.Result{}, client.IgnoreNotFound(err)
+			}
 		}
 	} else if vmSnapshot.Status.Status == "Created" {
 		if StatusCode == 2 {
 			// Snapshot is already created, return
 			vmSnapshot.Status.ErrorMessage = "Snapshot is already created"
-			r.Status().Update(ctx, vmSnapshot)
+			err := r.Status().Update(ctx, vmSnapshot)
+			if err != nil {
+				return ctrl.Result{}, client.IgnoreNotFound(err)
+			}
 		}
 		return ctrl.Result{}, nil
 	} else {
 		// Snapshot creation failed, return
 		if StatusCode == 1 {
 			vmSnapshot.Status.ErrorMessage = "Snapshot creation failed"
-			r.Status().Update(ctx, vmSnapshot)
+			err = r.Status().Update(ctx, vmSnapshot)
+			if err != nil {
+				return ctrl.Result{}, client.IgnoreNotFound(err)
+			}
 		}
 		return ctrl.Result{}, nil
 	}

@@ -76,6 +76,7 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		client.InNamespace(req.Namespace),
 		// Change that one to metadata.ownerReference
 		client.MatchingLabels{"owner": vmSet.Name}); err != nil {
+		log.Log.Info("Unable to list VMs")
 	}
 
 	resourceKey := fmt.Sprintf("%s/%s", vmSet.Namespace, vmSet.Name)
@@ -84,7 +85,10 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if len(vmList.Items) < replicas && vmSet.Status.Condition != "Terminating" {
 		for i := 1; i <= replicas; i++ {
 			vmSet.Status.Condition = "Scaling Up"
-			r.Status().Update(ctx, vmSet)
+			err := r.Status().Update(ctx, vmSet)
+			if err != nil {
+				return ctrl.Result{}, client.IgnoreNotFound(err)
+			}
 			if isProcessed(resourceKey) {
 			} else {
 				log.Log.Info(fmt.Sprintf("Creating a new VirtualMachine %s for VirtualMachineSet %s : ", vmSet.Name+"-"+strconv.Itoa(i), vmSet.Name))
@@ -93,8 +97,7 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			// Get labels of the VMSet
 			labels := vmSet.ObjectMeta.Labels
 			labels["owner"] = vmSet.Name
-			vm := &proxmoxv1alpha1.VirtualMachine{}
-			vm = &proxmoxv1alpha1.VirtualMachine{
+			vm := &proxmoxv1alpha1.VirtualMachine{
 				ObjectMeta: ctrl.ObjectMeta{
 					Name:      vmSet.Name + "-" + strconv.Itoa(i),
 					Namespace: vmSet.Namespace,
@@ -130,8 +133,11 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		}
 	} else if len(vmList.Items) > replicas {
 		vmSet.Status.Condition = "Scaling Down"
-		r.Status().Update(ctx, vmSet)
-		var LastConditionTime time.Time
+		err = r.Status().Update(ctx, vmSet)
+		if err != nil {
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
+		LastConditionTime := time.Now()
 		if time.Since(LastConditionTime) < 5*time.Second {
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		} else {
@@ -154,7 +160,6 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				}
 			}
 		}
-		LastConditionTime = time.Now()
 	} else {
 		// Do nothing
 		// log.Log.Info("VMSet has the same number of VMs as replicas")
@@ -183,6 +188,7 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		if !controllerutil.ContainsFinalizer(vmSet, virtualMachineSetFinalizerName) {
 			controllerutil.AddFinalizer(vmSet, virtualMachineSetFinalizerName)
 			if err := r.Update(ctx, vmSet); err != nil {
+				log.Log.Info(fmt.Sprintf("Error updating VirtualMachineSet %s", vmSet.Name))
 			}
 		}
 	} else {
@@ -200,6 +206,7 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				client.InNamespace(req.Namespace),
 				// Change that one to metadata.ownerReference
 				client.MatchingLabels{"owner": vmSet.Name}); err != nil {
+				log.Log.Info("Unable to list VMs")
 			}
 			// Delete all VMs owned by this VirtualMachineSet
 			if len(vmListDel.Items) != 0 {

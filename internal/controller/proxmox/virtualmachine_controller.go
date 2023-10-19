@@ -75,6 +75,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		if !controllerutil.ContainsFinalizer(vm, virtualMachineFinalizerName) {
 			controllerutil.AddFinalizer(vm, virtualMachineFinalizerName)
 			if err := r.Update(ctx, vm); err != nil {
+				log.Log.Error(err, "Error updating VirtualMachine")
 			}
 		}
 	} else {
@@ -105,7 +106,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	vmName := vm.Spec.Name
 	nodeName := vm.Spec.NodeName
 	vmExists := proxmox.CheckVM(vmName, nodeName)
-	if vmExists == true {
+	if vmExists {
 		// If exists, update the VM
 		vmState := proxmox.GetVMState(vmName, nodeName)
 		if vmState == "stopped" {
@@ -118,7 +119,10 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				processedResources[resourceKey] = true
 			}
 			proxmox.UpdateVM(vmName, nodeName, vm)
-			r.Update(context.Background(), vm)
+			err = r.Update(context.Background(), vm)
+			if err != nil {
+				return ctrl.Result{}, client.IgnoreNotFound(err)
+			}
 		}
 	} else {
 		// If not exists, create the VM
@@ -140,7 +144,10 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 	// If template and created VM has different resources then update the VM with new resources the function itself decides if VM restart needed or not
 	proxmox.UpdateVM(vmName, nodeName, vm)
-	r.Update(context.Background(), vm)
+	err = r.Update(context.Background(), vm)
+	if err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
 	// Update the status of VirtualMachine resource
 	var Status proxmoxv1alpha1.VirtualMachineStatus
 	Status.State, Status.ID, Status.Uptime, Status.Node, Status.Name, Status.IPAddress, Status.OSInfo = proxmox.UpdateVMStatus(vmName, nodeName)
@@ -180,10 +187,4 @@ func isProcessed(resourceKey string) bool {
 	logMutex.Lock()
 	defer logMutex.Unlock()
 	return processedResources[resourceKey]
-}
-
-func markAsProcessed(resourceKey string) {
-	logMutex.Lock()
-	defer logMutex.Unlock()
-	processedResources[resourceKey] = true
 }
