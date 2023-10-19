@@ -23,4 +23,4 @@ jobs:
           curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.54.2
 
       - name: Run Linter
-        run: golangci-lint run
+        run: golangci-lint run --timeout 10m --verbose 
