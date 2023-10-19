@@ -77,6 +77,7 @@ func (r *VirtualMachineSnapshotPolicyReconciler) Reconcile(ctx context.Context, 
 		// Append to vmList
 		virtualMachineList := &proxmoxv1alpha1.VirtualMachineList{}
 		if err := r.List(ctx, virtualMachineList, client.InNamespace(namespace), client.MatchingLabels(matchingLabels)); err != nil {
+			log.Log.Error(err, "unable to list VirtualMachines")
 		}
 		MatchingVirtualMachines = append(MatchingVirtualMachines, virtualMachineList.Items...)
 	}

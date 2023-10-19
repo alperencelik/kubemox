@@ -74,7 +74,8 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 	if managedVM.ObjectMeta.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(managedVM, managedvirtualMachineFinalizerName) {
 			controllerutil.AddFinalizer(managedVM, managedvirtualMachineFinalizerName)
-			if err := r.Update(ctx, managedVM); err != nil {
+			if err = r.Update(ctx, managedVM); err != nil {
+				log.Log.Info(fmt.Sprintf("Error updating ManagedVirtualMachine %s", managedVM.Name))
 			}
 		}
 	} else {
@@ -96,7 +97,11 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 	}
 	// // Update ManagedVM
 	proxmox.UpdateManagedVM(managedVM.Name, proxmox.GetNodeOfVM(managedVM.Name), managedVM)
-	r.Update(context.Background(), managedVM)
+	err = r.Update(context.Background(), managedVM)
+	if err != nil {
+		log.Log.Info(fmt.Sprintf("ManagedVM %v could not be updated", managedVM.Name))
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
 	// Update ManagedVMStatus
 	var managedVMStatus proxmoxv1alpha1.ManagedVirtualMachineStatus
 	nodeName := proxmox.GetNodeOfVM(managedVM.Name)
@@ -120,7 +125,7 @@ func (r *ManagedVirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) err
 	// AllVMs - ControllerVMs = VMs that are not managed by the controller
 	ManagedVMs := proxmox.SubstractSlices(AllVMs, ControllerVMs)
 	for _, ManagedVM := range ManagedVMs {
-		if proxmox.CheckManagedVMExists(ManagedVM) != true {
+		if !proxmox.CheckManagedVMExists(ManagedVM) {
 			log.Log.Info(fmt.Sprintf("ManagedVM %v does not exist so creating it", ManagedVM))
 			managedVM := proxmox.CreateManagedVM(ManagedVM)
 			err := r.Create(context.Background(), managedVM)
