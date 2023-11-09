@@ -1,9 +1,9 @@
 module github.com/alperencelik/kubemox
 
-go 1.20
+go 1.21
 
 require (
-	github.com/luthermonson/go-proxmox v0.0.0-alpha8
+	github.com/alperencelik/go-proxmox v0.0.0-20231024213338-5bdd092e3586
 	github.com/onsi/ginkgo/v2 v2.9.5
 	github.com/onsi/gomega v1.27.7
 	github.com/robfig/cron/v3 v3.0.1
@@ -41,6 +41,7 @@ require (
 	github.com/jinzhu/copier v0.3.4 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/luthermonson/go-proxmox v0.0.0-beta1.0.20231026205231-f451415fef7b // indirect
 	github.com/magefile/mage v1.14.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect

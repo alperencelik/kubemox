@@ -22,6 +22,7 @@ import (
 var (
 	// Create Proxmox client
 	Client = CreateProxmoxClient()
+	ctx    = context.Background()
 )
 
 type ProxmoxConfig struct {
@@ -103,7 +104,7 @@ func CreateProxmoxClient() *proxmox.Client {
 
 func GetProxmoxVersion() (*proxmox.Version, error) {
 	// Get the version of the Proxmox server
-	version, err := Client.Version()
+	version, err := Client.Version(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +113,7 @@ func GetProxmoxVersion() (*proxmox.Version, error) {
 
 func GetNodes() ([]string, error) {
 	// Get all nodes
-	nodes, err := Client.Nodes()
+	nodes, err := Client.Nodes(ctx)
 	nodeNames := []string{}
 	for _, node := range nodes {
 		nodeNames = append(nodeNames, node.Node)
@@ -126,13 +127,13 @@ func GetNodes() ([]string, error) {
 func CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine) {
 
 	nodeName := vm.Spec.NodeName
-	node, err := Client.Node(nodeName)
+	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
 		panic(err)
 	}
 	templateVMName := vm.Spec.Template.Name
 	templateVMID := GetVMID(templateVMName, nodeName)
-	templateVM, err := node.VirtualMachine(templateVMID)
+	templateVM, err := node.VirtualMachine(ctx, templateVMID)
 	if err != nil {
 		log.Log.Error(err, "Error getting template VM")
 	}
@@ -143,7 +144,7 @@ func CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine) {
 	log.Log.Info(fmt.Sprintf("Creating VM from template: %s", templateVMName))
 	// Make sure that not two VMs are created at the exact time
 	mutex.Lock()
-	newID, task, err := templateVM.Clone(&CloneOptions)
+	newID, task, err := templateVM.Clone(ctx, &CloneOptions)
 	if err != nil {
 		log.Log.Error(err, "Error creating VM")
 	}
@@ -154,7 +155,7 @@ func CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine) {
 	// UPID := task.UPID
 	// log.Log.Info(fmt.Sprintf("VM creation task UPID: %s", UPID))
 	// TODO: Implement a better way to watch the task
-	logChan, err := task.Watch(0)
+	logChan, err := task.Watch(ctx, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -177,7 +178,7 @@ func CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine) {
 	// 	wg.Add(500)
 	// 	wg.Wait()
 	mutex.Lock()
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(virtualMachineCreateTimesNum, virtualMachineCreateSteps)
+	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineCreateTimesNum, virtualMachineCreateSteps)
 	if !taskCompleted {
 		log.Log.Error(taskErr, "Error creating VM")
 	} else if taskCompleted {
@@ -189,9 +190,9 @@ func CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine) {
 	}
 
 	// Add tag to VM
-	VirtualMachine, err := node.VirtualMachine(newID)
-	addTagTask, _ := VirtualMachine.AddTag(virtualMachineTag)
-	_, taskCompleted, taskErr = addTagTask.WaitForCompleteStatus(5, 3)
+	VirtualMachine, err := node.VirtualMachine(ctx, newID)
+	addTagTask, _ := VirtualMachine.AddTag(ctx, virtualMachineTag)
+	_, taskCompleted, taskErr = addTagTask.WaitForCompleteStatus(ctx, 5, 3)
 	if !taskCompleted {
 		log.Log.Error(taskErr, "Error adding tag to VM")
 	}
@@ -203,11 +204,11 @@ func CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine) {
 }
 
 func GetVMID(vmName, nodeName string) int {
-	node, err := Client.Node(nodeName)
+	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
 		panic(err)
 	}
-	vmList, err := node.VirtualMachines()
+	vmList, err := node.VirtualMachines(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -224,11 +225,11 @@ func GetVMID(vmName, nodeName string) int {
 }
 
 func CheckVM(vmName, nodeName string) bool {
-	node, err := Client.Node(nodeName)
+	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
 		panic(err)
 	}
-	vmList, err := node.VirtualMachines()
+	vmList, err := node.VirtualMachines(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -242,18 +243,18 @@ func CheckVM(vmName, nodeName string) bool {
 }
 
 func GetVMIPAddress(vmName, nodeName string) string {
-	node, err := Client.Node(nodeName)
+	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
 		panic(err)
 	}
 	// Get VMID
 	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(vmID)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
 	// Get VM IP
-	VirtualMachineIfaces, err := VirtualMachine.AgentGetNetworkIFaces()
+	VirtualMachineIfaces, err := VirtualMachine.AgentGetNetworkIFaces(ctx)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM IP")
 	}
@@ -266,18 +267,18 @@ func GetVMIPAddress(vmName, nodeName string) string {
 }
 
 func GetOSInfo(vmName, nodeName string) string {
-	node, err := Client.Node(nodeName)
+	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
 		panic(err)
 	}
 	// Get VMID
 	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(vmID)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
 	// Get VM OS
-	VirtualMachineOS, err := VirtualMachine.AgentOsInfo()
+	VirtualMachineOS, err := VirtualMachine.AgentOsInfo(ctx)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM OS")
 	}
@@ -285,13 +286,13 @@ func GetOSInfo(vmName, nodeName string) string {
 }
 
 func GetVMUptime(vmName, nodeName string) string {
-	node, err := Client.Node(nodeName)
+	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
 		panic(err)
 	}
 	// Get VMID
 	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(vmID)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
@@ -307,14 +308,14 @@ func GetVMUptime(vmName, nodeName string) string {
 }
 
 func DeleteVM(vmName, nodeName string) {
-	node, err := Client.Node(nodeName)
+	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
 		panic(err)
 	}
 	// Get VMID
 	mutex.Lock()
 	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(vmID)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
@@ -322,11 +323,11 @@ func DeleteVM(vmName, nodeName string) {
 	// Stop VM
 	vmStatus := VirtualMachine.Status
 	if vmStatus == "running" {
-		task, err := VirtualMachine.Stop()
+		task, err := VirtualMachine.Stop(ctx)
 		if err != nil {
 			panic(err)
 		}
-		_, taskCompleted, taskErr := task.WaitForCompleteStatus(virtualMachineStopTimesNum, virtualMachineStopSteps)
+		_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineStopTimesNum, virtualMachineStopSteps)
 
 		if !taskCompleted {
 			log.Log.Error(taskErr, "Can't stop VM")
@@ -337,11 +338,11 @@ func DeleteVM(vmName, nodeName string) {
 		}
 	}
 	// Delete VM
-	task, err := VirtualMachine.Delete()
+	task, err := VirtualMachine.Delete(ctx)
 	if err != nil {
 		panic(err)
 	}
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(3, 20)
+	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 3, 20)
 	if !taskCompleted {
 		log.Log.Error(taskErr, "Can't delete VM")
 	} else if taskCompleted {
@@ -352,22 +353,22 @@ func DeleteVM(vmName, nodeName string) {
 }
 
 func StartVM(vmName, nodeName string) {
-	node, err := Client.Node(nodeName)
+	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
 		panic(err)
 	}
 	// Get VMID
 	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(vmID)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
 	// Start VM
-	task, err := VirtualMachine.Start()
+	task, err := VirtualMachine.Start(ctx)
 	if err != nil {
 		panic(err)
 	}
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(virtualMachineStartTimesNum, virtualMachineStartSteps)
+	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineStartTimesNum, virtualMachineStartSteps)
 	if !taskCompleted {
 		log.Log.Error(taskErr, "Can't start VM")
 	} else if taskCompleted {
@@ -378,18 +379,18 @@ func StartVM(vmName, nodeName string) {
 }
 
 func RestartVM(vmName, nodeName string) *proxmox.Task {
-	node, err := Client.Node(nodeName)
+	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
 		panic(err)
 	}
 	// Get VMID
 	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(vmID)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
 	// Restart VM
-	task, err := VirtualMachine.Reboot()
+	task, err := VirtualMachine.Reboot(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -398,12 +399,12 @@ func RestartVM(vmName, nodeName string) *proxmox.Task {
 
 func GetVMState(vmName string, nodeName string) string {
 	// Gets the VMstate from Proxmox API
-	node, err := Client.Node(nodeName)
+	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting node")
 	}
 	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(vmID)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	VirtualMachineState := VirtualMachine.Status
 	if err != nil {
 		panic(err)
@@ -419,10 +420,10 @@ func GetVMState(vmName string, nodeName string) string {
 
 func AgentIsRunning(vmName, nodeName string) bool {
 	// Checks if qemu-agent works on specified VM
-	node, _ := Client.Node(nodeName)
+	node, _ := Client.Node(ctx, nodeName)
 	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, _ := node.VirtualMachine(vmID)
-	err := VirtualMachine.WaitForAgent(AgentTimeoutSeconds)
+	VirtualMachine, _ := node.VirtualMachine(ctx, vmID)
+	err := VirtualMachine.WaitForAgent(ctx, AgentTimeoutSeconds)
 	if err != nil {
 		return false
 	} else {
@@ -433,7 +434,7 @@ func AgentIsRunning(vmName, nodeName string) bool {
 func CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine) {
 
 	nodeName := vm.Spec.NodeName
-	node, err := Client.Node(nodeName)
+	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
 		panic(err)
 	}
@@ -474,20 +475,20 @@ func CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine) {
 		},
 	}
 	// Get next VMID
-	cluster, err := Client.Cluster()
+	cluster, err := Client.Cluster(ctx)
 	if err != nil {
 		panic(err)
 	}
-	vmID, err := cluster.NextID()
+	vmID, err := cluster.NextID(ctx)
 	if err != nil {
 		panic(err)
 	}
 	// Create VM
-	task, err := node.NewVirtualMachine(vmID, VMOptions...)
+	task, err := node.NewVirtualMachine(ctx, vmID, VMOptions...)
 	if err != nil {
 		panic(err)
 	}
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(10, 10)
+	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 10, 10)
 	if !taskCompleted {
 		log.Log.Error(taskErr, "Can't create VM")
 	} else if taskCompleted {
@@ -495,12 +496,12 @@ func CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine) {
 	} else {
 		log.Log.Info("VM is already created")
 	}
-	VirtualMachine, err := node.VirtualMachine(vmID)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
 		panic(err)
 	}
-	addTagTask, err := VirtualMachine.AddTag(virtualMachineTag)
-	_, taskCompleted, taskErr = addTagTask.WaitForCompleteStatus(1, 10)
+	addTagTask, err := VirtualMachine.AddTag(ctx, virtualMachineTag)
+	_, taskCompleted, taskErr = addTagTask.WaitForCompleteStatus(ctx, 1, 10)
 	if !taskCompleted {
 		log.Log.Error(taskErr, "Can't add tag to VM")
 	}
@@ -566,11 +567,11 @@ func GetProxmoxVMs() []string {
 	var VMs []string
 	nodes := GetOnlineNodes()
 	for _, node := range nodes {
-		node, err := Client.Node(node)
+		node, err := Client.Node(ctx, node)
 		if err != nil {
 			panic(err)
 		}
-		VirtualMachines, err := node.VirtualMachines()
+		VirtualMachines, err := node.VirtualMachines(ctx)
 		if err != nil {
 			panic(err)
 		}
@@ -583,7 +584,7 @@ func GetProxmoxVMs() []string {
 
 func GetOnlineNodes() []string {
 
-	nodes, err := Client.Nodes()
+	nodes, err := Client.Nodes(ctx)
 	var OnlineNodes []string
 	if err != nil {
 		panic(err)
@@ -602,11 +603,11 @@ func GetControllerVMs() []string {
 	nodes := GetOnlineNodes()
 	var ControllerVMs []string
 	for _, node := range nodes {
-		node, err := Client.Node(node)
+		node, err := Client.Node(ctx, node)
 		if err != nil {
 			panic(err)
 		}
-		VirtualMachines, err := node.VirtualMachines()
+		VirtualMachines, err := node.VirtualMachines(ctx)
 		if err != nil {
 			panic(err)
 		}
@@ -635,12 +636,12 @@ func CheckManagedVMExists(ManagedVM string) bool {
 func GetNodeOfVM(vmName string) string {
 	nodes := GetOnlineNodes()
 	for _, node := range nodes {
-		node, err := Client.Node(node)
+		node, err := Client.Node(ctx, node)
 		if err != nil {
 			panic(err)
 		}
 		// List VMs on node
-		VirtualMachines, err := node.VirtualMachines()
+		VirtualMachines, err := node.VirtualMachines(ctx)
 		if err != nil {
 			panic(err)
 		}
@@ -660,12 +661,12 @@ func GetNodeOfVM(vmName string) string {
 func GetManagedVMSpec(ManagedVMName, nodeName string) (int, int, int) {
 
 	// Get spec of VM
-	node, err := Client.Node(nodeName)
+	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
 		panic(err)
 	}
 	vmID := GetVMID(ManagedVMName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(vmID)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
@@ -678,7 +679,7 @@ func GetManagedVMSpec(ManagedVMName, nodeName string) (int, int, int) {
 
 func UpdateVMStatus(vmName, nodeName string) (string, int, string, string, string, string, string) {
 
-	node, err := Client.Node(nodeName)
+	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
 		panic(err)
 	}
@@ -686,7 +687,7 @@ func UpdateVMStatus(vmName, nodeName string) (string, int, string, string, strin
 	if CheckVM(vmName, nodeName) {
 		// Get VMID
 		vmID := GetVMID(vmName, nodeName)
-		VirtualMachine, err := node.VirtualMachine(vmID)
+		VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 		if err != nil {
 			panic(err)
 		}
@@ -711,13 +712,13 @@ func UpdateVMStatus(vmName, nodeName string) (string, int, string, string, strin
 }
 
 func UpdateVM(vmName, nodeName string, vm *proxmoxv1alpha1.VirtualMachine) {
-	node, err := Client.Node(nodeName)
+	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
 		panic(err)
 	}
 	// Get VMID
 	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(vmID)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
@@ -754,7 +755,7 @@ func UpdateVM(vmName, nodeName string, vm *proxmoxv1alpha1.VirtualMachine) {
 	//// if current disk is lower than the updated disk size then resize the disk else don't do anything
 	if VirtualMachineMaxDisk <= uint64(DiskSizeInt) {
 		//// Resize Disk
-		err = VirtualMachine.ResizeDisk(Disk, DiskSize)
+		err = VirtualMachine.ResizeDisk(ctx, Disk, DiskSize)
 		if err != nil {
 			log.Log.Error(err, "Can't resize disk")
 		}
@@ -773,12 +774,12 @@ func UpdateVM(vmName, nodeName string, vm *proxmoxv1alpha1.VirtualMachine) {
 
 	if VirtualMachine.CPUs != cpuOption.Value || VirtualMachineMem != memoryOption.Value {
 		var task *proxmox.Task
-		task, err = VirtualMachine.Config(cpuOption, memoryOption)
+		task, err = VirtualMachine.Config(ctx, cpuOption, memoryOption)
 		if err != nil {
 			panic(err)
 		}
 
-		_, taskCompleted, taskErr := task.WaitForCompleteStatus(virtualMachineUpdateTimesNum, virtualMachineUpdateSteps)
+		_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineUpdateTimesNum, virtualMachineUpdateSteps)
 		if !taskCompleted {
 			log.Log.Error(taskErr, "Can't update VM")
 		} else if taskCompleted {
@@ -788,7 +789,7 @@ func UpdateVM(vmName, nodeName string, vm *proxmoxv1alpha1.VirtualMachine) {
 		}
 		// After config update, restart VM
 		task = RestartVM(vmName, nodeName)
-		_, taskCompleted, taskErr = task.WaitForCompleteStatus(virtualMachineRestartTimesNum, virtualMachineRestartSteps)
+		_, taskCompleted, taskErr = task.WaitForCompleteStatus(ctx, virtualMachineRestartTimesNum, virtualMachineRestartSteps)
 		if !taskCompleted {
 			log.Log.Error(taskErr, "Can't restart VM")
 		}
@@ -861,13 +862,13 @@ func UpdateManagedVM(managedVMName, nodeName string, managedVM *proxmoxv1alpha1.
 		return
 	} else {
 
-		node, err := Client.Node(nodeName)
+		node, err := Client.Node(ctx, nodeName)
 		if err != nil {
 			panic(err)
 		}
 		// Get VMID
 		vmID := GetVMID(managedVMName, nodeName)
-		VirtualMachine, err := node.VirtualMachine(vmID)
+		VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 		if err != nil {
 			log.Log.Error(err, "Error getting VM")
 		}
@@ -886,7 +887,7 @@ func UpdateManagedVM(managedVMName, nodeName string, managedVM *proxmoxv1alpha1.
 		// convert string to uint64
 		if VirtualMachineMaxDisk <= uint64(diskSize) {
 			// Resize Disk
-			err = VirtualMachine.ResizeDisk(disk, strconv.Itoa(diskSize)+"G")
+			err = VirtualMachine.ResizeDisk(ctx, disk, strconv.Itoa(diskSize)+"G")
 			if err != nil {
 				log.Log.Error(err, "Can't resize disk")
 			}
@@ -899,11 +900,11 @@ func UpdateManagedVM(managedVMName, nodeName string, managedVM *proxmoxv1alpha1.
 		if VirtualMachine.CPUs != managedVM.Spec.Cores || VirtualMachineMem != uint64(managedVM.Spec.Memory) {
 			// Update VM
 			// log.Log.Info(fmt.Sprintf("The comparison between CR and external resource: CPU: %d, %d || Memory: %d, %d", managedVM.Spec.Cores, VirtualMachine.CPUs, managedVM.Spec.Memory, VirtualMachineMem))
-			task, err := VirtualMachine.Config(cpuOption, memoryOption)
+			task, err := VirtualMachine.Config(ctx, cpuOption, memoryOption)
 			if err != nil {
 				panic(err)
 			}
-			_, taskCompleted, taskErr := task.WaitForCompleteStatus(virtualMachineUpdateTimesNum, virtualMachineUpdateSteps)
+			_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineUpdateTimesNum, virtualMachineUpdateSteps)
 			if !taskCompleted {
 				log.Log.Error(taskErr, "Can't update VM")
 			} else if taskCompleted {
@@ -912,7 +913,7 @@ func UpdateManagedVM(managedVMName, nodeName string, managedVM *proxmoxv1alpha1.
 				log.Log.Info("VM is already updated")
 			}
 			task = RestartVM(managedVMName, nodeName)
-			_, taskCompleted, taskErr = task.WaitForCompleteStatus(virtualMachineRestartTimesNum, virtualMachineRestartSteps)
+			_, taskCompleted, taskErr = task.WaitForCompleteStatus(ctx, virtualMachineRestartTimesNum, virtualMachineRestartSteps)
 			if !taskCompleted {
 				log.Log.Error(taskErr, "Can't restart VM")
 			}
@@ -956,22 +957,22 @@ func SubstractLowercaseSlices(slice1, slice2 []string) []string {
 func CreateVMSnapshot(vmName, snapshotName string) (statusCode int) {
 
 	nodeName := GetNodeOfVM(vmName)
-	node, err := Client.Node(nodeName)
+	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
 		panic(err)
 	}
 	// Get VMID
 	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(vmID)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
 	// Create snapshot
-	task, err := VirtualMachine.NewSnapshot(snapshotName)
+	task, err := VirtualMachine.NewSnapshot(ctx, snapshotName)
 	if err != nil {
 		panic(err)
 	}
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(3, 10)
+	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 3, 10)
 	if !taskCompleted {
 		log.Log.Error(taskErr, "Can't create snapshot for the VirtualMachine %s", vmName)
 		return 1
@@ -982,4 +983,118 @@ func CreateVMSnapshot(vmName, snapshotName string) (statusCode int) {
 		log.Log.Info("VirtualMachine has already a snapshot with the same name")
 		return 2
 	}
+}
+
+func CloneContainer(container *proxmoxv1alpha1.Container) error {
+	nodeName := container.Spec.NodeName
+	node, err := Client.Node(ctx, nodeName)
+	if err != nil {
+		panic(err)
+	}
+	templateContainerName := container.Spec.Template.Name
+	templateContainerID := 101
+	templateContainer, err := node.Container(ctx, templateContainerID)
+
+	var CloneOptions proxmox.ContainerCloneOptions
+	CloneOptions.Full = 1
+	CloneOptions.Hostname = container.Name
+	CloneOptions.Target = nodeName
+	log.Log.Info(fmt.Sprintf("Cloning container %s from template %s", container.Name, templateContainerName))
+
+	_, task, err := templateContainer.Clone(ctx, &CloneOptions)
+	if err != nil {
+		log.Log.Error(err, "Can't clone container")
+	}
+	if err != nil {
+		panic(err)
+	}
+	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 10)
+	if !taskCompleted {
+		log.Log.Error(taskErr, "Can't clone container")
+	}
+
+	return taskErr
+}
+
+func GetContainerID(containerName, nodeName string) int {
+	node, err := Client.Node(ctx, nodeName)
+	if err != nil {
+		panic(err)
+	}
+	containers, err := node.Containers(ctx)
+	if err != nil {
+		panic(err)
+	}
+	for _, container := range containers {
+		if container.Name == containerName {
+			return int(container.VMID)
+		}
+	}
+	return 0
+}
+
+func ContainerExists(containerName, nodeName string) bool {
+	node, err := Client.Node(ctx, nodeName)
+	if err != nil {
+		panic(err)
+	}
+	containers, err := node.Containers(ctx)
+	if err != nil {
+		panic(err)
+	}
+	for _, container := range containers {
+		if container.Name == containerName {
+			return true
+		}
+	}
+	return false
+}
+
+func GetContainer(containerName, nodeName string) *proxmox.Container {
+	node, err := Client.Node(ctx, nodeName)
+	if err != nil {
+		panic(err)
+	}
+	containerID := GetContainerID(containerName, nodeName)
+	container, err := node.Container(ctx, containerID)
+	if err != nil {
+		panic(err)
+	}
+	return container
+}
+
+func DeleteContainer(containerName, nodeName string) {
+	// Get container
+	container := GetContainer(containerName, nodeName)
+	// Stop container
+	status, err := container.Stop(ctx)
+	log.Log.Info(fmt.Sprintf("Container %s status: %s", containerName, status))
+	if err != nil {
+		log.Log.Error(err, "Can't stop container")
+	}
+	// Suspends container
+	status, err = container.Suspend(ctx)
+	log.Log.Info(fmt.Sprintf("Container %s status: %s", containerName, status))
+	if err != nil {
+		log.Log.Error(err, "Can't suspend container")
+	}
+
+}
+
+func StartContainer(containerName, nodeName string) {
+	// Get container
+	container := GetContainer(containerName, nodeName)
+	// Start container
+	status, err := container.Start(ctx)
+	log.Log.Info(fmt.Sprintf("Container %s status: %s", containerName, status))
+	if err != nil {
+		log.Log.Error(err, "Can't start container")
+	}
+}
+
+func GetContainerState(containerName, nodeName string) string {
+	// Get container
+	container := GetContainer(containerName, nodeName)
+	// Get container state
+	return container.Status
 }
