@@ -1,0 +1,19 @@
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: Container
+metadata:
+  name: container-new
+spec:
+  name: container-new
+  nodeName: lowtower
+  template:
+    # Name of the template to be cloned
+    name: test-container 
+    cores: 2
+    memory: 4096 # As MB
+    disk: 
+      - storage: nvme 
+        size: 50 # As GB
+        type: scsi
+    network:
+      - model: virtio
+        bridge: vmbr0
