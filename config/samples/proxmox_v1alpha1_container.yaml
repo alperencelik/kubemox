@@ -1,0 +1,24 @@
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: Container
+metadata:
+  labels:
+    app.kubernetes.io/name: container
+    app.kubernetes.io/instance: container-sample
+    app.kubernetes.io/part-of: kubemox
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: kubemox
+  name: container-sample
+spec:
+  name: container-sample 
+  nodeName: lowtower
+  template:
+    name: test-container 
+    cores: 2
+    memory: 4096 # As MB
+    disk: 
+      - storage: nvme 
+        size: 50 # As GB
+        type: scsi
+    network:
+      - model: virtio
+        bridge: vmbr0

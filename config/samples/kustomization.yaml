@@ -5,4 +5,5 @@ resources:
 - proxmox_v1alpha1_virtualmachineset.yaml
 - proxmox_v1alpha1_virtualmachinesnapshot.yaml
 - proxmox_v1alpha1_virtualmachinesnapshotpolicy.yaml
+- proxmox_v1alpha1_container.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

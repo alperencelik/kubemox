@@ -1,0 +1,31 @@
+# permissions for end users to edit containers.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: container-editor-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: kubemox
+    app.kubernetes.io/part-of: kubemox
+    app.kubernetes.io/managed-by: kustomize
+  name: container-editor-role
+rules:
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - containers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - containers/status
+  verbs:
+  - get
