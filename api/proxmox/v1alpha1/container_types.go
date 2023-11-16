@@ -70,7 +70,11 @@ type ContainerTemplateNetwork struct {
 type ContainerStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	State string `json:"state,omitempty"`
+	State  string `json:"state,omitempty"`
+	Node   string `json:"node,omitempty"`
+	Name   string `json:"name,omitempty"`
+	ID     int    `json:"id,omitempty"`
+	Uptime string `json:"uptime,omitempty"`
 }
 
 //+kubebuilder:object:root=true

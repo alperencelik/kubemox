@@ -79,7 +79,7 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if !controllerutil.ContainsFinalizer(container, containerFinalizerName) {
 			controllerutil.AddFinalizer(container, containerFinalizerName)
 			if err := r.Update(ctx, container); err != nil {
-				Log.Error(err, "Error updating Container")
+				log.Log.Error(err, "Error updating Container")
 				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
 		}
@@ -91,16 +91,14 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			if isProcessed(deletionKey) {
 			} else {
 				// Delete the Container
-				containerState := proxmox.GetContainerState(containerName, nodeName)
-				log.Log.Info(containerState)
-				//proxmox.DeleteContainer(container.Spec.NodeName, container.Spec.Name)
-				//processedResources[deletionKey] = true
+				proxmox.DeleteContainer(containerName, nodeName)
+				// Mark it as processed
+				processedResources[deletionKey] = true
 			}
 			// Remove finalizer
 			controllerutil.RemoveFinalizer(container, containerFinalizerName)
 			if err := r.Update(ctx, container); err != nil {
 				Log.Error(err, "Error updating Container")
-				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
 		}
 		// Stop reconciliation as the item is being deleted
@@ -119,13 +117,26 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				// Mark it as processed
 				processedResources[resourceKey] = true
 			}
+			// Update Container status
+			containerStatus := proxmox.UpdateContainerStatus(containerName, nodeName)
+			container.Status.State = containerStatus.State
+			container.Status.ID = containerStatus.ID
+			container.Status.Name = containerStatus.Name
+			container.Status.Node = containerStatus.Node
+			container.Status.Uptime = containerStatus.Uptime
+			// // Update Container
+			err = r.Status().Update(context.Background(), container)
+			if err != nil {
+				Log.Error(err, "Failed to update Container")
+				return ctrl.Result{}, client.IgnoreNotFound(err)
+			}
 			// Update Container
-			// proxmox.UpdateContainer(containerName, nodeName, container)
-			// err = r.Update(context.Background(), container)
-			// if err != nil {
-			// Log.Error(err, "Failed to update Container")
-			// return ctrl.Result{}, client.IgnoreNotFound(err)
-			// }
+			proxmox.UpdateContainer(container)
+			err = r.Update(context.Background(), container)
+			if err != nil {
+				Log.Error(err, "Failed to update Container")
+				return ctrl.Result{}, client.IgnoreNotFound(err)
+			}
 
 		}
 	} else {

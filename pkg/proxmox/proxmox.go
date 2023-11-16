@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	kubernetes "github.com/alperencelik/kubemox/pkg/kubernetes"
@@ -299,11 +300,7 @@ func GetVMUptime(vmName, nodeName string) string {
 	// Get VM Uptime as seconds
 	VirtualMachineUptime := int(VirtualMachine.Uptime)
 	// Convert seconds to format like 1d 2h 3m 4s
-	days := VirtualMachineUptime / 86400
-	hours := (VirtualMachineUptime - days*86400) / 3600
-	minutes := (VirtualMachineUptime - days*86400 - hours*3600) / 60
-	seconds := VirtualMachineUptime - days*86400 - hours*3600 - minutes*60
-	uptime := fmt.Sprintf("%dd%dh%dm%ds", days, hours, minutes, seconds)
+	uptime := FormatUptime(VirtualMachineUptime)
 	return uptime
 }
 
@@ -994,6 +991,9 @@ func CloneContainer(container *proxmoxv1alpha1.Container) error {
 	templateContainerName := container.Spec.Template.Name
 	templateContainerID := 101
 	templateContainer, err := node.Container(ctx, templateContainerID)
+	if err != nil {
+		panic(err)
+	}
 
 	var CloneOptions proxmox.ContainerCloneOptions
 	CloneOptions.Full = 1
@@ -1063,22 +1063,60 @@ func GetContainer(containerName, nodeName string) *proxmox.Container {
 	return container
 }
 
-func DeleteContainer(containerName, nodeName string) {
+func StopContainer(containerName, nodeName string) (*proxmox.ContainerStatus, error) {
 	// Get container
+	log.Log.Info(fmt.Sprintf("Stopping container %s", containerName))
 	container := GetContainer(containerName, nodeName)
 	// Stop container
-	status, err := container.Stop(ctx)
-	log.Log.Info(fmt.Sprintf("Container %s status: %s", containerName, status))
-	if err != nil {
-		log.Log.Error(err, "Can't stop container")
+	if container.Status == "running" {
+		// Stop container called
+		status, err := container.Stop(ctx)
+		// Retry method to understand if container is stopped
+		for i := 0; i < 5; i++ {
+			contStatus := GetContainerState(containerName, nodeName)
+			if contStatus == "stopped" {
+				break
+			} else {
+				time.Sleep(5 * time.Second)
+			}
+		}
+		return status, err
+	} else {
+		return nil, nil
 	}
-	// Suspends container
-	status, err = container.Suspend(ctx)
-	log.Log.Info(fmt.Sprintf("Container %s status: %s", containerName, status))
-	if err != nil {
-		log.Log.Error(err, "Can't suspend container")
-	}
+}
 
+func DeleteContainer(containerName, nodeName string) {
+	// Get container
+	mutex.Lock()
+	container := GetContainer(containerName, nodeName)
+	mutex.Unlock()
+	containerStatus := container.Status
+	if containerStatus == "running" {
+		// Stop container
+		_, err := StopContainer(containerName, nodeName)
+		if err != nil {
+			panic(err)
+		}
+
+	}
+	log.Log.Info(fmt.Sprintf("Deleting container %s", containerName))
+	// Delete container
+	mutex.Lock()
+	// Delete container
+	task, err := container.Delete(ctx)
+	if err != nil {
+		panic(err)
+	}
+	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 5)
+	if !taskCompleted {
+		log.Log.Error(taskErr, "Can't delete container")
+	} else if taskCompleted {
+		log.Log.Info(fmt.Sprintf("Container %s has been deleted", containerName))
+	} else {
+		log.Log.Info("Container is already deleted")
+	}
+	mutex.Unlock()
 }
 
 func StartContainer(containerName, nodeName string) {
@@ -1097,4 +1135,75 @@ func GetContainerState(containerName, nodeName string) string {
 	container := GetContainer(containerName, nodeName)
 	// Get container state
 	return container.Status
+}
+
+func UpdateContainerStatus(containerName, nodeName string) proxmoxv1alpha1.ContainerStatus {
+	var containerStatus proxmoxv1alpha1.ContainerStatus
+	container := GetContainer(containerName, nodeName)
+
+	containerStatus.State = container.Status
+	containerStatus.ID = int(container.VMID)
+	containerStatus.Uptime = FormatUptime(int(container.Uptime))
+	containerStatus.Node = container.Node
+	containerStatus.Name = container.Name
+
+	return containerStatus
+
+}
+
+func UpdateContainer(container *proxmoxv1alpha1.Container) {
+	// Get container from proxmox
+	containerName := container.Name
+	nodeName := container.Spec.NodeName
+	var cpuOption proxmox.ContainerOption
+	var memoryOption proxmox.ContainerOption
+	cpuOption.Name = "cores"
+	memoryOption.Name = "memory"
+	ProxmoxContainer := GetContainer(containerName, nodeName)
+	// Check if update is needed
+	if container.Spec.Template.Cores != ProxmoxContainer.CPUs || container.Spec.Template.Memory != int(ProxmoxContainer.MaxMem/1024/1024) {
+		cpuOption.Value = container.Spec.Template.Cores
+		memoryOption.Value = container.Spec.Template.Memory
+		// Update container
+		_, err := ProxmoxContainer.Config(ctx, cpuOption, memoryOption)
+		if err != nil {
+			panic(err)
+		} else {
+			log.Log.Info(fmt.Sprintf("Container %s has been updated", containerName))
+		}
+		// Config of container doesn't require restart
+	}
+
+}
+
+func RestartContainer(containerName, nodeName string) bool {
+
+	// Get container
+	container := GetContainer(containerName, nodeName)
+	// Restart container
+	_, err := container.Reboot(ctx)
+	if err != nil {
+		panic(err)
+	}
+	// Retry method to understand if container is stopped
+	for i := 0; i < 5; i++ {
+		contStatus := GetContainerState(containerName, nodeName)
+		if contStatus == "running" {
+			return true
+		} else {
+			time.Sleep(5 * time.Second)
+		}
+	}
+	return false
+
+}
+
+func FormatUptime(uptime int) string {
+	// Convert seconds to format like 1d 2h 3m 4s
+	days := uptime / 86400
+	hours := (uptime - days*86400) / 3600
+	minutes := (uptime - days*86400 - hours*3600) / 60
+	seconds := uptime - days*86400 - hours*3600 - minutes*60
+	uptimeString := fmt.Sprintf("%dd%dh%dm%ds", days, hours, minutes, seconds)
+	return uptimeString
 }
