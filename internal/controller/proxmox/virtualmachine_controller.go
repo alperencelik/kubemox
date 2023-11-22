@@ -32,6 +32,7 @@ import (
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
+	"github.com/alperencelik/kubemox/pkg/metrics"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 )
 
@@ -88,6 +89,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				kubernetes.CreateVMKubernetesEvent(vm, kubernetes.Clientset, "Deleting")
 				proxmox.DeleteVM(vm.Spec.Name, vm.Spec.NodeName)
 				processedResources[deletionKey] = true
+				metrics.DecVirtualMachineCount()
 			}
 			// Remove finalizer
 			controllerutil.RemoveFinalizer(vm, virtualMachineFinalizerName)
@@ -117,6 +119,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				Log.Info(fmt.Sprintf("VirtualMachine %s already exists and running", vmName))
 				// Mark it as processed
 				processedResources[resourceKey] = true
+				metrics.IncVirtualMachineCount()
 			}
 			proxmox.UpdateVM(vmName, nodeName, vm)
 			err = r.Update(context.Background(), vm)

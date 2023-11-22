@@ -31,6 +31,7 @@ import (
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
+	"github.com/alperencelik/kubemox/pkg/metrics"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 )
 
@@ -85,6 +86,7 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 			// Create the event
 			kubernetes.CreateManagedVMKubernetesEvent(managedVM, Clientset, "Deleting")
 			proxmox.DeleteVM(managedVM.Name, managedVM.Spec.NodeName)
+			metrics.DecManagedVirtualMachineCount()
 		}
 		// Delete VM from Proxmox
 
@@ -133,6 +135,7 @@ func (r *ManagedVirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) err
 				log.Log.Info(fmt.Sprintf("ManagedVM %v could not be created", ManagedVM))
 			}
 		}
+		metrics.IncManagedVirtualMachineCount()
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
