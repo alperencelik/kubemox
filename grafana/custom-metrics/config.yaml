@@ -1,13 +1,29 @@
 ---
 customMetrics:
+  - metric: kubemox_virtualmachine_count
+    type: gauge
+    unit: none
+    expr: sum by (name, namespace) (kubemox_virtual_machine_count)
+  - metric: kubemox_managed_virtual_machine_count
+    type: gauge
+    unit: none
+    expr: sum by (name, namespace) (kubemox_managed_virtual_machine_count)
   - metric: virtualmachine_cpu_cores
     type: gauge
     unit: none
-    expr: sum by (name, namespace) (virtualmachine_cpu_cores)
+    expr: sum by (name, namespace) (kubemox_virtual_machine_cpu_cores)
   - metric: virtualmachine_memory
     type: gauge
     unit: megabytes
-    expr: sum by (name, namespace) (virtualmachine_memory)
+    expr: sum by (name, namespace) (kubemox_virtual_machine_memory) 
+  - metric: managed_virtualmachine_cpu_cores
+    type: gauge
+    unit: none
+    expr: sum by (name, namespace) (kubemox_managed_virtual_machine_cpu_cores)
+  - metric: managed_virtualmachine_memory
+    type: gauge
+    unit: megabytes
+    expr: sum by (name, namespace) (kubemox_managed_virtual_machine_memory)
 
 #  - metric: # Raw custom metric (required)
 #    type:   # Metric type: counter/gauge/histogram (required)

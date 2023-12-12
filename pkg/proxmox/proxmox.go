@@ -14,6 +14,7 @@ import (
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	kubernetes "github.com/alperencelik/kubemox/pkg/kubernetes"
+	"github.com/alperencelik/kubemox/pkg/metrics"
 	proxmox "github.com/luthermonson/go-proxmox"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -733,6 +734,8 @@ func UpdateVM(vmName, nodeName string, vm *proxmoxv1alpha1.VirtualMachine) {
 		DiskSize = strconv.Itoa(vm.Spec.Template.Disk[0].Size) + "G"
 		Disk = vm.Spec.Template.Disk[0].Type + "0"
 		DiskSizeInt = vm.Spec.Template.Disk[0].Size
+		metrics.SetVirtualMachineCPUCores(vmName, vm.Namespace, float64(vm.Spec.Template.Cores))
+		metrics.SetVirtualMachineMemory(vmName, vm.Namespace, float64(vm.Spec.Template.Memory))
 	} else if CheckVMType(vm) == "scratch" {
 		cpuOption.Value = vm.Spec.VmSpec.Cores
 		memoryOption.Value = uint64(vm.Spec.VmSpec.Memory)
@@ -741,6 +744,8 @@ func UpdateVM(vmName, nodeName string, vm *proxmoxv1alpha1.VirtualMachine) {
 		DiskSize = DiskValue + "G"
 		DiskSizeInt, _ = strconv.Atoi(DiskValue)
 		Disk = vm.Spec.VmSpec.Disk.Name
+		metrics.SetVirtualMachineCPUCores(vmName, vm.Namespace, float64(vm.Spec.VmSpec.Cores))
+		metrics.SetVirtualMachineMemory(vmName, vm.Namespace, float64(vm.Spec.VmSpec.Memory))
 	} else {
 		log.Log.Info(fmt.Sprintf("VM %s doesn't have any template or vmSpec defined", vmName))
 	}
@@ -894,6 +899,10 @@ func UpdateManagedVM(managedVMName, nodeName string, managedVM *proxmoxv1alpha1.
 			// Revert the update since it's not possible to shrink disk
 			managedVM.Spec.Disk = int(VirtualMachineMaxDisk)
 		}
+		// Add metrics
+		metrics.SetManagedVirtualMachineCPUCores(managedVMName, managedVM.Namespace, float64(managedVM.Spec.Cores))
+		metrics.SetManagedVirtualMachineMemory(managedVMName, managedVM.Namespace, float64(managedVM.Spec.Memory))
+
 		if VirtualMachine.CPUs != managedVM.Spec.Cores || VirtualMachineMem != uint64(managedVM.Spec.Memory) {
 			// Update VM
 			// log.Log.Info(fmt.Sprintf("The comparison between CR and external resource: CPU: %d, %d || Memory: %d, %d", managedVM.Spec.Cores, VirtualMachine.CPUs, managedVM.Spec.Memory, VirtualMachineMem))
