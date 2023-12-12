@@ -136,11 +136,15 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			proxmox.CreateVMFromTemplate(vm)
 			proxmox.StartVM(vmName, nodeName)
 			kubernetes.CreateVMKubernetesEvent(vm, Clientset, "Created")
+			// metrics.SetVirtualMachineCPUCores(vmName, vm.Namespace, float64(vm.Spec.Template.Cores))
+			// metrics.SetVirtualMachineMemory(vmName, vm.Namespace, float64(vm.Spec.Template.Memory))
 		} else if vmType == "scratch" {
 			kubernetes.CreateVMKubernetesEvent(vm, Clientset, "Creating")
 			proxmox.CreateVMFromScratch(vm)
 			proxmox.StartVM(vmName, nodeName)
 			kubernetes.CreateVMKubernetesEvent(vm, Clientset, "Created")
+			// metrics.SetVirtualMachineCPUCores(vmName, vm.Namespace, float64(vm.Spec.VmSpec.Cores))
+			// metrics.SetVirtualMachineMemory(vmName, vm.Namespace, float64(vm.Spec.VmSpec.Memory))
 		} else {
 			Log.Info(fmt.Sprintf("VM %s doesn't have any template or vmSpec defined", vmName))
 		}

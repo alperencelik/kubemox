@@ -6,6 +6,8 @@ domain: alperen.cloud
 layout:
 - go.kubebuilder.io/v4
 multigroup: true
+plugins:
+  grafana.kubebuilder.io/v1-alpha: {}
 projectName: kubemox
 repo: github.com/alperencelik/kubemox
 resources:

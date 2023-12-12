@@ -134,6 +134,9 @@ func (r *ManagedVirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) err
 			if err != nil {
 				log.Log.Info(fmt.Sprintf("ManagedVM %v could not be created", ManagedVM))
 			}
+			// Add metrics
+			metrics.SetManagedVirtualMachineCPUCores(managedVM.Name, managedVM.Namespace, float64(managedVM.Spec.Cores))
+			metrics.SetManagedVirtualMachineMemory(managedVM.Name, managedVM.Namespace, float64(managedVM.Spec.Memory))
 		}
 		metrics.IncManagedVirtualMachineCount()
 	}
