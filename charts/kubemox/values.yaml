@@ -22,6 +22,29 @@ image:
   # Overrides the image tag whose default is the chart appVersion.
   tag: "0.3"
 
+metrics:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    # -- Prometheus [MetricRelabelConfigs] to apply to samples before ingestion
+    relabelings: []
+    # -- Prometheus [MetricRelabelConfigs] to apply to samples before ingestion
+    metricRelabelings: []
+    # -- Prometheus ServiceMonitor selector
+    selector: {}
+      # prometheus: kube-prometheus
+    
+    # -- Prometheus ServiceMonitor scheme
+    scheme: ""
+    # -- Prometheus ServiceMonitor tlsConfig
+    tlsConfig: {}
+    # -- Prometheus ServiceMonitor namespace
+    namespace: "" # "monitoring"
+    # -- Prometheus ServiceMonitor labels
+    additionalLabels: {}
+    # -- Prometheus ServiceMonitor annotations
+    annotations: {}
+
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
@@ -51,6 +74,8 @@ securityContext: {}
 service:
   type: ClusterIP
   port: 8080
+  targetPort: 8080
+  portName: http
 
 ingress:
   enabled: false
