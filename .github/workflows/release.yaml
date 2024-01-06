@@ -32,5 +32,10 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v2
 
+      - name: Set environment variables
+        run: |
+          echo "BUILD_IMAGE=golang:1.21" >> $GITHUB_ENV
+          echo "KO_DOCKER_REPO=alperencelik/kubemox" >> $GITHUB_ENV
+        
       - name: Run mage.go Release
         run: go run mage.go Release
