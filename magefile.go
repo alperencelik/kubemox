@@ -106,6 +106,8 @@ func releaseWithGoReleaser(snapshot bool) error {
 	if err != nil {
 		return fmt.Errorf("ko login failed")
 	}
+	// Test to see if the /home/runner/.docker/config.json is present
+	err = sh.RunV("cat", "/home/runner/.docker/config.json")
 
 	args := []string{"release", "--clean"}
 	if snapshot {
