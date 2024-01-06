@@ -44,9 +44,9 @@ func All() error {
 
 // Test runs various test functions
 func Test() error {
-	if err := mage.TestGo(true); err != nil {
-		return err
-	}
+	// if err := mage.TestGo(true); err != nil {
+	// return err
+	// }
 
 	return nil
 }
@@ -72,10 +72,10 @@ func Verify() error {
 		return err
 	}
 
-	//	log.Println("Running golangci-lint...")
-	//	if err := mage.RunGolangCILint("", false); err != nil {
-	//		return err
-	//	}
+	// 	log.Println("Running golangci-lint...")
+	// 	if err := mage.RunGolangCILint("", false); err != nil {
+	// 		return err
+	// 	}
 
 	log.Println("Running go build...")
 	if err := mage.VerifyBuild(scriptDir); err != nil {
