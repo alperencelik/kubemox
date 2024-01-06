@@ -36,9 +36,6 @@ jobs:
         run: |
           echo "BUILD_IMAGE=golang:1.21" >> $GITHUB_ENV
           echo "KO_DOCKER_REPO=alperencelik/kubemox" >> $GITHUB_ENV
-      
-      - name: Log in to Docker registry
-        run: echo "${{ secrets.DOCKERHUB_USERNAME }}\n${{ secrets.DOCKERHUB_PASSWORD }}" | ko login dockerhub --username-stdin
         
       - name: Run mage.go Release
         run: go run mage.go Release
