@@ -7,7 +7,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
 
 	"github.com/carolynvs/magex/pkg"
@@ -103,7 +102,7 @@ func releaseWithGoReleaser(snapshot bool) error {
 		return fmt.Errorf("KO couldn't be installed: %w", err)
 	}
 
-	err := sh.RunV("ko", "login", "dockerhub", "-u", os.Getenv("DOCKERHUB_USERNAME"), "-p", os.Getenv("DOCKERHUB_PASSWORD"))
+	err := sh.RunV("ko", "login", "dockerhub", "-u", "${{ secrets.DOCKERHUB_USERNAME }}", "-p", "${{ secrets.DOCKERHUB_PASSWORD }}")
 	if err != nil {
 		return fmt.Errorf("ko login failed")
 	}
