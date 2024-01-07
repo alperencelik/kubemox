@@ -31,6 +31,29 @@ builds:
         goarm: 6
     mod_timestamp: '{{ .CommitTimestamp }}'
 
+kos:
+  - id: kubemox-image
+    build: kubemox
+    main: ./cmd/...
+    base_image: ghcr.io/distroless/static:latest
+    platforms:
+      - all
+    ldflags:
+      - -extldflags "-static"
+      - -s
+      - -w
+    tags:
+      - latest
+      - '{{ .Tag }}'
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    sbom: none
+    bare: true
+    preserve_import_paths: false
+    base_import_paths: false
+
 archives:
   - id: with-version
     name_template: >-
@@ -76,43 +99,3 @@ changelog:
       - 'README'
       - Merge pull request
       - Merge branch
-
-github_urls:
-  api: https://api.github.com/
-  download: https://github.com/
-  skip_tls_verify: false
-
-release:
-  github:
-    owner: "alperencelik"
-    name: "kubemox"
-  disable: false
-
-kos:
-  - id: kubemox-image
-    build: kubemox
-    main: ./cmd/...
-    base_image: ghcr.io/distroless/static:latest
-    platforms:
-    - linux/amd64
-    - linux/arm64
-    - darwin/amd64
-    - darwin/arm64
-    - windows/amd64
-    - windows/arm64
-    # - all
-    ldflags:
-      - -extldflags "-static"
-      - -s
-      - -w
-    tags:
-      - latest
-      - '{{ .Tag }}'
-    env:
-      - CGO_ENABLED=0
-    flags:
-      - -trimpath
-    sbom: none
-    bare: true
-    preserve_import_paths: false
-    base_import_paths: false
