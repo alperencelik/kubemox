@@ -86,7 +86,7 @@ release:
   github:
     owner: "alperencelik"
     name: "kubemox"
-  disable: true
+  disable: false
 
 kos:
   - id: kubemox-image
@@ -94,7 +94,13 @@ kos:
     main: ./cmd/...
     base_image: ghcr.io/distroless/static:latest
     platforms:
-      - all
+    - linux/amd64
+    - linux/arm64
+    - darwin/amd64
+    - darwin/arm64
+    - windows/amd64
+    - windows/arm64
+    # - all
     ldflags:
       - -extldflags "-static"
       - -s
