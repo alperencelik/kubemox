@@ -45,5 +45,5 @@ jobs:
         
       - name: Run mage.go Release
         run: go run mage.go Release
-        with: 
+        env: 
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
