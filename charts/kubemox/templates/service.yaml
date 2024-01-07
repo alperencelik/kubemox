@@ -8,8 +8,8 @@ spec:
   type: {{ .Values.service.type }}
   ports:
     - port: {{ .Values.service.port }}
-      targetPort: http
+      targetPort: {{ .Values.service.targetPort }} 
       protocol: TCP
-      name: http
+      name: {{ .Values.service.portName }} 
   selector:
     {{- include "kubemox.selectorLabels" . | nindent 4 }}

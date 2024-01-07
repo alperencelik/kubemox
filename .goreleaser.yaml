@@ -1,0 +1,101 @@
+project_name: kubemox
+
+before:
+  hooks:
+    - go mod tidy
+    - /bin/bash -c 'if [ -n "$(git --no-pager diff --exit-code go.mod go.sum)" ]; then exit 1; fi'
+
+builds:
+  - id: kubemox
+    binary: kubemox
+    main: cmd/main.go
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -extldflags "-static"
+      - -s
+      - -w
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm
+      - arm64
+    ignore:
+      - goos: openbsd
+        goarch: arm
+        goarm: 6
+    mod_timestamp: '{{ .CommitTimestamp }}'
+
+kos:
+  - id: kubemox-image
+    build: kubemox
+    main: ./cmd/...
+    base_image: ghcr.io/distroless/static:latest
+    platforms:
+      - all
+    ldflags:
+      - -extldflags "-static"
+      - -s
+      - -w
+    tags:
+      - latest
+      - '{{ .Tag }}'
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    sbom: none
+    bare: true
+    preserve_import_paths: false
+    base_import_paths: false
+
+archives:
+  - id: with-version
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+  - id: without-version
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+
+checksum:
+  name_template: '{{ .ProjectName }}_{{ .Version }}_checksums.txt'
+
+snapshot:
+  name_template: SNAPSHOT-{{ .Commit }}
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^demo:'
+      - 'README'
+      - Merge pull request
+      - Merge branch

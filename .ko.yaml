@@ -1,0 +1,14 @@
+defaultBaseImage: ghcr.io/distroless/static:latest
+
+builds:
+  - id: kubemox 
+    dir: cmd 
+    main: main.go
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -extldflags "-static"
+      - -s
+      - -w
+      - "{{ .Env.LDFLAGS }}"
+    sbom: none
