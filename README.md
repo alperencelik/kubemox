@@ -6,6 +6,19 @@ Kubemox is a Proxmox operator for Kubernetes. It allows you to create and manage
   <img src="docs/images/kubemox.jpg" alt="Logo" width="150" height="150">
 </div>
 
+## Table of Contents
+
+- [Installation](#installation)
+  - [Prerequisites](#prerequisites)
+  - [Install Kubemox with Helm](#install-kubemox-with-helm)
+- [Usage](#usage)
+  - [VirtualMachine](#virtualmachine)
+  - [Containers](#containers)
+- [Create a Container](#create-a-container) 
+- [Create a VirtualMachine](#create-a-virtualmachine)
+- [Create a VirtualMachineSet](#create-a-virtualmachineset)
+- [Create a VirtualMachineSnapshot](#create-a-virtualmachinesnapshot)
+- [Create a VirtualMachineSnapshotPolicy](#create-a-virtualmachinesnapshotpolicy)
 
 ## Installation
 
