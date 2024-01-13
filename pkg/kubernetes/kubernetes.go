@@ -22,6 +22,10 @@ var (
 	Clientset, DynamicClient = GetKubeconfig()
 )
 
+const (
+	eventTypeNormal = "Normal"
+)
+
 func InsideCluster() bool {
 	// Check if kubeconfig exists under home directory
 	homeDir, err := os.UserHomeDir()
@@ -62,9 +66,7 @@ func ClientConfig() interface{} {
 }
 
 func GetKubeconfig() (*kubernetes.Clientset, dynamic.Interface) {
-
 	config := ClientConfig().(*rest.Config)
-
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(err.Error())
@@ -99,18 +101,21 @@ func CreateVMKubernetesEvent(vm *proxmoxv1alpha1.VirtualMachine, Clientset *kube
 		},
 		FirstTimestamp: metav1.Time{Time: time.Now()},
 	}
-	if Action == "Created" {
+	switch Action {
+	case "Created":
 		Event.Reason = "Created"
 		Event.Message = fmt.Sprintf("VirtualMachine %s has been created", vm.Spec.Name)
-		Event.Type = "Normal"
-	} else if Action == "Creating" {
+		Event.Type = eventTypeNormal
+	case "Creating":
 		Event.Reason = "Creating"
-		Event.Message = fmt.Sprintf("VirtualMachine %s is being creating", vm.Spec.Name)
-		Event.Type = "Normal"
-	} else if Action == "Deleting" {
+		Event.Message = fmt.Sprintf("VirtualMachine %s is being created", vm.Spec.Name)
+		Event.Type = eventTypeNormal
+	case "Deleting":
 		Event.Reason = "Deleting"
 		Event.Message = fmt.Sprintf("VirtualMachine %s is being deleted", vm.Spec.Name)
-		Event.Type = "Normal"
+		Event.Type = eventTypeNormal
+	default:
+		// Do nothing
 	}
 
 	_, err := Clientset.CoreV1().Events(vm.ObjectMeta.Namespace).Create(context.Background(), Event, metav1.CreateOptions{})
@@ -119,7 +124,7 @@ func CreateVMKubernetesEvent(vm *proxmoxv1alpha1.VirtualMachine, Clientset *kube
 	}
 }
 
-func CreateManagedVMKubernetesEvent(managedVM *proxmoxv1alpha1.ManagedVirtualMachine, Clientset *kubernetes.Clientset, Action string) {
+func CreateManagedVMKubernetesEvent(managedVM *proxmoxv1alpha1.ManagedVirtualMachine, clientset *kubernetes.Clientset, Action string) {
 	// Create event
 	Event := &corev1.Event{
 		ObjectMeta: metav1.ObjectMeta{
@@ -145,7 +150,7 @@ func CreateManagedVMKubernetesEvent(managedVM *proxmoxv1alpha1.ManagedVirtualMac
 		Type:           "Normal",
 	}
 	// Send event
-	_, err := Clientset.CoreV1().Events(os.Getenv("POD_NAMESPACE")).Create(context.Background(), Event, metav1.CreateOptions{})
+	_, err := clientset.CoreV1().Events(os.Getenv("POD_NAMESPACE")).Create(context.Background(), Event, metav1.CreateOptions{})
 	if err != nil {
 		panic(err)
 	}

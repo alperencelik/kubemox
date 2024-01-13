@@ -72,7 +72,7 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 	replicas := vmSet.Spec.Replicas
 	vmList := &proxmoxv1alpha1.VirtualMachineList{}
-	if err := r.List(ctx, vmList,
+	if err = r.List(ctx, vmList,
 		client.InNamespace(req.Namespace),
 		// Change that one to metadata.ownerReference
 		client.MatchingLabels{"owner": vmSet.Name}); err != nil {
@@ -82,10 +82,11 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	resourceKey := fmt.Sprintf("%s/%s", vmSet.Namespace, vmSet.Name)
 
 	// Create, Update or Delete VMs
-	if len(vmList.Items) < replicas && vmSet.Status.Condition != "Terminating" {
+	switch {
+	case len(vmList.Items) < replicas && vmSet.Status.Condition != "Terminating":
 		for i := 1; i <= replicas; i++ {
 			vmSet.Status.Condition = "Scaling Up"
-			err := r.Status().Update(ctx, vmSet)
+			err = r.Status().Update(ctx, vmSet)
 			if err != nil {
 				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
@@ -108,8 +109,7 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 						Kind:       vmSet.Kind,
 						Name:       vmSet.ObjectMeta.Name,
 						UID:        vmSet.ObjectMeta.UID,
-					},
-					},
+					}},
 				},
 				Spec: proxmoxv1alpha1.VirtualMachineSpec{
 					Name:     vmSet.Name + "-" + strconv.Itoa(i),
@@ -131,7 +131,7 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				}
 			}
 		}
-	} else if len(vmList.Items) > replicas {
+	case len(vmList.Items) > replicas:
 		vmSet.Status.Condition = "Scaling Down"
 		err = r.Status().Update(ctx, vmSet)
 		if err != nil {
@@ -160,23 +160,24 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				}
 			}
 		}
-	} else {
+	default:
 		// Do nothing
 		// log.Log.Info("VMSet has the same number of VMs as replicas")
 		// Check if the CPU and Memory values are the same
 		// If not, update the VMs
-		for _, vm := range vmList.Items {
+		for i := range vmList.Items {
+			vm := vmList.Items[i]
 			if vm.Spec.Template.Cores != vmSet.Spec.Template.Cores || vm.Spec.Template.Memory != vmSet.Spec.Template.Memory {
 				vm.Spec.Template.Cores = vmSet.Spec.Template.Cores
 				vm.Spec.Template.Memory = vmSet.Spec.Template.Memory
-				if err := r.Update(ctx, &vm); err != nil {
-					return ctrl.Result{}, err
+				if UpdateErr := r.Update(ctx, &vm); UpdateErr != nil {
+					return ctrl.Result{}, UpdateErr
 				}
 			}
 		}
 		vmSet.Status.Condition = "Available"
-		if err := r.Status().Update(ctx, vmSet); err != nil {
-			return ctrl.Result{}, err
+		if StatusUpdateErr := r.Status().Update(ctx, vmSet); StatusUpdateErr != nil {
+			return ctrl.Result{}, StatusUpdateErr
 		}
 	}
 
@@ -187,7 +188,7 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if vmSet.ObjectMeta.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(vmSet, virtualMachineSetFinalizerName) {
 			controllerutil.AddFinalizer(vmSet, virtualMachineSetFinalizerName)
-			if err := r.Update(ctx, vmSet); err != nil {
+			if err = r.Update(ctx, vmSet); err != nil {
 				log.Log.Info(fmt.Sprintf("Error updating VirtualMachineSet %s", vmSet.Name))
 			}
 		}
@@ -197,12 +198,12 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			// Ensure that the pre-delete logic is idempotent.
 			// Set the VirtualMachineSet status to terminating
 			vmSet.Status.Condition = "Terminating"
-			if err := r.Status().Update(ctx, vmSet); err != nil {
-				return ctrl.Result{}, err
+			if vmSeterr := r.Status().Update(ctx, vmSet); vmSeterr != nil {
+				return ctrl.Result{}, vmSeterr
 			}
 			// Get VirtualMachines owned by this VirtualMachineSet
 			vmListDel := &proxmoxv1alpha1.VirtualMachineList{}
-			if err := r.List(ctx, vmListDel,
+			if err = r.List(ctx, vmListDel,
 				client.InNamespace(req.Namespace),
 				// Change that one to metadata.ownerReference
 				client.MatchingLabels{"owner": vmSet.Name}); err != nil {
@@ -210,7 +211,8 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			}
 			// Delete all VMs owned by this VirtualMachineSet
 			if len(vmListDel.Items) != 0 {
-				for _, vm := range vmListDel.Items {
+				for i := range vmListDel.Items {
+					vm := vmListDel.Items[i]
 					vmResourceKey := fmt.Sprintf("%s-%s", vm.Namespace, vm.Name)
 					if isProcessed(vmResourceKey) {
 					} else {
@@ -227,7 +229,7 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				log.Log.Info(fmt.Sprintf("Deleting VirtualMachineSet %s ", vmSet.Name))
 				// Remove finalizer
 				controllerutil.RemoveFinalizer(vmSet, virtualMachineSetFinalizerName)
-				if err := r.Update(ctx, vmSet); err != nil {
+				if err = r.Update(ctx, vmSet); err != nil {
 					return ctrl.Result{}, client.IgnoreNotFound(err)
 				}
 			}
@@ -243,7 +245,8 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 func (r *VirtualMachineSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.VirtualMachineSet{}).
-		WithEventFilter(predicate.GenerationChangedPredicate{}). // --> This was needed for reconcile loop to work properly, otherwise it was reconciling 3-4 times every 10 seconds
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
+		// --> This was needed for reconcile loop to work properly, otherwise it was reconciling 3-4 times every 10 seconds
 		WithOptions(controller.Options{MaxConcurrentReconciles: VMSetmaxConcurrentReconciles}).
 		Complete(&VirtualMachineSetReconciler{
 			Client: mgr.GetClient(),

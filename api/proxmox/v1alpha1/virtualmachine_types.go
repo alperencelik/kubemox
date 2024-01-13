@@ -35,7 +35,7 @@ type VirtualMachineSpec struct {
 	// TemplateSpec of the source VM
 	Template VirtualMachineTemplate `json:"template,omitempty"`
 	// This field should be modified further
-	VmSpec NewVMSpec `json:"vmSpec,omitempty"`
+	VMSpec NewVMSpec `json:"vmSpec,omitempty"`
 }
 
 type NewVMSpec struct {

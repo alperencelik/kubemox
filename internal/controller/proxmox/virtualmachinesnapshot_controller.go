@@ -88,7 +88,7 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 	//		UID:        vm.ObjectMeta.UID,
 	//	}
 	// Set ownerRef for the VirtualMachineSnapshot
-	if err := controllerutil.SetControllerReference(vm, vmSnapshot, r.Scheme); err != nil {
+	if err = controllerutil.SetControllerReference(vm, vmSnapshot, r.Scheme); err != nil {
 		Log.Error(err, "unable to set owner reference for VirtualMachineSnapshot")
 		return ctrl.Result{}, err
 	}
@@ -98,7 +98,12 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 		snapshotName = fmt.Sprintf("snapshot_%s", time.Now().Format("2006_01_02T15_04_05Z07_00"))
 	}
 	// If the snapshot is already created, return
-	if vmSnapshot.Status.Status == "" {
+	switch vmSnapshot.Status.Status {
+	case "":
+		if snapshotName == "" {
+			// If snapshot name is not specified, use the timestamp as the snapshot name
+			snapshotName = fmt.Sprintf("snapshot_%s", time.Now().Format("2006_01_02T15_04_05Z07_00"))
+		}
 		// Create the snapshot
 		StatusCode = proxmox.CreateVMSnapshot(vmName, snapshotName)
 		// Set the status to created
@@ -114,17 +119,17 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
 		}
-	} else if vmSnapshot.Status.Status == "Created" {
+	case "Created":
 		if StatusCode == 2 {
 			// Snapshot is already created, return
 			vmSnapshot.Status.ErrorMessage = "Snapshot is already created"
-			err := r.Status().Update(ctx, vmSnapshot)
+			err = r.Status().Update(ctx, vmSnapshot)
 			if err != nil {
 				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
 		}
 		return ctrl.Result{}, nil
-	} else {
+	default:
 		// Snapshot creation failed, return
 		if StatusCode == 1 {
 			vmSnapshot.Status.ErrorMessage = "Snapshot creation failed"
@@ -136,7 +141,8 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, nil
 	}
 
-	return ctrl.Result{Requeue: true, RequeueAfter: VMSnapshotreconcilationPeriod * time.Second}, client.IgnoreNotFound(r.Get(ctx, req.NamespacedName, &proxmoxv1alpha1.VirtualMachineSnapshotPolicy{}))
+	return ctrl.Result{Requeue: true, RequeueAfter: VMSnapshotreconcilationPeriod * time.Second},
+		client.IgnoreNotFound(r.Get(ctx, req.NamespacedName, &proxmoxv1alpha1.VirtualMachineSnapshotPolicy{}))
 }
 
 // SetupWithManager sets up the controller with the Manager.
