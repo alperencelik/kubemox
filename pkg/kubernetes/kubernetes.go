@@ -41,7 +41,7 @@ func InsideCluster() bool {
 	return false
 }
 
-func ClientConfig() interface{} {
+func ClientConfig() any {
 	if InsideCluster() {
 		config, err := rest.InClusterConfig()
 		if err != nil {
@@ -79,11 +79,11 @@ func GetKubeconfig() (*kubernetes.Clientset, dynamic.Interface) {
 	return clientset, dynamicClient
 }
 
-func CreateVMKubernetesEvent(vm *proxmoxv1alpha1.VirtualMachine, Clientset *kubernetes.Clientset, Action string) {
+func CreateVMKubernetesEvent(vm *proxmoxv1alpha1.VirtualMachine, clientset *kubernetes.Clientset, action string) {
 	// Create a new event
 	Event := &corev1.Event{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-%s-%s", vm.ObjectMeta.Name, Action, time.Now()),
+			Name:      fmt.Sprintf("%s-%s-%s", vm.ObjectMeta.Name, action, time.Now()),
 			Namespace: vm.ObjectMeta.Namespace,
 			Labels: map[string]string{
 				"app": "kube-proxmox-operator",
@@ -101,7 +101,7 @@ func CreateVMKubernetesEvent(vm *proxmoxv1alpha1.VirtualMachine, Clientset *kube
 		},
 		FirstTimestamp: metav1.Time{Time: time.Now()},
 	}
-	switch Action {
+	switch action {
 	case "Created":
 		Event.Reason = "Created"
 		Event.Message = fmt.Sprintf("VirtualMachine %s has been created", vm.Spec.Name)
@@ -118,17 +118,17 @@ func CreateVMKubernetesEvent(vm *proxmoxv1alpha1.VirtualMachine, Clientset *kube
 		// Do nothing
 	}
 
-	_, err := Clientset.CoreV1().Events(vm.ObjectMeta.Namespace).Create(context.Background(), Event, metav1.CreateOptions{})
+	_, err := clientset.CoreV1().Events(vm.ObjectMeta.Namespace).Create(context.Background(), Event, metav1.CreateOptions{})
 	if err != nil {
 		panic(err)
 	}
 }
 
-func CreateManagedVMKubernetesEvent(managedVM *proxmoxv1alpha1.ManagedVirtualMachine, clientset *kubernetes.Clientset, Action string) {
+func CreateManagedVMKubernetesEvent(managedVM *proxmoxv1alpha1.ManagedVirtualMachine, clientset *kubernetes.Clientset, action string) {
 	// Create event
 	Event := &corev1.Event{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-%s-%s", managedVM.Name, Action, time.Now()),
+			Name:      fmt.Sprintf("%s-%s-%s", managedVM.Name, action, time.Now()),
 			Namespace: os.Getenv("POD_NAMESPACE"),
 			Labels: map[string]string{
 				"app": "kube-proxmox-operator",
@@ -145,8 +145,8 @@ func CreateManagedVMKubernetesEvent(managedVM *proxmoxv1alpha1.ManagedVirtualMac
 			Component: "kube-proxmox-operator",
 		},
 		FirstTimestamp: metav1.Time{Time: time.Now()},
-		Reason:         Action,
-		Message:        fmt.Sprintf("ManagedVirtualMachine %s has been %s", managedVM.Name, Action),
+		Reason:         action,
+		Message:        fmt.Sprintf("ManagedVirtualMachine %s has been %s", managedVM.Name, action),
 		Type:           "Normal",
 	}
 	// Send event
