@@ -62,6 +62,6 @@ type VirtualMachineSetList struct {
 	Items           []VirtualMachineSet `json:"items"`
 }
 
-func init() {
+func init() { //nolint:gochecknoinits // This is required by kubebuilder
 	SchemeBuilder.Register(&VirtualMachineSet{}, &VirtualMachineSetList{})
 }

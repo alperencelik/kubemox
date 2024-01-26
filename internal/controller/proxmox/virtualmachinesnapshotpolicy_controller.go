@@ -86,7 +86,8 @@ func (r *VirtualMachineSnapshotPolicyReconciler) Reconcile(ctx context.Context, 
 	// Iterate over matching VirtualMachines to create snapshot
 	c := cron.New()
 	if _, err := c.AddFunc(cronSpec, func() {
-		for _, vm := range MatchingVirtualMachines {
+		for i := range MatchingVirtualMachines {
+			vm := &MatchingVirtualMachines[i]
 			// Create snapshot
 			vmName := vm.Spec.Name
 			snapshotName := fmt.Sprintf("snapshot_%s", time.Now().Format("2006_01_02T15_04_05Z07_00"))
@@ -112,7 +113,6 @@ func (r *VirtualMachineSnapshotPolicyReconciler) Reconcile(ctx context.Context, 
 				processedResources[snapshotKey] = true
 			}
 		}
-
 	}); err != nil {
 		log.Log.Error(err, "unable to add cronjob")
 		return ctrl.Result{}, err
@@ -121,7 +121,8 @@ func (r *VirtualMachineSnapshotPolicyReconciler) Reconcile(ctx context.Context, 
 	c.Start()
 	// Create snapshot
 
-	return ctrl.Result{Requeue: true, RequeueAfter: VMSnapshotPolicyreconcilationPeriod * time.Second}, client.IgnoreNotFound(r.Get(ctx, req.NamespacedName, &proxmoxv1alpha1.VirtualMachineSnapshotPolicy{}))
+	return ctrl.Result{Requeue: true, RequeueAfter: VMSnapshotPolicyreconcilationPeriod * time.Second},
+		client.IgnoreNotFound(r.Get(ctx, req.NamespacedName, &proxmoxv1alpha1.VirtualMachineSnapshotPolicy{}))
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -134,5 +135,4 @@ func (r *VirtualMachineSnapshotPolicyReconciler) SetupWithManager(mgr ctrl.Manag
 			Client: mgr.GetClient(),
 			Scheme: mgr.GetScheme(),
 		})
-
 }

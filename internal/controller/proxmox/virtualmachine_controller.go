@@ -67,7 +67,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	vm := &proxmoxv1alpha1.VirtualMachine{}
 	err := r.Get(ctx, req.NamespacedName, vm)
 	if err != nil {
-		// Log.Error(err, "unable to fetch VirtualMachine")
+		Log.Error(err, "unable to fetch VirtualMachine")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -75,7 +75,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if vm.ObjectMeta.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(vm, virtualMachineFinalizerName) {
 			controllerutil.AddFinalizer(vm, virtualMachineFinalizerName)
-			if err := r.Update(ctx, vm); err != nil {
+			if err = r.Update(ctx, vm); err != nil {
 				log.Log.Error(err, "Error updating VirtualMachine")
 			}
 		}
@@ -93,10 +93,9 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			}
 			// Remove finalizer
 			controllerutil.RemoveFinalizer(vm, virtualMachineFinalizerName)
-			if err := r.Update(ctx, vm); err != nil {
+			if err = r.Update(ctx, vm); err != nil {
 				fmt.Printf("Error updating VirtualMachine %s", vm.Spec.Name)
 			}
-
 		}
 		// Stop reconciliation as the item is being deleted
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -131,55 +130,51 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// If not exists, create the VM
 		Log.Info(fmt.Sprintf("VirtualMachine %s doesn't exist", vmName))
 		vmType := proxmox.CheckVMType(vm)
-		if vmType == "template" {
+		switch vmType {
+		case "template":
 			kubernetes.CreateVMKubernetesEvent(vm, Clientset, "Creating")
 			proxmox.CreateVMFromTemplate(vm)
 			proxmox.StartVM(vmName, nodeName)
 			kubernetes.CreateVMKubernetesEvent(vm, Clientset, "Created")
-			// metrics.SetVirtualMachineCPUCores(vmName, vm.Namespace, float64(vm.Spec.Template.Cores))
-			// metrics.SetVirtualMachineMemory(vmName, vm.Namespace, float64(vm.Spec.Template.Memory))
-		} else if vmType == "scratch" {
+		case "scratch":
 			kubernetes.CreateVMKubernetesEvent(vm, Clientset, "Creating")
 			proxmox.CreateVMFromScratch(vm)
 			proxmox.StartVM(vmName, nodeName)
 			kubernetes.CreateVMKubernetesEvent(vm, Clientset, "Created")
-			// metrics.SetVirtualMachineCPUCores(vmName, vm.Namespace, float64(vm.Spec.VmSpec.Cores))
-			// metrics.SetVirtualMachineMemory(vmName, vm.Namespace, float64(vm.Spec.VmSpec.Memory))
-		} else {
+		default:
 			Log.Info(fmt.Sprintf("VM %s doesn't have any template or vmSpec defined", vmName))
 		}
 	}
-	// If template and created VM has different resources then update the VM with new resources the function itself decides if VM restart needed or not
+	// If template and created VM has different resources then update the VM with new resources the function itself
+	// decides if VM restart needed or not
 	proxmox.UpdateVM(vmName, nodeName, vm)
 	err = r.Update(context.Background(), vm)
 	if err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	// Update the status of VirtualMachine resource
-	var Status proxmoxv1alpha1.VirtualMachineStatus
-	Status.State, Status.ID, Status.Uptime, Status.Node, Status.Name, Status.IPAddress, Status.OSInfo = proxmox.UpdateVMStatus(vmName, nodeName)
-	vm.Status = Status
+	Status, _ := proxmox.UpdateVMStatus(vmName, nodeName)
+	vm.Status = *Status
 	err = r.Status().Update(ctx, vm)
 	if err != nil {
 		Log.Error(err, "Error updating VirtualMachine status")
 	}
 
 	return ctrl.Result{Requeue: true, RequeueAfter: VMreconcilationPeriod * time.Second}, client.IgnoreNotFound(err)
-
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *VirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
-
-	log := log.FromContext(context.Background())
+	logger := log.FromContext(context.Background())
 	version, err := proxmox.GetProxmoxVersion()
 	if err != nil {
-		log.Error(err, "Error getting Proxmox version")
+		logger.Error(err, "Error getting Proxmox version")
 	}
-	log.Info(fmt.Sprintf("Connected to the Proxmox, version is: %s", version))
+	logger.Info(fmt.Sprintf("Connected to the Proxmox, version is: %s", version))
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.VirtualMachine{}).
-		WithEventFilter(predicate.GenerationChangedPredicate{}). // --> This was needed for reconcile loop to work properly, otherwise it was reconciling 3-4 times every 10 seconds
+		// --> This was needed for reconcile loop to work properly, otherwise it was reconciling 3-4 times every 10 seconds
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: VMmaxConcurrentReconciles}).
 		Complete(&VirtualMachineReconciler{
 			Client: mgr.GetClient(),

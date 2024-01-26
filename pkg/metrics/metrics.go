@@ -32,7 +32,7 @@ var (
 	}, []string{"name", "namespace"})
 )
 
-func init() {
+func init() { //nolint:gochecknoinits // This is required by kubebuilder
 	metrics.Registry.MustRegister(virtualMachineCount)
 	metrics.Registry.MustRegister(virtualMachineCPUCores)
 	metrics.Registry.MustRegister(virtualMachineMemory)

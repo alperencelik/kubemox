@@ -66,6 +66,6 @@ type VirtualMachineSnapshotPolicyList struct {
 	Items           []VirtualMachineSnapshotPolicy `json:"items"`
 }
 
-func init() {
+func init() { //nolint:gochecknoinits // This is required by kubebuilder
 	SchemeBuilder.Register(&VirtualMachineSnapshotPolicy{}, &VirtualMachineSnapshotPolicyList{})
 }

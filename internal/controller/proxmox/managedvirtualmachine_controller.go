@@ -92,7 +92,7 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 
 		// Remove finalizer
 		controllerutil.RemoveFinalizer(managedVM, managedvirtualMachineFinalizerName)
-		if err := r.Update(ctx, managedVM); err != nil {
+		if err = r.Update(ctx, managedVM); err != nil {
 			log.Log.Info(fmt.Sprintf("Error updatin ManagedVirtualMachine %s", managedVM.Name))
 		}
 		return ctrl.Result{}, nil
@@ -105,22 +105,19 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	// Update ManagedVMStatus
-	var managedVMStatus proxmoxv1alpha1.ManagedVirtualMachineStatus
-	nodeName := proxmox.GetNodeOfVM(managedVM.Name)
-	managedVMStatus.State, managedVMStatus.ID, managedVMStatus.Uptime, managedVMStatus.Node, managedVMStatus.Name, managedVMStatus.IPAddress, managedVMStatus.OSInfo = proxmox.UpdateVMStatus(managedVM.Name, nodeName)
-	managedVM.Status = managedVMStatus
+	managedVMName := managedVM.Name
+	nodeName := proxmox.GetNodeOfVM(managedVMName)
+	ManagedVMStatus, _ := proxmox.UpdateVMStatus(managedVMName, nodeName)
+	managedVM.Status = *ManagedVMStatus
 	err = r.Status().Update(context.Background(), managedVM)
 	if err != nil {
 		log.Log.Info(fmt.Sprintf("ManagedVMStatus %v could not be updated", managedVM.Name))
 	}
-
 	return ctrl.Result{Requeue: true, RequeueAfter: ManagedVMreconcilationPeriod * time.Second}, nil
-
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ManagedVirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
-
 	// Get all VMs with Proxmox API
 	AllVMs := proxmox.GetProxmoxVMs()
 	ControllerVMs := proxmox.GetControllerVMs()

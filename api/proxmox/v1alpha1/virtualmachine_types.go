@@ -35,7 +35,7 @@ type VirtualMachineSpec struct {
 	// TemplateSpec of the source VM
 	Template VirtualMachineTemplate `json:"template,omitempty"`
 	// This field should be modified further
-	VmSpec NewVMSpec `json:"vmSpec,omitempty"`
+	VMSpec NewVMSpec `json:"vmSpec,omitempty"`
 }
 
 type NewVMSpec struct {
@@ -132,6 +132,6 @@ type VirtualMachineList struct {
 	Items           []VirtualMachine `json:"items"`
 }
 
-func init() {
+func init() { //nolint:gochecknoinits // This is required by kubebuilder
 	SchemeBuilder.Register(&VirtualMachine{}, &VirtualMachineList{})
 }

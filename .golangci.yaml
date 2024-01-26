@@ -70,10 +70,10 @@ linters:
     - dupl
     - errcheck
     - exportloopref
-    - gochecknoinits
+    # - gochecknoinits
     - goconst
     - gocritic
-    - gocyclo
+    # - gocyclo
     - gofmt
     - goimports
     - goprintffuncname

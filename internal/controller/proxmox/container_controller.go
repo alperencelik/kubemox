@@ -78,7 +78,7 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// The object is not being deleted, so if it does not have our finalizer, then lets add the finalizer and update the object.
 		if !controllerutil.ContainsFinalizer(container, containerFinalizerName) {
 			controllerutil.AddFinalizer(container, containerFinalizerName)
-			if err := r.Update(ctx, container); err != nil {
+			if err = r.Update(ctx, container); err != nil {
 				log.Log.Error(err, "Error updating Container")
 				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
@@ -97,7 +97,7 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 			// Remove finalizer
 			controllerutil.RemoveFinalizer(container, containerFinalizerName)
-			if err := r.Update(ctx, container); err != nil {
+			if err = r.Update(ctx, container); err != nil {
 				Log.Error(err, "Error updating Container")
 			}
 		}
@@ -137,7 +137,6 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				Log.Error(err, "Failed to update Container")
 				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
-
 		}
 	} else {
 		// Create Container

@@ -43,7 +43,7 @@ var (
 	setupLog = ctrl.Log.WithName("setup")
 )
 
-func init() {
+func init() { //nolint:gochecknoinits // This is required by kubebuilder
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(proxmoxv1alpha1.AddToScheme(scheme))

@@ -36,19 +36,6 @@ type ManagedVirtualMachineSpec struct {
 	Disk     int    `json:"disk"`
 }
 
-// ManagedVirtualMachineStatus defines the observed state of ManagedVirtualMachine
-type ManagedVirtualMachineStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	State     string `json:"state,omitempty"`
-	Node      string `json:"node,omitempty"`
-	Name      string `json:"name,omitempty"`
-	Uptime    string `json:"uptime,omitempty"`
-	ID        int    `json:"id,omitempty"`
-	IPAddress string `json:"IPAddress,omitempty"`
-	OSInfo    string `json:"OSInfo,omitempty"`
-}
-
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
@@ -57,8 +44,8 @@ type ManagedVirtualMachine struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ManagedVirtualMachineSpec   `json:"spec,omitempty"`
-	Status ManagedVirtualMachineStatus `json:"status,omitempty"`
+	Spec   ManagedVirtualMachineSpec `json:"spec,omitempty"`
+	Status VirtualMachineStatus      `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -70,6 +57,6 @@ type ManagedVirtualMachineList struct {
 	Items           []ManagedVirtualMachine `json:"items"`
 }
 
-func init() {
+func init() { //nolint:gochecknoinits // This is required by kubebuilder
 	SchemeBuilder.Register(&ManagedVirtualMachine{}, &ManagedVirtualMachineList{})
 }
