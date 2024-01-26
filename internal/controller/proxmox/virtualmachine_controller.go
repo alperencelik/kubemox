@@ -153,10 +153,8 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	// Update the status of VirtualMachine resource
-	var Status proxmoxv1alpha1.VirtualMachineStatus
-	Status.State, Status.ID, Status.Uptime, Status.Node, Status.Name, Status.IPAddress, Status.OSInfo = proxmox.UpdateVMStatus(
-		vmName, nodeName)
-	vm.Status = Status
+	Status, _ := proxmox.UpdateVMStatus(vmName, nodeName)
+	vm.Status = *Status
 	err = r.Status().Update(ctx, vm)
 	if err != nil {
 		Log.Error(err, "Error updating VirtualMachine status")

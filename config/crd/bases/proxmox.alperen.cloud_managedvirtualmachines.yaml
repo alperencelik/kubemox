@@ -55,8 +55,7 @@ spec:
             - nodeName
             type: object
           status:
-            description: ManagedVirtualMachineStatus defines the observed state of
-              ManagedVirtualMachine
+            description: VirtualMachineStatus defines the observed state of VirtualMachine
             properties:
               IPAddress:
                 type: string

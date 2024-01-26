@@ -105,11 +105,10 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	// Update ManagedVMStatus
-	var managedVMStatus proxmoxv1alpha1.ManagedVirtualMachineStatus
-	nodeName := proxmox.GetNodeOfVM(managedVM.Name)
-	managedVMStatus.State, managedVMStatus.ID, managedVMStatus.Uptime, managedVMStatus.Node,
-		managedVMStatus.Name, managedVMStatus.IPAddress, managedVMStatus.OSInfo = proxmox.UpdateVMStatus(managedVM.Name, nodeName)
-	managedVM.Status = managedVMStatus
+	managedVMName := managedVM.Name
+	nodeName := proxmox.GetNodeOfVM(managedVMName)
+	ManagedVMStatus, _ := proxmox.UpdateVMStatus(managedVMName, nodeName)
+	managedVM.Status = *ManagedVMStatus
 	err = r.Status().Update(context.Background(), managedVM)
 	if err != nil {
 		log.Log.Info(fmt.Sprintf("ManagedVMStatus %v could not be updated", managedVM.Name))
