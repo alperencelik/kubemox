@@ -1,0 +1,3 @@
+# Virtual MachineSet
+
+`VirtualMachineSet` is a way to create multiple VirtualMachines in Proxmox. The relationship between `VirtualMachineSet` and `VirtualMachine` is similar to the relationship between `Deployment` and `Pod`. `VirtualMachineSet` creates multiple `VirtualMachine` resources and Kubemox will create them for you in Proxmox. You can only use `VirtualMachineSet` with templates. Creating multiple VirtualMachines from scratch is not supported yet. 

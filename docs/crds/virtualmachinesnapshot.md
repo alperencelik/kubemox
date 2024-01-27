@@ -1,0 +1,3 @@
+# VirtualMachineSnapshot
+
+`VirtualMachineSnapshot` is helping to create snapshots for `VirtualMachine` object. This object mostly considered for the milestone snapshots. This will create only one snapshot for the `VirtualMachine` object. Also deleting the `VirtualMachineSnapshot` object won't be deleting the snapshot from Proxmox since the current proxmox client the project uses doesn't have an implementation for deleting snapshots.

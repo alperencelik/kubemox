@@ -1,0 +1,3 @@
+# VirtualMachineSnapshotPolicy
+
+`VirtualMachineSnapshotPolicy` is helping to create snapshots for `VirtualMachine` object periodically. This object mostly considered for the scheduled snapshots. The schedule and the selectors that you specify matches with the `VirtualMachine` objects and according to the schedule it will create snapshots for those `VirtualMachine` objects. `VirtualMachineSnapshotPolicy` will be spawning `VirtualMachineSnapshot` objects for each `VirtualMachine` object that matches with the selectors. Also deleting the `VirtualMachineSnapshotPolicy` object also won't be deleting the snapshots from Proxmox but it will stop creating new `VirtualMachineSnapshot` objects for the `VirtualMachine` objects that matches with the selectors.
