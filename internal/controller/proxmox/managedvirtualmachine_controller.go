@@ -33,6 +33,7 @@ import (
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/metrics"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
+	"github.com/alperencelik/kubemox/pkg/utils"
 )
 
 const (
@@ -122,7 +123,7 @@ func (r *ManagedVirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) err
 	AllVMs := proxmox.GetProxmoxVMs()
 	ControllerVMs := proxmox.GetControllerVMs()
 	// AllVMs - ControllerVMs = VMs that are not managed by the controller
-	ManagedVMs := proxmox.SubstractSlices(AllVMs, ControllerVMs)
+	ManagedVMs := utils.SubstractSlices(AllVMs, ControllerVMs)
 	for _, ManagedVM := range ManagedVMs {
 		if !proxmox.CheckManagedVMExists(ManagedVM) {
 			log.Log.Info(fmt.Sprintf("ManagedVM %v does not exist so creating it", ManagedVM))
