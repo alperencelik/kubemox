@@ -2,40 +2,22 @@ package proxmox
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
-	"net/http"
 	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	kubernetes "github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/metrics"
+	"github.com/alperencelik/kubemox/pkg/utils"
 	proxmox "github.com/luthermonson/go-proxmox"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
-
-var (
-	// Create Proxmox client
-	Client = CreateProxmoxClient()
-	ctx    = context.Background()
-)
-
-type ProxmoxConfig struct {
-	Endpoint              string
-	APIEndpoint           string
-	InsecureSkipTLSVerify bool
-	Username              string
-	Password              string
-	TokenID               string
-	Secret                string
-}
 
 var mutex = &sync.Mutex{}
 
@@ -65,73 +47,6 @@ const (
 	VirtualMachineDeleteTimesNum  = 10
 	VirtualMachineDeleteSteps     = 20
 )
-
-func CreateProxmoxClient() *proxmox.Client {
-	// Create a new client
-	endpoint := os.Getenv("PROXMOX_ENDPOINT")
-	ProxmoxConfig := &ProxmoxConfig{
-		Endpoint:    os.Getenv("PROXMOX_ENDPOINT"),
-		APIEndpoint: fmt.Sprintf("https://%s:8006/api2/json", endpoint),
-		Username:    os.Getenv("PROXMOX_USERNAME"),
-		Password:    os.Getenv("PROXMOX_PASSWORD"),
-		TokenID:     os.Getenv("PROXMOX_TOKEN_ID"),
-		Secret:      os.Getenv("PROXMOX_SECRET"),
-	}
-
-	var httpClient *http.Client
-	if os.Getenv("PROXMOX_INSECURE_SKIP_TLS_VERIFY") == "true" {
-		ProxmoxConfig.InsecureSkipTLSVerify = true
-		httpClient = &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true, //nolint:gosec // Skipping linting for InsecureSkipVerify due to user choice
-				},
-			},
-		}
-	}
-
-	var client *proxmox.Client
-	switch {
-	case ProxmoxConfig.Username != "" && ProxmoxConfig.Password != "":
-		client = proxmox.NewClient(ProxmoxConfig.APIEndpoint,
-			proxmox.WithCredentials(&proxmox.Credentials{
-				Username: ProxmoxConfig.Username,
-				Password: ProxmoxConfig.Password,
-			}),
-			proxmox.WithHTTPClient(httpClient),
-		)
-	case ProxmoxConfig.TokenID != "" && ProxmoxConfig.Secret != "":
-		client = proxmox.NewClient(ProxmoxConfig.APIEndpoint,
-			proxmox.WithAPIToken(ProxmoxConfig.TokenID, ProxmoxConfig.Secret),
-			proxmox.WithHTTPClient(httpClient),
-		)
-	default:
-		panic("Proxmox credentials are not defined")
-	}
-	return client
-}
-
-func GetProxmoxVersion() (*proxmox.Version, error) {
-	// Get the version of the Proxmox server
-	version, err := Client.Version(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return version, nil
-}
-
-func GetNodes() ([]string, error) {
-	// Get all nodes
-	nodes, err := Client.Nodes(ctx)
-	nodeNames := []string{}
-	for _, node := range nodes {
-		nodeNames = append(nodeNames, node.Node)
-	}
-	if err != nil {
-		return nil, err
-	}
-	return nodeNames, nil
-}
 
 func CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine) {
 	nodeName := vm.Spec.NodeName
@@ -288,7 +203,7 @@ func GetVMUptime(vmName, nodeName string) string {
 	// Get VM Uptime as seconds
 	VirtualMachineUptime := int(VirtualMachine.Uptime)
 	// Convert seconds to format like 1d 2h 3m 4s
-	uptime := FormatUptime(VirtualMachineUptime)
+	uptime := utils.FormatUptime(VirtualMachineUptime)
 	return uptime
 }
 
@@ -569,20 +484,6 @@ func GetProxmoxVMs() []string {
 	return VMs
 }
 
-func GetOnlineNodes() []string {
-	nodes, err := Client.Nodes(ctx)
-	var OnlineNodes []string
-	if err != nil {
-		panic(err)
-	}
-	for _, node := range nodes {
-		if node.Status == "online" {
-			OnlineNodes = append(OnlineNodes, node.Node)
-		}
-	}
-	return OnlineNodes
-}
-
 func GetControllerVMs() []string {
 	// From proxmox get VM's that has tag "kube-proxmox-operator"
 	nodes := GetOnlineNodes()
@@ -616,30 +517,6 @@ func CheckManagedVMExists(managedVM string) bool {
 		}
 	}
 	return false
-}
-
-func GetNodeOfVM(vmName string) string {
-	nodes := GetOnlineNodes()
-	for _, node := range nodes {
-		node, err := Client.Node(ctx, node)
-		if err != nil {
-			panic(err)
-		}
-		// List VMs on node
-		VirtualMachines, err := node.VirtualMachines(ctx)
-		if err != nil {
-			panic(err)
-		}
-		for _, vm := range VirtualMachines {
-			if strings.EqualFold(vm.Name, vmName) {
-				return node.Name
-			}
-		}
-		if err != nil {
-			panic(err)
-		}
-	}
-	return ""
 }
 
 func GetManagedVMSpec(managedVMName, nodeName string) (cores, memory, disk int) {
@@ -916,39 +793,6 @@ func UpdateManagedVM(managedVMName, nodeName string, managedVM *proxmoxv1alpha1.
 	}
 }
 
-func SubstractSlices(slice1, slice2 []string) []string {
-	elements := make(map[string]bool)
-	for _, elem := range slice2 {
-		elements[elem] = true
-	}
-	// Create a result slice to store the difference
-	var difference []string
-	// Iterate through slice1 and check if the element is present in slice2
-	for _, elem := range slice1 {
-		if !elements[elem] {
-			difference = append(difference, elem)
-		}
-	}
-	return difference
-}
-
-func SubstractLowercaseSlices(slice1, slice2 []string) []string {
-	elementMap := make(map[string]bool)
-
-	for _, elem := range slice2 {
-		elementMap[strings.ToLower(elem)] = true
-	}
-	// Create a result slice to store the difference
-	var difference []string
-	// Iterate through slice1 and check if the element is present in slice2
-	for _, elem := range slice1 {
-		if !elementMap[strings.ToLower(elem)] {
-			difference = append(difference, elem)
-		}
-	}
-	return difference
-}
-
 func CreateVMSnapshot(vmName, snapshotName string) (statusCode int) {
 	nodeName := GetNodeOfVM(vmName)
 	node, err := Client.Node(ctx, nodeName)
@@ -978,226 +822,4 @@ func CreateVMSnapshot(vmName, snapshotName string) (statusCode int) {
 		log.Log.Info("VirtualMachine has already a snapshot with the same name")
 		return 2
 	}
-}
-
-func CloneContainer(container *proxmoxv1alpha1.Container) error {
-	nodeName := container.Spec.NodeName
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	templateContainerName := container.Spec.Template.Name
-	templateContainerID := 101
-	templateContainer, err := node.Container(ctx, templateContainerID)
-	if err != nil {
-		panic(err)
-	}
-
-	var CloneOptions proxmox.ContainerCloneOptions
-	CloneOptions.Full = 1
-	CloneOptions.Hostname = container.Name
-	CloneOptions.Target = nodeName
-	log.Log.Info(fmt.Sprintf("Cloning container %s from template %s", container.Name, templateContainerName))
-
-	_, task, err := templateContainer.Clone(ctx, &CloneOptions)
-	if err != nil {
-		log.Log.Error(err, "Can't clone container")
-	}
-	if err != nil {
-		panic(err)
-	}
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 10)
-	if !taskCompleted {
-		log.Log.Error(taskErr, "Can't clone container")
-	}
-
-	return taskErr
-}
-
-func GetContainerID(containerName, nodeName string) int {
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	containers, err := node.Containers(ctx)
-	if err != nil {
-		panic(err)
-	}
-	for _, container := range containers {
-		if container.Name == containerName {
-			return int(container.VMID)
-		}
-	}
-	return 0
-}
-
-func ContainerExists(containerName, nodeName string) bool {
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	containers, err := node.Containers(ctx)
-	if err != nil {
-		panic(err)
-	}
-	for _, container := range containers {
-		if container.Name == containerName {
-			return true
-		}
-	}
-	return false
-}
-
-func GetContainer(containerName, nodeName string) *proxmox.Container {
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	containerID := GetContainerID(containerName, nodeName)
-	container, err := node.Container(ctx, containerID)
-	if err != nil {
-		panic(err)
-	}
-	return container
-}
-
-func StopContainer(containerName, nodeName string) (*proxmox.ContainerStatus, error) {
-	// Get container
-	log.Log.Info(fmt.Sprintf("Stopping container %s", containerName))
-	container := GetContainer(containerName, nodeName)
-	// Stop container
-	if container.Status == virtualMachineRunningState {
-		// Stop container called
-		status, err := container.Stop(ctx)
-		// Retry method to understand if container is stopped
-		for i := 0; i < 5; i++ {
-			contStatus := GetContainerState(containerName, nodeName)
-			if contStatus == virtualMachineStoppedState {
-				break
-			} else {
-				time.Sleep(5 * time.Second)
-			}
-		}
-		return status, err
-	} else {
-		return nil, nil
-	}
-}
-
-func DeleteContainer(containerName, nodeName string) {
-	// Get container
-	mutex.Lock()
-	container := GetContainer(containerName, nodeName)
-	mutex.Unlock()
-	containerStatus := container.Status
-	if containerStatus == virtualMachineRunningState {
-		// Stop container
-		_, err := StopContainer(containerName, nodeName)
-		if err != nil {
-			panic(err)
-		}
-	}
-	log.Log.Info(fmt.Sprintf("Deleting container %s", containerName))
-	// Delete container
-	mutex.Lock()
-	// Delete container
-	task, err := container.Delete(ctx)
-	if err != nil {
-		panic(err)
-	}
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 5)
-	switch taskCompleted {
-	case false:
-		log.Log.Error(taskErr, "Can't delete container")
-	case true:
-		log.Log.Info(fmt.Sprintf("Container %s has been deleted", containerName))
-	default:
-		log.Log.Info("Container is already deleted")
-	}
-	mutex.Unlock()
-}
-
-func StartContainer(containerName, nodeName string) {
-	// Get container
-	container := GetContainer(containerName, nodeName)
-	// Start container
-	status, err := container.Start(ctx)
-	log.Log.Info(fmt.Sprintf("Container %s status: %s", containerName, status))
-	if err != nil {
-		log.Log.Error(err, "Can't start container")
-	}
-}
-
-func GetContainerState(containerName, nodeName string) string {
-	// Get container
-	container := GetContainer(containerName, nodeName)
-	// Get container state
-	return container.Status
-}
-
-func UpdateContainerStatus(containerName, nodeName string) proxmoxv1alpha1.ContainerStatus {
-	var containerStatus proxmoxv1alpha1.ContainerStatus
-	container := GetContainer(containerName, nodeName)
-
-	containerStatus.State = container.Status
-	containerStatus.ID = int(container.VMID)
-	containerStatus.Uptime = FormatUptime(int(container.Uptime))
-	containerStatus.Node = container.Node
-	containerStatus.Name = container.Name
-
-	return containerStatus
-}
-
-func UpdateContainer(container *proxmoxv1alpha1.Container) {
-	// Get container from proxmox
-	containerName := container.Name
-	nodeName := container.Spec.NodeName
-	var cpuOption proxmox.ContainerOption
-	var memoryOption proxmox.ContainerOption
-	cpuOption.Name = virtualMachineCPUOption
-	memoryOption.Name = virtualMachineMemoryOption
-	ProxmoxContainer := GetContainer(containerName, nodeName)
-	// Check if update is needed
-	if container.Spec.Template.Cores != ProxmoxContainer.CPUs || container.Spec.Template.Memory != int(ProxmoxContainer.MaxMem/1024/1024) {
-		cpuOption.Value = container.Spec.Template.Cores
-		memoryOption.Value = container.Spec.Template.Memory
-		// Update container
-		_, err := ProxmoxContainer.Config(ctx, cpuOption, memoryOption)
-		if err != nil {
-			panic(err)
-		} else {
-			log.Log.Info(fmt.Sprintf("Container %s has been updated", containerName))
-		}
-		// Config of container doesn't require restart
-	}
-}
-
-func RestartContainer(containerName, nodeName string) bool {
-	// Get container
-	container := GetContainer(containerName, nodeName)
-	// Restart container
-	_, err := container.Reboot(ctx)
-	if err != nil {
-		panic(err)
-	}
-	// Retry method to understand if container is stopped
-	for i := 0; i < 5; i++ {
-		contStatus := GetContainerState(containerName, nodeName)
-		if contStatus == virtualMachineRunningState {
-			return true
-		} else {
-			time.Sleep(5 * time.Second)
-		}
-	}
-	return false
-}
-
-func FormatUptime(uptime int) string {
-	// Convert seconds to format like 1d 2h 3m 4s
-	days := uptime / 86400
-	hours := (uptime - days*86400) / 3600
-	minutes := (uptime - days*86400 - hours*3600) / 60
-	seconds := uptime - days*86400 - hours*3600 - minutes*60
-	uptimeString := fmt.Sprintf("%dd%dh%dm%ds", days, hours, minutes, seconds)
-	return uptimeString
 }
