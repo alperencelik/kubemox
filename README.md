@@ -9,6 +9,18 @@ Kubemox is a Proxmox operator for Kubernetes. It allows you to create and manage
   <img src="docs/images/kubemox.jpg" alt="Logo" width="150" height="150">
 </div>
 
+## Why Kubemox?
+
+Proxmox is a great open-source virtualization platform. It has a great API and CLI but managing resources inside Proxmox within a declarative way might be hard. Kubemox is a Kubernetes operator that allows you to manage Proxmox resources in a declarative way. It brings the power of Kubernetes to Proxmox and allows you to manage Proxmox resources with Kubernetes resources with the endless control loop of Kubernetes.
+
+Kubemox helps you to manage your infrastructure components in a declarative way. You can also combine with GitOps tool to make your infrastructure immutable and reproducible. See the documentation section for more information.
+
+
+## Documentation
+
+Documentation is available at [https://alperencelik.github.io/kubemox/](https://alperencelik.github.io/kubemox/). 
+
+<!--
 ## Table of Contents
 
 - [Installation](#installation)
@@ -173,7 +185,7 @@ spec:
 ```
 
 To learn more about `VirtualMachine`, `VirtualMachineSet`, `Container` and `VirtualMachineSnapshot` resources you can check `charts/kubemox/samples/`
-
+-->
 
 ## Developing 
 
