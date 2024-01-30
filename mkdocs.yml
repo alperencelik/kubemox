@@ -8,8 +8,8 @@ nav:
 - Custom Resources:
   - Virtual Machines (QEMU): 
     - VirtualMachine: crds/virtualmachine.md
-    - VirtualMachineSet: crds/virtualmachineset.md
     - ManagedVirtualMachine: crds/managedvirtualmachine.md
+    - VirtualMachineSet: crds/virtualmachineset.md
     - VirtualMachineSnapshot: crds/virtualmachinesnapshot.md
     - VirtualMachineSnapshotPolicy: crds/virtualmachinesnapshotpolicy.md
   - Containers (LXC): 
