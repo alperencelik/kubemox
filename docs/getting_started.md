@@ -38,7 +38,7 @@
 
     1. You can also clone the repository and run the operator locally with Make. 
 
-    ```bash
+    ```
     git clone https://github.com/alperencelik/kubemox.git
     make install ## Install CRDs
     export PROXMOX_ENDPOINT="https://<PROXMOX_HOSTNAME>"
@@ -53,7 +53,7 @@
     You can download the Tilt binary from [here](https://docs.tilt.dev/install.html). 
     Update the Tiltfile with your Proxmox VE credentials.
 
-    ```bash
+    ```
     tilt up
     ```
  
