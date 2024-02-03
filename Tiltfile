@@ -9,7 +9,7 @@ yaml = helm(
   # The values file to substitute into the chart.
   values=['charts/kubemox/values.yaml'],
   # Values to set from the command-line
-  set=['proxmox.secret=0e409a4b-44b9-49d2-8de0-d50e4e56eaee', 'image.repository=kubemox']
+  set=['proxmox.endpoint=$PROXMOX_ENDPOINT', 'proxmox.insecureSkipTLSVerify=true', 'proxmox.username=$PROXMOX_USERNAME', 'proxmox.password=$PROXMOX_PASSWORD 'image.repository=kubemox']
   )
 
 k8s_yaml(yaml)
