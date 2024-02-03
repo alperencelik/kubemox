@@ -25,4 +25,6 @@ spec:
 EOF
 ```
 
-For visualization, you can use Grafana. The example can be found in `grafana/custom-metrics/custom-metrics-dashboard.json`. You can import that dashboard to your Grafana instance.
+For visualization, you can use Grafana. The example can be found in `grafana/custom-metrics/custom-metrics-dashboard.json`. You can import that dashboard to your Grafana instance. Here is how dashboard looks like.
+
+![Custom Metrics Dashboard](images/grafana-dashboard.jpg)
