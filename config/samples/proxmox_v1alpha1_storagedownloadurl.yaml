@@ -1,0 +1,16 @@
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: StorageDownloadURL
+metadata:
+  labels:
+    app.kubernetes.io/name: storagedownloadurl
+    app.kubernetes.io/instance: storagedownloadurl-sample
+    app.kubernetes.io/part-of: kubemox
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: kubemox
+  name: storagedownloadurl-sample
+spec:
+  content: "iso" 
+  filename: "ubuntu-20.04-server-cloudimg-amd64.img"
+  node: "lowtower"
+  storage: "local" 
+  url: "https://cloud-images.ubuntu.com/releases/focal/release/ubuntu-20.04-server-cloudimg-amd64.img"
