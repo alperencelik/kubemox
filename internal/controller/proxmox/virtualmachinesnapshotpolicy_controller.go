@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
+	utils "github.com/alperencelik/kubemox/pkg/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -104,13 +105,13 @@ func (r *VirtualMachineSnapshotPolicyReconciler) Reconcile(ctx context.Context, 
 			}
 			// If vmSnapshot doesn't exist, create it if it does, return
 			snapshotKey := fmt.Sprintf("%s/%s", vmSnapshot.Namespace, vmSnapshot.Name)
-			if isProcessed(snapshotKey) {
+			if utils.IsProcessed(snapshotKey) {
 				return // already processed
 			} else {
 				if err := r.Create(ctx, vmSnapshot); err != nil {
 					return // requeue
 				}
-				processedResources[snapshotKey] = true
+				utils.ProcessedResources[snapshotKey] = true
 			}
 		}
 	}); err != nil {

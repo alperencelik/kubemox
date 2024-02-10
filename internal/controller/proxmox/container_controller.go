@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/alperencelik/kubemox/pkg/proxmox"
+	utils "github.com/alperencelik/kubemox/pkg/utils"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -88,12 +89,12 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if controllerutil.ContainsFinalizer(container, containerFinalizerName) {
 			// Delete the Container
 			deletionKey := fmt.Sprintf("%s/%s-deletion", container.Namespace, container.Name)
-			if isProcessed(deletionKey) {
+			if utils.IsProcessed(deletionKey) {
 			} else {
 				// Delete the Container
 				proxmox.DeleteContainer(containerName, nodeName)
 				// Mark it as processed
-				processedResources[deletionKey] = true
+				utils.ProcessedResources[deletionKey] = true
 			}
 			// Remove finalizer
 			controllerutil.RemoveFinalizer(container, containerFinalizerName)
@@ -111,11 +112,11 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if containerState == "stopped" {
 			proxmox.StartContainer(containerName, nodeName)
 		} else {
-			if isProcessed(resourceKey) {
+			if utils.IsProcessed(resourceKey) {
 			} else {
 				Log.Info(fmt.Sprintf("Container %s already exists and running", containerName))
 				// Mark it as processed
-				processedResources[resourceKey] = true
+				utils.ProcessedResources[resourceKey] = true
 			}
 			// Update Container status
 			containerStatus := proxmox.UpdateContainerStatus(containerName, nodeName)

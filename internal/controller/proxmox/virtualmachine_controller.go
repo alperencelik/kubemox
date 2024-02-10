@@ -19,7 +19,6 @@ package proxmox
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -34,6 +33,7 @@ import (
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/metrics"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
+	utils "github.com/alperencelik/kubemox/pkg/utils"
 )
 
 const (
@@ -84,11 +84,11 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		if controllerutil.ContainsFinalizer(vm, virtualMachineFinalizerName) {
 			// Delete the VM
 			deletionKey := fmt.Sprintf("%s/%s-deletion", vm.Namespace, vm.Name)
-			if isProcessed(deletionKey) {
+			if utils.IsProcessed(deletionKey) {
 			} else {
 				kubernetes.CreateVMKubernetesEvent(vm, kubernetes.Clientset, "Deleting")
 				proxmox.DeleteVM(vm.Spec.Name, vm.Spec.NodeName)
-				processedResources[deletionKey] = true
+				utils.ProcessedResources[deletionKey] = true
 				metrics.DecVirtualMachineCount()
 			}
 			// Remove finalizer
@@ -113,11 +113,11 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		if vmState == "stopped" {
 			proxmox.StartVM(vmName, nodeName)
 		} else {
-			if isProcessed(resourceKey) {
+			if utils.IsProcessed(resourceKey) {
 			} else {
 				Log.Info(fmt.Sprintf("VirtualMachine %s already exists and running", vmName))
 				// Mark it as processed
-				processedResources[resourceKey] = true
+				utils.ProcessedResources[resourceKey] = true
 				metrics.IncVirtualMachineCount()
 			}
 			proxmox.UpdateVM(vmName, nodeName, vm)
@@ -153,6 +153,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	// Update the status of VirtualMachine resource
+	// TODO: Return err as well or remove nil from method
 	Status, _ := proxmox.UpdateVMStatus(vmName, nodeName)
 	vm.Status = *Status
 	err = r.Status().Update(ctx, vm)
@@ -180,13 +181,4 @@ func (r *VirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			Client: mgr.GetClient(),
 			Scheme: mgr.GetScheme(),
 		})
-}
-
-var processedResources = make(map[string]bool)
-var logMutex sync.Mutex
-
-func isProcessed(resourceKey string) bool {
-	logMutex.Lock()
-	defer logMutex.Unlock()
-	return processedResources[resourceKey]
 }

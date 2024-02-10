@@ -1,6 +1,12 @@
 package utils
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
+
+var ProcessedResources = make(map[string]bool)
+var LogMutex sync.Mutex
 
 func FormatUptime(uptime int) string {
 	// Convert seconds to format like 1d 2h 3m 4s
@@ -26,4 +32,10 @@ func SubstractSlices(slice1, slice2 []string) []string {
 		}
 	}
 	return difference
+}
+
+func IsProcessed(resourceKey string) bool {
+	LogMutex.Lock()
+	defer LogMutex.Unlock()
+	return ProcessedResources[resourceKey]
 }

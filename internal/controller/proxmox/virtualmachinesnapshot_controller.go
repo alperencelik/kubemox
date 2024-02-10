@@ -80,13 +80,7 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 	if err != nil {
 		Log.Error(err, "unable to fetch VirtualMachine")
 	}
-	// Set owner reference for the VirtualMachine
-	//	ownerRef := metav1.OwnerReference{
-	//		APIVersion: vm.APIVersion,
-	//		Kind:       vm.Kind,
-	//		Name:       vmName,
-	//		UID:        vm.ObjectMeta.UID,
-	//	}
+
 	// Set ownerRef for the VirtualMachineSnapshot
 	if err = controllerutil.SetControllerReference(vm, vmSnapshot, r.Scheme); err != nil {
 		Log.Error(err, "unable to set owner reference for VirtualMachineSnapshot")

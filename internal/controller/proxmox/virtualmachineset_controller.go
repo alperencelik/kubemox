@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
+	utils "github.com/alperencelik/kubemox/pkg/utils"
 )
 
 // VirtualMachineSetReconciler reconciles a VirtualMachineSet object
@@ -90,10 +91,10 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			if err != nil {
 				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
-			if isProcessed(resourceKey) {
+			if utils.IsProcessed(resourceKey) {
 			} else {
 				log.Log.Info(fmt.Sprintf("Creating a new VirtualMachine %s for VirtualMachineSet %s : ", vmSet.Name+"-"+strconv.Itoa(i), vmSet.Name))
-				processedResources[resourceKey] = true
+				utils.ProcessedResources[resourceKey] = true
 			}
 			// Get labels of the VMSet
 			labels := vmSet.ObjectMeta.Labels
@@ -149,14 +150,14 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				vm := &proxmoxv1alpha1.VirtualMachine{}
 				err = r.Get(ctx, client.ObjectKey{Namespace: vmSet.Namespace, Name: vmName}, vm)
 				vmResourceKey := fmt.Sprintf("%s-%s", vm.Namespace, vm.Name)
-				if isProcessed(vmResourceKey) {
+				if utils.IsProcessed(vmResourceKey) {
 				} else {
 					log.Log.Info(fmt.Sprintf("Deleting VirtualMachine %s for VirtualMachineSet %s ", vmName, vmSet.Name))
 					err = r.Delete(ctx, vm)
 					if err != nil {
 						return ctrl.Result{}, client.IgnoreNotFound(err)
 					}
-					processedResources[vmResourceKey] = true
+					utils.ProcessedResources[vmResourceKey] = true
 				}
 			}
 		}
@@ -214,10 +215,10 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				for i := range vmListDel.Items {
 					vm := vmListDel.Items[i]
 					vmResourceKey := fmt.Sprintf("%s-%s", vm.Namespace, vm.Name)
-					if isProcessed(vmResourceKey) {
+					if utils.IsProcessed(vmResourceKey) {
 					} else {
 						log.Log.Info(fmt.Sprintf("Deleting VirtualMachine %s for VirtualMachineSet %s ", vm.Name, vmSet.Name))
-						processedResources[vmResourceKey] = true
+						utils.ProcessedResources[vmResourceKey] = true
 						err = r.Delete(ctx, &vm)
 						if err != nil {
 							return ctrl.Result{}, client.IgnoreNotFound(err)
