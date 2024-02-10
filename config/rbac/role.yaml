@@ -45,6 +45,32 @@ rules:
 - apiGroups:
   - proxmox.alperen.cloud
   resources:
+  - customcertificates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - customcertificates/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - customcertificates/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
   - managedvirtualmachines
   verbs:
   - create

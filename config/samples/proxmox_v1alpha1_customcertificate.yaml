@@ -1,0 +1,12 @@
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: CustomCertificate
+metadata:
+  labels:
+    app.kubernetes.io/name: customcertificate
+    app.kubernetes.io/instance: customcertificate-sample
+    app.kubernetes.io/part-of: kubemox
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: kubemox
+  name: customcertificate-sample
+spec:
+  # TODO(user): Add fields here
