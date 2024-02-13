@@ -1,4 +1,4 @@
-[![Pipeline Status](https://img.shields.io/github/workflow/status/alperencelik/kubemox/CI?label=pipeline)](https://github.com/alperencelik/kubemox/actions)
+[![Pipeline Status](https://img.shields.io/github/actions/workflow/status/alperencelik/kubemox/CI?label=pipeline)](https://github.com/alperencelik/kubemox/actions)
 [![Latest Release](https://img.shields.io/github/v/release/alperencelik/kubemox)](https://github.com/alperencelik/kubemox/releases)
 
 # Kubemox
