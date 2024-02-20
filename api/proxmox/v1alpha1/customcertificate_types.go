@@ -27,12 +27,14 @@ import (
 type CustomCertificateSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	CertManagerSpec CertManagerSpec `json:"certManager`
-	ProxmoxCertSpec ProxmoxCertSpec `json:"certSpec"`
+	NodeName        string          `json:"nodeName,omitempty"`
+	CertManagerSpec CertManagerSpec `json:"certManagerSpec,omitempty"`
+	ProxmoxCertSpec ProxmoxCertSpec `json:"proxmoxCertSpec,omitempty"`
 }
 
 type CertManagerSpec struct {
 	CommonName string    `json:"commonName,omitempty"`
+	DNSNames   []string  `json:"dnsNames,omitempty"`
 	IssuerRef  IssuerRef `json:"issuerRef,omitempty"`
 	SecretName string    `json:"secretName,omitempty"`
 	Usages     []string  `json:"usages,omitempty"`
