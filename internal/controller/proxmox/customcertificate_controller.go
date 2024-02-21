@@ -129,7 +129,10 @@ func (r *CustomCertificateReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		}
 		// TODO: Diff the key in Proxmox and the key in the secret
 		// Upload the certificate to the Proxmox node
-		proxmox.CreateCustomCertificate(customCert.Spec.NodeName, &customCert.Spec.ProxmoxCertSpec)
+		if err = proxmox.CreateCustomCertificate(customCert.Spec.NodeName, &customCert.Spec.ProxmoxCertSpec); err != nil {
+			log.Log.Error(err, "unable to create CustomCertificate in Proxmox")
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, client.IgnoreNotFound(err)

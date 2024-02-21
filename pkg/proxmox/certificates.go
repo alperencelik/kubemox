@@ -7,7 +7,7 @@ import (
 )
 
 // CreateCustomCertificate creates a custom certificate object in proxmox node
-func CreateCustomCertificate(nodeName string, proxmoxCertSpec *proxmoxv1alpha1.ProxmoxCertSpec) {
+func CreateCustomCertificate(nodeName string, proxmoxCertSpec *proxmoxv1alpha1.ProxmoxCertSpec) error {
 	// get the node object
 	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
@@ -25,10 +25,7 @@ func CreateCustomCertificate(nodeName string, proxmoxCertSpec *proxmoxv1alpha1.P
 		Restart:      restartProxy,
 	}
 	// Create the certificate object in proxmox node
-	err = node.UploadCustomCertificate(ctx, certSpec)
-	if err != nil {
-		log.Log.Error(err, "unable to upload custom certificate")
-	}
+	return node.UploadCustomCertificate(ctx, certSpec)
 }
 
 // Delete certificate object from proxmox node
