@@ -205,3 +205,43 @@ rules:
   - update
   - patch
   - delete
+## List CRDs
+- apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  verbs:
+  - list
+  - watch
+  - get
+## CustomCertificates
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - customcertificates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - customcertificates/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - customcertificates/status
+  verbs:
+  - get
+  - patch
+  - update
+# Certificate
+- apiGroups: ["cert-manager.io"]
+  resources: ["certificates"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]

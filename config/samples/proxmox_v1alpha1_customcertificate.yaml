@@ -1,0 +1,30 @@
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: CustomCertificate
+metadata:
+  labels:
+    app.kubernetes.io/name: customcertificate
+    app.kubernetes.io/instance: customcertificate-sample
+    app.kubernetes.io/part-of: kubemox
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: kubemox
+  name: customcertificate-sample
+spec:
+  nodeName: "lowtower"
+  certManagerSpec:
+    commonName: "proxmox.alperen.cloud"
+    dnsNames:
+      - "proxmox.alperen.cloud"
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: acme-issuer
+    secretName: proxmox-alperen-cloud-tls
+    usages: 
+      - client auth
+      - server auth
+  proxmoxCertSpec: 
+    nodeName: "lowtower"
+    force: true
+    restartProxy: true
+#   certificate: will be filled by cert-manager created secret
+#   privateKey: will be filled by cert-manager created secret

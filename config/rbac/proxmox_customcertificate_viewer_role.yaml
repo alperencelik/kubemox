@@ -1,0 +1,27 @@
+# permissions for end users to view customcertificates.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: customcertificate-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: kubemox
+    app.kubernetes.io/part-of: kubemox
+    app.kubernetes.io/managed-by: kustomize
+  name: customcertificate-viewer-role
+rules:
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - customcertificates
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - customcertificates/status
+  verbs:
+  - get
