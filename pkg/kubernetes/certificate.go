@@ -35,13 +35,13 @@ func CreateCertificate(customCert *proxmoxv1alpha1.CustomCertificate) (*unstruct
 	usages := certManagerSpec.Usages
 
 	certManagerCertificate := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "cert-manager.io/v1",
 			"kind":       "Certificate",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      customCert.ObjectMeta.Name,
 				"namespace": customCert.ObjectMeta.Namespace,
-				"ownerReferences": []map[string]interface{}{
+				"ownerReferences": []map[string]any{
 					{
 						"apiVersion": customCert.APIVersion,
 						"kind":       customCert.Kind,
@@ -50,7 +50,7 @@ func CreateCertificate(customCert *proxmoxv1alpha1.CustomCertificate) (*unstruct
 					},
 				},
 			},
-			"spec": map[string]interface{}{
+			"spec": map[string]any{
 				"commonName": commonName,
 				"dnsNames":   certManagerSpec.DNSNames,
 				"issuerRef":  issuerRef,
@@ -99,9 +99,9 @@ func GetCertificate(customCert *proxmoxv1alpha1.CustomCertificate) *unstructured
 func UpdateCertificate(customCertSpec *proxmoxv1alpha1.CertManagerSpec, certificate *unstructured.Unstructured) {
 	// Compare actual state and desired state
 	// Actual state
-	certSpec := certificate.Object["spec"].(map[string]interface{})
+	certSpec := certificate.Object["spec"].(map[string]any)
 	// Desired state
-	customCertMap := map[string]interface{}{
+	customCertMap := map[string]any{
 		"commonName": customCertSpec.CommonName,
 		"dnsNames":   customCertSpec.DNSNames,
 		"issuerRef": map[string]string{
@@ -130,7 +130,7 @@ func UpdateCertificate(customCertSpec *proxmoxv1alpha1.CertManagerSpec, certific
 
 func GetCertificateSecretKeys(certificate *unstructured.Unstructured) (tlscrt, tlskey []byte) {
 	// Get certificate secret
-	secretName := certificate.Object["spec"].(map[string]interface{})["secretName"].(string)
+	secretName := certificate.Object["spec"].(map[string]any)["secretName"].(string)
 	// Find the namespace that cert-manager is installed and get the secret from that namespace
 	certManagerNamespace := findCertManagerNamespace()
 	if certManagerNamespace == "" {
