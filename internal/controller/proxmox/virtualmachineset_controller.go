@@ -81,6 +81,59 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	resourceKey := fmt.Sprintf("%s/%s", vmSet.Namespace, vmSet.Name)
 
+	if vmSet.ObjectMeta.DeletionTimestamp.IsZero() {
+		if !controllerutil.ContainsFinalizer(vmSet, virtualMachineSetFinalizerName) {
+			controllerutil.AddFinalizer(vmSet, virtualMachineSetFinalizerName)
+			if err = r.Update(ctx, vmSet); err != nil {
+				log.Log.Info(fmt.Sprintf("Error updating VirtualMachineSet %s", vmSet.Name))
+			}
+		}
+	} else {
+		// The object is being deleted
+		if controllerutil.ContainsFinalizer(vmSet, virtualMachineSetFinalizerName) {
+			// Ensure that the pre-delete logic is idempotent.
+			// Set the VirtualMachineSet status to terminating
+			vmSet.Status.Condition = "Terminating"
+			if vmSeterr := r.Status().Update(ctx, vmSet); vmSeterr != nil {
+				return ctrl.Result{}, vmSeterr
+			}
+			// Get VirtualMachines owned by this VirtualMachineSet
+			vmListDel := &proxmoxv1alpha1.VirtualMachineList{}
+			if err = r.List(ctx, vmListDel,
+				client.InNamespace(req.Namespace),
+				// Change that one to metadata.ownerReference
+				client.MatchingLabels{"owner": vmSet.Name}); err != nil {
+				log.Log.Info("Unable to list VMs")
+			}
+			// Delete all VMs owned by this VirtualMachineSet
+			if len(vmListDel.Items) != 0 {
+				for i := range vmListDel.Items {
+					vm := vmListDel.Items[i]
+					vmResourceKey := fmt.Sprintf("%s-%s", vm.Namespace, vm.Name)
+					if isProcessed(vmResourceKey) {
+					} else {
+						log.Log.Info(fmt.Sprintf("Deleting VirtualMachine %s for VirtualMachineSet %s ", vm.Name, vmSet.Name))
+						processedResources[vmResourceKey] = true
+						err = r.Delete(ctx, &vm)
+						if err != nil {
+							return ctrl.Result{}, client.IgnoreNotFound(err)
+						}
+					}
+				}
+				return ctrl.Result{Requeue: true, RequeueAfter: VMSetreconcilationPeriod * time.Second}, client.IgnoreNotFound(err)
+			} else if len(vmListDel.Items) == 0 {
+				log.Log.Info(fmt.Sprintf("Deleting VirtualMachineSet %s ", vmSet.Name))
+				// Remove finalizer
+				controllerutil.RemoveFinalizer(vmSet, virtualMachineSetFinalizerName)
+				if err = r.Update(ctx, vmSet); err != nil {
+					return ctrl.Result{}, client.IgnoreNotFound(err)
+				}
+			}
+		}
+		// Stop reconciliation as the item is being deleted
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
 	// Create, Update or Delete VMs
 	switch {
 	case len(vmList.Items) < replicas && vmSet.Status.Condition != "Terminating":
@@ -137,27 +190,22 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		if err != nil {
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
-		LastConditionTime := time.Now()
-		if time.Since(LastConditionTime) < 5*time.Second {
-			return ctrl.Result{}, client.IgnoreNotFound(err)
-		} else {
-			for i := len(vmList.Items); i > replicas; i-- {
-				// Get the VM name
-				vmName := vmSet.Name + "-" + strconv.Itoa(i)
-				// nodeName := vmSet.Spec.NodeName
-				// Delete the VM
-				vm := &proxmoxv1alpha1.VirtualMachine{}
-				err = r.Get(ctx, client.ObjectKey{Namespace: vmSet.Namespace, Name: vmName}, vm)
-				vmResourceKey := fmt.Sprintf("%s-%s", vm.Namespace, vm.Name)
-				if isProcessed(vmResourceKey) {
-				} else {
-					log.Log.Info(fmt.Sprintf("Deleting VirtualMachine %s for VirtualMachineSet %s ", vmName, vmSet.Name))
-					err = r.Delete(ctx, vm)
-					if err != nil {
-						return ctrl.Result{}, client.IgnoreNotFound(err)
-					}
-					processedResources[vmResourceKey] = true
+		for i := len(vmList.Items); i > replicas; i-- {
+			// Get the VM name
+			vmName := vmSet.Name + "-" + strconv.Itoa(i)
+			// nodeName := vmSet.Spec.NodeName
+			// Delete the VM
+			vm := &proxmoxv1alpha1.VirtualMachine{}
+			err = r.Get(ctx, client.ObjectKey{Namespace: vmSet.Namespace, Name: vmName}, vm)
+			vmResourceKey := fmt.Sprintf("%s-%s", vm.Namespace, vm.Name)
+			if isProcessed(vmResourceKey) {
+			} else {
+				log.Log.Info(fmt.Sprintf("Deleting VirtualMachine %s for VirtualMachineSet %s ", vmName, vmSet.Name))
+				err = r.Delete(ctx, vm)
+				if err != nil {
+					return ctrl.Result{}, client.IgnoreNotFound(err)
 				}
+				processedResources[vmResourceKey] = true
 			}
 		}
 	default:
@@ -182,59 +230,6 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	if err != nil {
-		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
-
-	if vmSet.ObjectMeta.DeletionTimestamp.IsZero() {
-		if !controllerutil.ContainsFinalizer(vmSet, virtualMachineSetFinalizerName) {
-			controllerutil.AddFinalizer(vmSet, virtualMachineSetFinalizerName)
-			if err = r.Update(ctx, vmSet); err != nil {
-				log.Log.Info(fmt.Sprintf("Error updating VirtualMachineSet %s", vmSet.Name))
-			}
-		}
-	} else {
-		// The object is being deleted
-		if controllerutil.ContainsFinalizer(vmSet, virtualMachineSetFinalizerName) {
-			// Ensure that the pre-delete logic is idempotent.
-			// Set the VirtualMachineSet status to terminating
-			vmSet.Status.Condition = "Terminating"
-			if vmSeterr := r.Status().Update(ctx, vmSet); vmSeterr != nil {
-				return ctrl.Result{}, vmSeterr
-			}
-			// Get VirtualMachines owned by this VirtualMachineSet
-			vmListDel := &proxmoxv1alpha1.VirtualMachineList{}
-			if err = r.List(ctx, vmListDel,
-				client.InNamespace(req.Namespace),
-				// Change that one to metadata.ownerReference
-				client.MatchingLabels{"owner": vmSet.Name}); err != nil {
-				log.Log.Info("Unable to list VMs")
-			}
-			// Delete all VMs owned by this VirtualMachineSet
-			if len(vmListDel.Items) != 0 {
-				for i := range vmListDel.Items {
-					vm := vmListDel.Items[i]
-					vmResourceKey := fmt.Sprintf("%s-%s", vm.Namespace, vm.Name)
-					if isProcessed(vmResourceKey) {
-					} else {
-						log.Log.Info(fmt.Sprintf("Deleting VirtualMachine %s for VirtualMachineSet %s ", vm.Name, vmSet.Name))
-						processedResources[vmResourceKey] = true
-						err = r.Delete(ctx, &vm)
-						if err != nil {
-							return ctrl.Result{}, client.IgnoreNotFound(err)
-						}
-					}
-				}
-				return ctrl.Result{Requeue: true, RequeueAfter: VMSetreconcilationPeriod * time.Second}, client.IgnoreNotFound(err)
-			} else if len(vmListDel.Items) == 0 {
-				log.Log.Info(fmt.Sprintf("Deleting VirtualMachineSet %s ", vmSet.Name))
-				// Remove finalizer
-				controllerutil.RemoveFinalizer(vmSet, virtualMachineSetFinalizerName)
-				if err = r.Update(ctx, vmSet); err != nil {
-					return ctrl.Result{}, client.IgnoreNotFound(err)
-				}
-			}
-		}
-		// Stop reconciliation as the item is being deleted
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 

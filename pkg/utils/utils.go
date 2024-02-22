@@ -27,3 +27,16 @@ func SubstractSlices(slice1, slice2 []string) []string {
 	}
 	return difference
 }
+
+func ExistsIn(first, second []string) bool {
+	mapFirst := make(map[string]bool)
+	for _, value := range first {
+		mapFirst[value] = true
+	}
+	for _, value := range second {
+		if _, ok := mapFirst[value]; !ok {
+			return false
+		}
+	}
+	return true
+}
