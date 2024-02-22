@@ -74,4 +74,13 @@ resources:
   kind: CustomCertificate
   path: github.com/alperencelik/kubemox/api/proxmox/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: alperen.cloud
+  group: proxmox
+  kind: StorageDownloadURL
+  path: github.com/alperencelik/kubemox/api/proxmox/v1alpha1
+  version: v1alpha1
 version: "3"

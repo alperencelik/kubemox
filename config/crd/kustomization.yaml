@@ -8,6 +8,7 @@ resources:
 - bases/proxmox.alperen.cloud_virtualmachinesnapshots.yaml
 - bases/proxmox.alperen.cloud_virtualmachinesnapshotpolicies.yaml
 - bases/proxmox.alperen.cloud_containers.yaml
+- bases/proxmox.alperen.cloud_storagedownloadurls.yaml
 - bases/proxmox.alperen.cloud_customcertificates.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
@@ -20,6 +21,7 @@ patches:
 #- path: patches/webhook_in_virtualmachinesnapshots.yaml
 #- path: patches/webhook_in_virtualmachinesnapshotpolicies.yaml
 #- path: patches/webhook_in_containers.yaml
+#- path: patches/webhook_in_proxmox_storagedownloadurls.yaml
 #- path: patches/webhook_in_proxmox_customcertificates.yaml
 #+kubebuilder:scaffold:crdkustomizewebhookpatch
 
@@ -31,6 +33,7 @@ patches:
 #- path: patches/cainjection_in_virtualmachinesnapshots.yaml
 #- path: patches/cainjection_in_virtualmachinesnapshotpolicies.yaml
 #- path: patches/cainjection_in_containers.yaml
+#- path: patches/cainjection_in_proxmox_storagedownloadurls.yaml
 #- path: patches/cainjection_in_proxmox_customcertificates.yaml
 #+kubebuilder:scaffold:crdkustomizecainjectionpatch
 
