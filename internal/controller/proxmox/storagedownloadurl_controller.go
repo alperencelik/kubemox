@@ -84,7 +84,7 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if storageDownloadURL.ObjectMeta.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(storageDownloadURL, storageDownloadURLFinalizerName) {
 			controllerutil.AddFinalizer(storageDownloadURL, storageDownloadURLFinalizerName)
-			if err := r.Update(ctx, storageDownloadURL); err != nil {
+			if err = r.Update(ctx, storageDownloadURL); err != nil {
 				log.Log.Error(err, "unable to update StorageDownloadURL")
 				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
@@ -99,7 +99,7 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 				processedResources[deletionKey] = true
 			}
 			controllerutil.RemoveFinalizer(storageDownloadURL, storageDownloadURLFinalizerName)
-			if err := r.Update(ctx, storageDownloadURL); err != nil {
+			if err = r.Update(ctx, storageDownloadURL); err != nil {
 				log.Log.Error(err, "unable to update StorageDownloadURL")
 				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
@@ -121,14 +121,15 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 		} else {
 			Log.Info("File does not exist in the storage, so downloading it")
 			// Download the file
-			taskUPID, err := proxmox.StorageDownloadURL(node, &storageDownloadURL.Spec)
-			if err != nil {
-				Log.Error(err, "unable to download the file")
-				return ctrl.Result{}, err
+			taskUPID, taskErr := proxmox.StorageDownloadURL(node, &storageDownloadURL.Spec)
+			if taskErr != nil {
+				Log.Error(taskErr, "unable to download the file")
+				return ctrl.Result{}, taskErr
 			}
 			// Get the task
 			task := proxmox.GetTask(taskUPID)
-			logChannel, err := task.Watch(ctx, 5)
+			var logChannel <-chan string
+			logChannel, err = task.Watch(ctx, 5)
 			if err != nil {
 				Log.Error(err, "unable to watch the task")
 				return ctrl.Result{}, err
@@ -150,7 +151,6 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 			default:
 				Log.Info("Download task did not complete yet")
 			}
-
 		}
 	}
 	return ctrl.Result{Requeue: true, RequeueAfter: SDUreconcilationPeriod * time.Second}, client.IgnoreNotFound(err)

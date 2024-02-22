@@ -545,6 +545,9 @@ func (in *StorageDownloadURLStatus) DeepCopy() *StorageDownloadURLStatus {
 		return nil
 	}
 	out := new(StorageDownloadURLStatus)
+	in.DeepCopyInto(out)
+	return out
+}
 
 func (in *ProxmoxCertSpec) DeepCopyInto(out *ProxmoxCertSpec) {
 	*out = *in

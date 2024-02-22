@@ -33,7 +33,7 @@ func StorageDownloadURL(node string, storageDownloadURLSpec *proxmoxv1alpha1.Sto
 	return response, err
 }
 
-func GetStorageContent(node string, storageName string) ([]*proxmox.StorageContent, error) {
+func GetStorageContent(node, storageName string) ([]*proxmox.StorageContent, error) {
 	// Get node
 	Node, err := Client.Node(ctx, node)
 	if err != nil {
