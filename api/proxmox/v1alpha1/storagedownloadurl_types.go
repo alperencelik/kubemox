@@ -28,11 +28,11 @@ type StorageDownloadURLSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	Content  string `json:"content,omitempty"`
-	Filename string `json:"filename,omitempty"`
-	Node     string `json:"node,omitempty"`
-	Storage  string `json:"storage,omitempty"`
-	URL      string `json:"url,omitempty"`
+	Content  string `json:"content"`
+	Filename string `json:"filename"`
+	Node     string `json:"node"`
+	Storage  string `json:"storage"`
+	URL      string `json:"url"`
 	// Optional fields
 	Checksum          string `json:"checksum,omitempty"`
 	ChecksumAlgorithm string `json:"checksumAlgorithm,omitempty"`
