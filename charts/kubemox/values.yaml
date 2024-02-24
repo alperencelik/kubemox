@@ -5,22 +5,22 @@
 replicaCount: 1
 
 proxmox:
-  endpoint: "proxmox.alperen.cloud" 
+  endpoint: "10.0.0.99" 
   # endpoint: 10.0.0.99
   # insecureSkipTLSVerify: true
-  insecureSkipTLSVerify: false
+  insecureSkipTLSVerify: true
   # Either tokenID/secret or username/password must be set
-  tokenID: "root@pam!alp"
+  tokenID: ""
   secret: ""
   # Both username and password must be set if tokenID/secret is not set
   username: "root@pam"
-  password: ""
+  password: "PROXMOX_PASSWORD"
 
 image:
   repository: alperencelik/kubemox 
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "0.3"
+  tag: "v0.0.4-rc2"
 
 metrics:
   serviceMonitor:

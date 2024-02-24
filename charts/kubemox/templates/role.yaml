@@ -4,183 +4,39 @@ kind: ClusterRole
 metadata:
   name: kubemox 
 rules:
-- apiGroups:
-  - ""
-  resources:
-  - events
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - managedvirtualmachines
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - managedvirtualmachines/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - managedvirtualmachines/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - virtualmachines
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - virtualmachines/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - virtualmachines/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - virtualmachinesets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - virtualmachinesets/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - virtualmachinesets/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - virtualmachinesnapshots
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - virtualmachinesnapshots/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - virtualmachinesnapshots/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - virtualmachinesnapshotpolicies
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - virtualmachinesnapshotpolicies/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - virtualmachinesnapshotpolicies/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - containers/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - containers
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - containers/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - containers/status
-  verbs:
-  - get
-  - patch
-  - update
-## for leader election
+# Custom Resources
+- apiGroups: ["proxmox.alperen.cloud"]
+  resources: 
+  - "managedvirtualmachines"
+  - "managedvirtualmachines/finalizers"
+  - "managedvirtualmachines/status"
+  - "virtualmachines"
+  - "virtualmachines/finalizers"
+  - "virtualmachines/status"
+  - "virtualmachinesets"
+  - "virtualmachinesets/finalizers"
+  - "virtualmachinesets/status"
+  - "virtualmachinesnapshots"
+  - "virtualmachinesnapshots/finalizers"
+  - "virtualmachinesnapshots/status"
+  - "virtualmachinesnapshotpolicies"
+  - "virtualmachinesnapshotpolicies/finalizers"
+  - "virtualmachinesnapshotpolicies/status"
+  - "containers"
+  - "containers/finalizers"
+  - "containers/status"
+  - "customcertificates"
+  - "customcertificates/finalizers"
+  - "customcertificates/status"
+  - "storagedownloadurls"
+  - "storagedownloadurls/finalizers"
+  - "storagedownloadurls/status"
+  verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+# Events
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+## Leader election
 - apiGroups:
   - ""
   resources:
@@ -214,34 +70,7 @@ rules:
   - list
   - watch
   - get
-## CustomCertificates
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - customcertificates
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - customcertificates/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - proxmox.alperen.cloud
-  resources:
-  - customcertificates/status
-  verbs:
-  - get
-  - patch
-  - update
-# Certificate
+# Certificates
 - apiGroups: ["cert-manager.io"]
   resources: ["certificates"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
