@@ -14,6 +14,8 @@ nav:
     - VirtualMachineSnapshotPolicy: crds/virtualmachinesnapshotpolicy.md
   - Containers (LXC): 
     - Container: crds/container.md
+  - Storage: 
+    - Storage: crds/storagedownloadurl.md
 - metrics.md
 - contributing.md
 - roadmap.md

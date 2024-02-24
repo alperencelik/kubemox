@@ -53,3 +53,7 @@ make run ## Run the operator locally with the current kubeconfig
 ```bash
 tilt up
 ```
+
+## Creating your first Proxmox resource
+
+You can create different Proxmox resources using the Kubemox CRDs. For more information, you can check the [Custom Resources](/crds/virtualmachine/). Example resource manifests can be found in the [examples](/examples) directory.
