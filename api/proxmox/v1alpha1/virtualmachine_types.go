@@ -33,7 +33,7 @@ type VirtualMachineSpec struct {
 	// NodeName is the name of the target node of Proxmox
 	NodeName string `json:"nodeName"`
 	// TemplateSpec of the source VM
-	Template VirtualMachineTemplate `json:"template,omitempty"`
+	Template VirtualMachineSpecTemplate `json:"template,omitempty"`
 	// This field should be modified further
 	VMSpec NewVMSpec `json:"vmSpec,omitempty"`
 }
@@ -66,7 +66,7 @@ type NewVMSpecOSImage struct {
 	Value string `json:"value,omitempty"`
 }
 
-type VirtualMachineTemplate struct {
+type VirtualMachineSpecTemplate struct {
 	// Name of the template
 	Name string `json:"name,omitempty"`
 	// Cores is the number of CPU cores
@@ -76,12 +76,12 @@ type VirtualMachineTemplate struct {
 	// Memory is the amount of memory in MB
 	Memory int `json:"memory,omitempty"`
 	// Disks is the list of disks
-	Disk []VirtualMachineTemplateDisk `json:"disk,omitempty"`
+	Disk []VirtualMachineSpecTemplateDisk `json:"disk,omitempty"`
 	// Networks is the list of networks
-	Network []VirtualMachineTemplateNetwork `json:"network,omitempty"`
+	Network []VirtualMachineSpecTemplateNetwork `json:"network,omitempty"`
 }
 
-type VirtualMachineTemplateDisk struct {
+type VirtualMachineSpecTemplateDisk struct {
 	// Storage is the name of the storage
 	Storage string `json:"storage"`
 	// Size is the size of the disk in GB
@@ -90,7 +90,7 @@ type VirtualMachineTemplateDisk struct {
 	Type string `json:"type"`
 }
 
-type VirtualMachineTemplateNetwork struct {
+type VirtualMachineSpecTemplateNetwork struct {
 	// Model is the model of the network card
 	Model string `json:"model"`
 	// Bridge is the name of the bridge

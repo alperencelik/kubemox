@@ -29,9 +29,9 @@ type VirtualMachineSetSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of VirtualMachineSet. Edit virtualmachineset_types.go to remove/update
-	Replicas int                    `json:"replicas"`
-	NodeName string                 `json:"nodeName"`
-	Template VirtualMachineTemplate `json:"template,omitempty"`
+	Replicas int                        `json:"replicas"`
+	NodeName string                     `json:"nodeName"`
+	Template VirtualMachineSpecTemplate `json:"template,omitempty"`
 }
 
 // VirtualMachineSetStatus defines the observed state of VirtualMachineSet
