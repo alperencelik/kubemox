@@ -7,4 +7,5 @@ resources:
 - proxmox_v1alpha1_virtualmachinesnapshotpolicy.yaml
 - proxmox_v1alpha1_container.yaml
 - proxmox_v1alpha1_customcertificate.yaml
+- proxmox_v1alpha1_storagedownloadurl.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples
