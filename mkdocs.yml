@@ -16,6 +16,8 @@ nav:
     - Container: crds/container.md
   - Storage: 
     - Storage: crds/storagedownloadurl.md
+  - Certificates:
+    - CustomCertificate: crds/customcertificate.md
 - metrics.md
 - contributing.md
 - roadmap.md
