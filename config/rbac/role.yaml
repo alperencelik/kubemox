@@ -105,6 +105,32 @@ rules:
 - apiGroups:
   - proxmox.alperen.cloud
   resources:
+  - storagedownloadurls
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - storagedownloadurls/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - storagedownloadurls/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
   - virtualmachines
   verbs:
   - create
