@@ -1,0 +1,12 @@
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachineTemplate
+metadata:
+  labels:
+    app.kubernetes.io/name: virtualmachinetemplate
+    app.kubernetes.io/instance: virtualmachinetemplate-sample
+    app.kubernetes.io/part-of: kubemox
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: kubemox
+  name: virtualmachinetemplate-sample
+spec:
+  # TODO(user): Add fields here
