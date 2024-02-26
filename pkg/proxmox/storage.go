@@ -57,3 +57,29 @@ func HasFile(storageContent []*proxmox.StorageContent, storageDownloadSpec *prox
 	}
 	return false
 }
+
+func DeleteStorageContent(storageName string, spec *proxmoxv1alpha1.StorageDownloadURLSpec) error {
+	// Get node
+	node := spec.Node
+	Node, err := Client.Node(ctx, node)
+	if err != nil {
+		log.Log.Error(err, "unable to get node")
+	}
+	storage, _ := Node.Storage(ctx, storageName)
+	// Delete storage content
+	// local:iso/talos-amd64.iso
+	objectName := fmt.Sprintf("%s:%s/%s", storageName, spec.Content, spec.Filename)
+	task, err := storage.DeleteContent(ctx, objectName)
+	if err != nil {
+		log.Log.Error(err, "unable to delete storage content")
+	}
+	// Wait for task to complete
+	_, taskCompleted, err := task.WaitForCompleteStatus(ctx, 5, 10)
+	if taskCompleted {
+		log.Log.Info(fmt.Sprintf("%s file has been deleted from %s successfully", spec.Filename, storageName))
+	}
+	if err != nil {
+		log.Log.Error(err, "unable to delete storage content")
+	}
+	return err
+}

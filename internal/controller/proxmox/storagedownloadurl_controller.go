@@ -70,7 +70,7 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 	err := r.Get(ctx, req.NamespacedName, storageDownloadURL)
 	if err != nil {
 		// Error reading the object - requeue the request.
-		return ctrl.Result{}, err
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	// Get fields from the spec
 	content := storageDownloadURL.Spec.Content
@@ -79,7 +79,7 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// Check if the content is only iso or vztmpl
 	if content != "iso" && content != "vztmpl" {
 		Log.Info("Content should be either iso or vztmpl")
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	if storageDownloadURL.ObjectMeta.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(storageDownloadURL, storageDownloadURLFinalizerName) {
@@ -95,7 +95,11 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 			if isProcessed(deletionKey) {
 			} else {
 				// Delete the file from the storage
-				// TODO implement the deletion
+				err = proxmox.DeleteStorageContent(storage, &storageDownloadURL.Spec)
+				if err != nil {
+					Log.Error(err, "unable to delete the file")
+					return ctrl.Result{}, client.IgnoreNotFound(err)
+				}
 				processedResources[deletionKey] = true
 			}
 			controllerutil.RemoveFinalizer(storageDownloadURL, storageDownloadURLFinalizerName)
@@ -114,9 +118,9 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 		Log.Error(err, "unable to get storage content")
 		return ctrl.Result{}, err
 	}
+	resourceKey := fmt.Sprintf("%s:%s/%s", storage, content, storageDownloadURL.Spec.Filename)
 	// Check if the filename exists in the storage
 	if !proxmox.HasFile(storageContent, &storageDownloadURL.Spec) {
-		resourceKey := fmt.Sprintf("%s:%s/%s", storage, content, storageDownloadURL.Spec.Filename)
 		if isProcessed(resourceKey) {
 		} else {
 			Log.Info("File does not exist in the storage, so downloading it")
@@ -151,6 +155,13 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 			default:
 				Log.Info("Download task did not complete yet")
 			}
+		}
+	} else {
+		if isProcessed(resourceKey) {
+		} else {
+			// File exists in the storage
+			Log.Info(fmt.Sprintf("File %s exists in the storage %s", storageDownloadURL.Spec.Filename, storage))
+			processedResources[resourceKey] = true
 		}
 	}
 	return ctrl.Result{Requeue: true, RequeueAfter: SDUreconcilationPeriod * time.Second}, client.IgnoreNotFound(err)
