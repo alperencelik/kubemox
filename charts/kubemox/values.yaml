@@ -18,9 +18,10 @@ proxmox:
 
 image:
   repository: alperencelik/kubemox 
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "v0.0.4-rc2"
+  # See https://github.com/alperencelik/kubemox/releases for the tags
+  tag: "latest"
 
 metrics:
   serviceMonitor:
