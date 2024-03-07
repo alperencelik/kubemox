@@ -28,8 +28,27 @@ type VirtualMachineTemplateSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of VirtualMachineTemplate. Edit virtualmachinetemplate_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// CPU cores for the VM
+	CPUCores int `json:"cpuCores,omitempty"`
+	// Socket for the VM
+	Socket int `json:"socket,omitempty"`
+	// Memory size for the VM in GB
+	MemorySize int `json:"memorySize,omitempty"`
+	// Disk size for the VM in GB
+	DiskSize int `json:"diskSize,omitempty"`
+	// Network interface for the VM
+	NetworkInterface string `json:"networkInterface,omitempty"`
+	// Image for the VM
+	Image string `json:"image,omitempty"`
+	// Cloud-init configuration for the VM
+	CloudInit CloudInit `json:"cloudInit,omitempty"`
+}
+
+type CloudInit struct {
+	// User data for the cloud-init
+	UserData string `json:"userData"`
+	// Meta data for the cloud-init
+	MetaData string `json:"metaData"`
 }
 
 // VirtualMachineTemplateStatus defines the observed state of VirtualMachineTemplate

@@ -18,11 +18,15 @@ package proxmox
 
 import (
 	"context"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 )
@@ -32,6 +36,13 @@ type VirtualMachineTemplateReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
+
+const (
+	// Controller settings
+	VirtualMachineTemplateFinalizer    = "virtualmachinetemplate.proxmox.alperen.cloud/finalizer"
+	VirtualMachineConcurrentReconciles = 3
+	VirtualMachineReconcilationPeriod  = 10
+)
 
 //+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinetemplates,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinetemplates/status,verbs=get;update;patch
@@ -47,16 +58,47 @@ type VirtualMachineTemplateReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.0/pkg/reconcile
 func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
-	// TODO(user): your logic here
+	virtualMachineTemplate := &proxmoxv1alpha1.VirtualMachineTemplate{}
+	err := r.Get(ctx, req.NamespacedName, virtualMachineTemplate)
+	if err != nil {
+		logger.Error(err, "unable to fetch VirtualMachineTemplate")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
 
-	return ctrl.Result{}, nil
+	// Check if the VirtualMachineTemplate is marked for deletion
+	if virtualMachineTemplate.ObjectMeta.DeletionTimestamp.IsZero() {
+		if !controllerutil.ContainsFinalizer(virtualMachineTemplate, VirtualMachineTemplateFinalizer) {
+			controllerutil.AddFinalizer(virtualMachineTemplate, VirtualMachineTemplateFinalizer)
+			if err := r.Update(ctx, virtualMachineTemplate); err != nil {
+				logger.Error(err, "unable to update VirtualMachineTemplate with finalizer")
+				return ctrl.Result{}, err
+			}
+		}
+	} else {
+		if controllerutil.ContainsFinalizer(virtualMachineTemplate, VirtualMachineTemplateFinalizer) {
+			// Custom deletion logic goes here
+		}
+		// Remove the finalizer
+		controllerutil.RemoveFinalizer(virtualMachineTemplate, VirtualMachineTemplateFinalizer)
+		if err := r.Update(ctx, virtualMachineTemplate); err != nil {
+			logger.Error(err, "unable to update VirtualMachineTemplate without finalizer")
+			return ctrl.Result{}, err
+		}
+
+		// Return if the VirtualMachineTemplate is marked for deletion
+		return ctrl.Result{}, client.IgnoreNotFound(nil)
+	}
+
+	return ctrl.Result{Requeue: true, RequeueAfter: VirtualMachineReconcilationPeriod * time.Second}, client.IgnoreNotFound(err)
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *VirtualMachineTemplateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.VirtualMachineTemplate{}).
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: VirtualMachineConcurrentReconciles}).
 		Complete(r)
 }
