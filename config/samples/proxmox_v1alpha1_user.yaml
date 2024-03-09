@@ -1,0 +1,21 @@
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: User
+metadata:
+  labels:
+    app.kubernetes.io/name: user
+    app.kubernetes.io/instance: user-sample
+    app.kubernetes.io/part-of: kubemox
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: kubemox
+  name: user-sample
+spec:
+  userID: "user@pam"
+  email: "user@gmail.com"
+  enable: true
+  password: ""
+  firstname: "user"
+  groups: []
+  expire: "2025-01-01" ## YYYY-MM-DD format -- set 0 for never expire 
+  comment: "user comment"
+
+

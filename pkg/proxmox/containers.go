@@ -91,14 +91,14 @@ func GetContainer(containerName, nodeName string) *proxmox.Container {
 	return container
 }
 
-func StopContainer(containerName, nodeName string) (*proxmox.ContainerStatus, error) {
+func StopContainer(containerName, nodeName string) (task *proxmox.Task, err error) {
 	// Get container
 	log.Log.Info(fmt.Sprintf("Stopping container %s", containerName))
 	container := GetContainer(containerName, nodeName)
 	// Stop container
 	if container.Status == virtualMachineRunningState {
 		// Stop container called
-		status, err := container.Stop(ctx)
+		task, err := container.Stop(ctx)
 		// Retry method to understand if container is stopped
 		for i := 0; i < 5; i++ {
 			contStatus := GetContainerState(containerName, nodeName)
@@ -108,7 +108,7 @@ func StopContainer(containerName, nodeName string) (*proxmox.ContainerStatus, er
 				time.Sleep(5 * time.Second)
 			}
 		}
-		return status, err
+		return task, err
 	} else {
 		return nil, nil
 	}
@@ -151,8 +151,7 @@ func StartContainer(containerName, nodeName string) {
 	// Get container
 	container := GetContainer(containerName, nodeName)
 	// Start container
-	status, err := container.Start(ctx)
-	log.Log.Info(fmt.Sprintf("Container %s status: %s", containerName, status))
+	_, err := container.Start(ctx)
 	if err != nil {
 		log.Log.Error(err, "Can't start container")
 	}

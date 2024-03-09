@@ -1,6 +1,9 @@
 package utils
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 func FormatUptime(uptime int) string {
 	// Convert seconds to format like 1d 2h 3m 4s
@@ -39,4 +42,22 @@ func ExistsIn(first, second []string) bool {
 		}
 	}
 	return true
+}
+
+func ConvertToUnixTime(dateStr string) (int64, error) {
+	t, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return 0, err
+	}
+	return t.Unix(), nil
+}
+
+func GenerateRandomPassword(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyz" +
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[time.Now().UnixNano()%int64(len(charset))]
+	}
+	return string(b)
 }

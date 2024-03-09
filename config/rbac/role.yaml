@@ -131,6 +131,32 @@ rules:
 - apiGroups:
   - proxmox.alperen.cloud
   resources:
+  - users
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - users/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - users/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
   - virtualmachines
   verbs:
   - create

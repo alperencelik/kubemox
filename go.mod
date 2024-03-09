@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	github.com/carolynvs/magex v0.9.0
-	github.com/luthermonson/go-proxmox v0.0.0-beta4
+	github.com/luthermonson/go-proxmox v0.0.0-beta5
 	github.com/magefile/mage v1.14.0
 	github.com/onsi/ginkgo/v2 v2.9.5
 	github.com/onsi/gomega v1.27.7
