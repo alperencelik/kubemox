@@ -9,7 +9,7 @@ spec:
   nodeName: lowtower
   template:
     # Name of the template to be cloned
-    name: centos-template-new
+    name: fedora-template 
     # CPU cores to be allocated to the VM
     cores: 2
     # CPU sockets to be allocated to the VM

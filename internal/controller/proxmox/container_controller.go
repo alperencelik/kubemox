@@ -19,6 +19,7 @@ package proxmox
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -160,4 +161,13 @@ func (r *ContainerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			Client: mgr.GetClient(),
 			Scheme: mgr.GetScheme(),
 		})
+}
+
+var processedResources = make(map[string]bool)
+var logMutex sync.Mutex
+
+func isProcessed(resourceKey string) bool {
+	logMutex.Lock()
+	defer logMutex.Unlock()
+	return processedResources[resourceKey]
 }
