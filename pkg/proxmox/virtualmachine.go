@@ -256,13 +256,13 @@ func DeleteVM(vmName, nodeName string) {
 func StartVM(vmName, nodeName string) {
 	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
-		panic(err)
+		log.Log.Error(err, "Unable to get node to start node")
 	}
 	// Get VMID
 	vmID := GetVMID(vmName, nodeName)
 	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
-		log.Log.Error(err, "Error getting VM")
+		log.Log.Error(err, "Unable to get VM to start VM")
 	}
 	// Start VM
 	task, err := VirtualMachine.Start(ctx)
@@ -289,7 +289,7 @@ func RestartVM(vmName, nodeName string) *proxmox.Task {
 	vmID := GetVMID(vmName, nodeName)
 	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
-		log.Log.Error(err, "Error getting VM")
+		log.Log.Error(err, "Error getting VM to restart")
 	}
 	// Restart VM
 	task, err := VirtualMachine.Reboot(ctx)
@@ -528,7 +528,7 @@ func GetManagedVMSpec(managedVMName, nodeName string) (cores, memory, disk int) 
 	vmID := GetVMID(managedVMName, nodeName)
 	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
-		log.Log.Error(err, "Error getting VM")
+		log.Log.Error(err, "Error getting VM for managed VM spec")
 	}
 	cores = VirtualMachine.CPUs
 	memory = int(VirtualMachine.MaxMem / 1024 / 1024) // As MB
@@ -736,7 +736,7 @@ func UpdateManagedVM(managedVMName, nodeName string, managedVM *proxmoxv1alpha1.
 		vmID := GetVMID(managedVMName, nodeName)
 		VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 		if err != nil {
-			log.Log.Error(err, "Error getting VM")
+			log.Log.Error(err, "Error getting VM for managed VM update")
 		}
 		VirtualMachineMem := VirtualMachine.MaxMem / 1024 / 1024 // As MB
 		var cpuOption proxmox.VirtualMachineOption
@@ -803,7 +803,7 @@ func CreateVMSnapshot(vmName, snapshotName string) (statusCode int) {
 	vmID := GetVMID(vmName, nodeName)
 	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
-		log.Log.Error(err, "Error getting VM")
+		log.Log.Error(err, "Error getting VM for snapshot creation")
 	}
 	// Create snapshot
 	task, err := VirtualMachine.NewSnapshot(ctx, snapshotName)

@@ -19,9 +19,9 @@ package proxmox
 import (
 	"context"
 	"fmt"
-	"strconv"
-	"time"
+	"reflect"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -43,8 +43,14 @@ type VirtualMachineSetReconciler struct {
 const (
 	// Controller settings
 	virtualMachineSetFinalizerName = "virtualmachineset.proxmox.alperen.cloud/finalizer"
-	VMSetreconcilationPeriod       = 5
+	VMSetreconcilationPeriod       = 10
 	VMSetmaxConcurrentReconciles   = 5
+
+	typeAvailableVirtualMachineSet   = "Available"
+	typeScalingUpVirtualMachineSet   = "ScalingUp"
+	typeScalingDownVirtualMachineSet = "ScalingDown"
+	typeDeletingVirtualMachineSet    = "Deleting"
+	typeErrorVirtualMachineSet       = "Error"
 )
 
 //+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinesets,verbs=get;list;watch;create;update;patch;delete
@@ -61,179 +67,147 @@ const (
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
 func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	Log := log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	// TODO(user): your logic here
 	vmSet := &proxmoxv1alpha1.VirtualMachineSet{}
 	err := r.Get(ctx, req.NamespacedName, vmSet)
 	if err != nil {
-		Log.Error(err, "unable to fetch VirtualMachineSet")
+		logger.Error(err, "unable to fetch VirtualMachineSet")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	replicas := vmSet.Spec.Replicas
 	vmList := &proxmoxv1alpha1.VirtualMachineList{}
-	if err = r.List(ctx, vmList,
-		client.InNamespace(req.Namespace),
-		// Change that one to metadata.ownerReference
-		client.MatchingLabels{"owner": vmSet.Name}); err != nil {
-		log.Log.Info("Unable to list VMs")
+	listOptions := []client.ListOption{
+		client.InNamespace(vmSet.Namespace),
+		client.MatchingLabels{"owner": vmSet.Name},
+	}
+	err = r.List(ctx, vmList, listOptions...)
+	if err != nil {
+		logger.Error(err, "unable to list VirtualMachines")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	resourceKey := fmt.Sprintf("%s/%s", vmSet.Namespace, vmSet.Name)
+	if vmSet.Status.Conditions == nil || len(vmSet.Status.Conditions) == 0 {
+		meta.SetStatusCondition(&vmSet.Status.Conditions, metav1.Condition{
+			Type:    typeAvailableVirtualMachineSet,
+			Status:  metav1.ConditionUnknown,
+			Reason:  "Reconciling",
+			Message: "Starting reconciliation",
+		})
+		err = r.Status().Update(ctx, vmSet)
+		if err != nil {
+			logger.Error(err, "Error updating VirtualMachineSet status")
+		}
+	}
 
+	// Re-fetch the VirtualMachineSet resource
+	vmSet = &proxmoxv1alpha1.VirtualMachineSet{}
+	err = r.Get(ctx, req.NamespacedName, vmSet)
+	if err != nil {
+		logger.Error(err, "unable to fetch VirtualMachineSet")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	// DELETE
 	if vmSet.ObjectMeta.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(vmSet, virtualMachineSetFinalizerName) {
 			controllerutil.AddFinalizer(vmSet, virtualMachineSetFinalizerName)
 			if err = r.Update(ctx, vmSet); err != nil {
-				log.Log.Info(fmt.Sprintf("Error updating VirtualMachineSet %s", vmSet.Name))
+				logger.Info(fmt.Sprintf("Error updating VirtualMachineSet %s", vmSet.Name))
 			}
 		}
 	} else {
 		// The object is being deleted
 		if controllerutil.ContainsFinalizer(vmSet, virtualMachineSetFinalizerName) {
 			// Ensure that the pre-delete logic is idempotent.
-			// Set the VirtualMachineSet status to terminating
-			vmSet.Status.Condition = "Terminating"
-			if vmSeterr := r.Status().Update(ctx, vmSet); vmSeterr != nil {
-				return ctrl.Result{}, vmSeterr
+			logger.Info(fmt.Sprintf("Deleting VirtualMachineSet %s", vmSet.Name))
+			meta.SetStatusCondition(&vmSet.Status.Conditions, metav1.Condition{
+				Type:    "Deleting",
+				Status:  metav1.ConditionUnknown,
+				Reason:  "Deleting",
+				Message: "Deleting VirtualMachineSet",
+			})
+			if err = r.Status().Update(ctx, vmSet); err != nil {
+				logger.Info("Error updating VirtualMachineSet status")
+				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
-			// Get VirtualMachines owned by this VirtualMachineSet
-			vmListDel := &proxmoxv1alpha1.VirtualMachineList{}
-			if err = r.List(ctx, vmListDel,
-				client.InNamespace(req.Namespace),
-				// Change that one to metadata.ownerReference
-				client.MatchingLabels{"owner": vmSet.Name}); err != nil {
-				log.Log.Info("Unable to list VMs")
-			}
-			// Delete all VMs owned by this VirtualMachineSet
-			if len(vmListDel.Items) != 0 {
-				for i := range vmListDel.Items {
-					vm := vmListDel.Items[i]
-					vmResourceKey := fmt.Sprintf("%s-%s", vm.Namespace, vm.Name)
-					if isProcessed(vmResourceKey) {
-					} else {
-						log.Log.Info(fmt.Sprintf("Deleting VirtualMachine %s for VirtualMachineSet %s ", vm.Name, vmSet.Name))
-						processedResources[vmResourceKey] = true
-						err = r.Delete(ctx, &vm)
-						if err != nil {
-							return ctrl.Result{}, client.IgnoreNotFound(err)
-						}
-					}
+			// Get VM list and delete them
+			for _, vm := range vmList.Items {
+				if err = r.Delete(ctx, &vm); err != nil {
+					logger.Error(err, "unable to delete VirtualMachine")
+					return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 				}
-				return ctrl.Result{Requeue: true, RequeueAfter: VMSetreconcilationPeriod * time.Second}, client.IgnoreNotFound(err)
-			} else if len(vmListDel.Items) == 0 {
-				log.Log.Info(fmt.Sprintf("Deleting VirtualMachineSet %s ", vmSet.Name))
+			}
+
+			if len(vmList.Items) == 0 {
 				// Remove finalizer
-				controllerutil.RemoveFinalizer(vmSet, virtualMachineSetFinalizerName)
-				if err = r.Update(ctx, vmSet); err != nil {
-					return ctrl.Result{}, client.IgnoreNotFound(err)
+				if ok := controllerutil.RemoveFinalizer(vmSet, virtualMachineSetFinalizerName); !ok {
+					logger.Error(err, "Error removing finalizer from VirtualMachineSet")
 				}
+				if err = r.Update(ctx, vmSet); err != nil {
+					logger.Error(err, "Error updating VirtualMachineSet")
+				}
+				return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 			}
 		}
 		// Stop reconciliation as the item is being deleted
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Create, Update or Delete VMs
-	switch {
-	case len(vmList.Items) < replicas && vmSet.Status.Condition != "Terminating":
-		for i := 1; i <= replicas; i++ {
-			vmSet.Status.Condition = "Scaling Up"
-			err = r.Status().Update(ctx, vmSet)
-			if err != nil {
-				return ctrl.Result{}, client.IgnoreNotFound(err)
-			}
-			if isProcessed(resourceKey) {
-			} else {
-				log.Log.Info(fmt.Sprintf("Creating a new VirtualMachine %s for VirtualMachineSet %s : ", vmSet.Name+"-"+strconv.Itoa(i), vmSet.Name))
-				processedResources[resourceKey] = true
-			}
-			// Get labels of the VMSet
-			labels := vmSet.ObjectMeta.Labels
-			labels["owner"] = vmSet.Name
-			vm := &proxmoxv1alpha1.VirtualMachine{
-				ObjectMeta: ctrl.ObjectMeta{
-					Name:      vmSet.Name + "-" + strconv.Itoa(i),
-					Namespace: vmSet.Namespace,
-					Labels:    labels,
-					OwnerReferences: []metav1.OwnerReference{{
-						APIVersion: vmSet.APIVersion,
-						Controller: &[]bool{true}[0],
-						Kind:       vmSet.Kind,
-						Name:       vmSet.ObjectMeta.Name,
-						UID:        vmSet.ObjectMeta.UID,
-					}},
-				},
-				Spec: proxmoxv1alpha1.VirtualMachineSpec{
-					Name:     vmSet.Name + "-" + strconv.Itoa(i),
-					NodeName: vmSet.Spec.NodeName,
-					Template: vmSet.Spec.Template,
-				},
-			}
-			// Check if this VM already exists
-			err = r.Get(ctx, client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, &proxmoxv1alpha1.VirtualMachine{})
-			if err != nil {
-				log.Log.Info("VM does not exist, creating")
-				if client.IgnoreNotFound(err) != nil {
-					return ctrl.Result{}, client.IgnoreNotFound(err)
-				}
-				// Create the VM
-				err = r.Create(ctx, vm)
-				if err != nil {
-					return ctrl.Result{}, client.IgnoreNotFound(err)
-				}
-			}
-		}
-	case len(vmList.Items) > replicas:
-		vmSet.Status.Condition = "Scaling Down"
-		err = r.Status().Update(ctx, vmSet)
-		if err != nil {
-			return ctrl.Result{}, client.IgnoreNotFound(err)
-		}
-		for i := len(vmList.Items); i > replicas; i-- {
-			// Get the VM name
-			vmName := vmSet.Name + "-" + strconv.Itoa(i)
-			// nodeName := vmSet.Spec.NodeName
-			// Delete the VM
-			vm := &proxmoxv1alpha1.VirtualMachine{}
-			err = r.Get(ctx, client.ObjectKey{Namespace: vmSet.Namespace, Name: vmName}, vm)
-			vmResourceKey := fmt.Sprintf("%s-%s", vm.Namespace, vm.Name)
-			if isProcessed(vmResourceKey) {
-			} else {
-				log.Log.Info(fmt.Sprintf("Deleting VirtualMachine %s for VirtualMachineSet %s ", vmName, vmSet.Name))
-				err = r.Delete(ctx, vm)
-				if err != nil {
-					return ctrl.Result{}, client.IgnoreNotFound(err)
-				}
-				processedResources[vmResourceKey] = true
-			}
-		}
-	default:
-		// Do nothing
-		// log.Log.Info("VMSet has the same number of VMs as replicas")
-		// Check if the CPU and Memory values are the same
-		// If not, update the VMs
-		for i := range vmList.Items {
-			vm := vmList.Items[i]
-			if vm.Spec.Template.Cores != vmSet.Spec.Template.Cores || vm.Spec.Template.Memory != vmSet.Spec.Template.Memory {
-				vm.Spec.Template.Cores = vmSet.Spec.Template.Cores
-				vm.Spec.Template.Memory = vmSet.Spec.Template.Memory
-				if UpdateErr := r.Update(ctx, &vm); UpdateErr != nil {
-					return ctrl.Result{}, UpdateErr
-				}
-			}
-		}
-		vmSet.Status.Condition = "Available"
-		if StatusUpdateErr := r.Status().Update(ctx, vmSet); StatusUpdateErr != nil {
-			return ctrl.Result{}, StatusUpdateErr
-		}
+	// Get VM list and create them
+	vmList = &proxmoxv1alpha1.VirtualMachineList{}
+	listOptions = []client.ListOption{
+		client.InNamespace(vmSet.Namespace),
+		client.MatchingLabels{"owner": vmSet.Name},
 	}
-
+	err = r.List(ctx, vmList, listOptions...)
 	if err != nil {
+		logger.Error(err, "unable to list VirtualMachines")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	return ctrl.Result{Requeue: true, RequeueAfter: VMSetreconcilationPeriod * time.Second}, client.IgnoreNotFound(err)
+	if len(vmList.Items) < int(replicas) {
+		if err := r.scaleUpVMs(vmSet, replicas, vmList); err != nil {
+			logger.Error(err, "unable to scale up VirtualMachines")
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
+		meta.SetStatusCondition(&vmSet.Status.Conditions, metav1.Condition{
+			Type:    typeScalingUpVirtualMachineSet,
+			Status:  metav1.ConditionTrue,
+			Reason:  "ScaledUp",
+			Message: "VirtualMachines scaled up",
+		})
+		if err = r.Status().Update(ctx, vmSet); err != nil {
+			logger.Error(err, "Error updating VirtualMachineSet status")
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
+	}
+
+	if len(vmList.Items) > int(replicas) {
+		if err := r.scaleDownVMs(ctx, replicas, vmList); err != nil {
+			logger.Error(err, "unable to scale down VirtualMachines")
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
+		// Set the condition for the VirtualMachineSet
+		meta.SetStatusCondition(&vmSet.Status.Conditions, metav1.Condition{
+			Type:    typeScalingDownVirtualMachineSet,
+			Status:  metav1.ConditionTrue,
+			Reason:  "ScaledDown",
+			Message: "VirtualMachines scaled down",
+		})
+		if err = r.Status().Update(ctx, vmSet); err != nil {
+			logger.Error(err, "Error updating VirtualMachineSet status")
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
+	}
+
+	if err := r.updateVMs(ctx, vmSet, vmList); err != nil {
+		logger.Error(err, "unable to update VirtualMachines")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -241,10 +215,75 @@ func (r *VirtualMachineSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.VirtualMachineSet{}).
 		WithEventFilter(predicate.GenerationChangedPredicate{}).
-		// --> This was needed for reconcile loop to work properly, otherwise it was reconciling 3-4 times every 10 seconds
+		Owns(&proxmoxv1alpha1.VirtualMachineSet{}).
+		Owns(&proxmoxv1alpha1.VirtualMachine{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: VMSetmaxConcurrentReconciles}).
 		Complete(&VirtualMachineSetReconciler{
 			Client: mgr.GetClient(),
 			Scheme: mgr.GetScheme(),
 		})
+}
+
+func (r *VirtualMachineSetReconciler) CreateVirtualMachineCR(vmSet *proxmoxv1alpha1.VirtualMachineSet, index string) error {
+
+	virtualMachine := &proxmoxv1alpha1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      vmSet.Name + "-" + index,
+			Namespace: vmSet.Namespace,
+			Labels:    labelsSetter(vmSet),
+		},
+		Spec: proxmoxv1alpha1.VirtualMachineSpec{
+			Name:     vmSet.Name + "-" + index,
+			NodeName: vmSet.Spec.NodeName,
+			Template: vmSet.Spec.Template,
+		},
+	}
+	// Set VirtualMachineSet instance as the owner and controller
+	if err := controllerutil.SetControllerReference(vmSet, virtualMachine, r.Scheme); err != nil {
+		return err
+	}
+	// Create the VirtualMachine instance
+	if err := r.Create(context.Background(), virtualMachine); err != nil {
+		return err
+	}
+	return nil
+}
+
+func labelsSetter(vmSet *proxmoxv1alpha1.VirtualMachineSet) map[string]string {
+	labels := make(map[string]string)
+	labels["owner"] = vmSet.Name
+	return labels
+}
+
+func (r *VirtualMachineSetReconciler) scaleUpVMs(vmSet *proxmoxv1alpha1.VirtualMachineSet, replicas int, vmList *proxmoxv1alpha1.VirtualMachineList) error {
+	for i := len(vmList.Items); i < int(replicas); i++ {
+		index := fmt.Sprintf("%d", i)
+		if err := r.CreateVirtualMachineCR(vmSet, index); err != nil {
+			return fmt.Errorf("unable to create VirtualMachine: %w", err)
+		}
+	}
+	return nil
+}
+
+func (r *VirtualMachineSetReconciler) scaleDownVMs(ctx context.Context, replicas int, vmList *proxmoxv1alpha1.VirtualMachineList) error {
+	for i := int(replicas); i < len(vmList.Items); i++ {
+		vm := &vmList.Items[i]
+		if err := r.Delete(ctx, vm); err != nil {
+			return fmt.Errorf("unable to delete VirtualMachine object: %w", err)
+		}
+	}
+	return nil
+}
+
+func (r *VirtualMachineSetReconciler) updateVMs(ctx context.Context, vmSet *proxmoxv1alpha1.VirtualMachineSet, vmList *proxmoxv1alpha1.VirtualMachineList) error {
+	for i := range vmList.Items {
+		vm := &vmList.Items[i]
+		if !reflect.DeepEqual(vm.Spec.Template, vmSet.Spec.Template) {
+			vm.Spec.Template = vmSet.Spec.Template
+			if err := r.Update(ctx, vm); err != nil {
+				return fmt.Errorf("unable to update VirtualMachine: %w", err)
+			}
+		}
+	}
+	return nil
 }

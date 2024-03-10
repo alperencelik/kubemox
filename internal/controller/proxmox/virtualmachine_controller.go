@@ -19,7 +19,6 @@ package proxmox
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -74,30 +73,11 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	vm := &proxmoxv1alpha1.VirtualMachine{}
 	err := r.Get(ctx, req.NamespacedName, vm)
 	if err != nil {
-		// logger.Error(err, "unable to fetch VirtualMachine")
+		logger.Error(err, "unable to fetch VirtualMachine")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	logger.Info(fmt.Sprintf("Reconciling VirtualMachine %s", vm.Name))
-
-	if vm.Status.Conditions == nil || len(vm.Status.Conditions) == 0 {
-		meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
-			Type:    typeAvailableVirtualMachine,
-			Status:  metav1.ConditionUnknown,
-			Reason:  "Reconciling",
-			Message: "Starting reconcilation",
-		})
-		err = r.Status().Update(ctx, vm)
-		if err != nil {
-			logger.Error(err, "Error updating VirtualMachine status")
-		}
-
-		// Re-fetch the VirtualMachine resource
-		if err = r.Get(ctx, req.NamespacedName, vm); err != nil {
-			logger.Error(err, "unable to fetch VirtualMachine")
-			return ctrl.Result{}, client.IgnoreNotFound(err)
-		}
-	}
 
 	// Check if the VirtualMachine instance is marked to be deleted, which is indicated by the deletion timestamp being set.
 	if vm.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -124,8 +104,13 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				logger.Error(err, "Error updating VirtualMachine status")
 				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
+			// Re-fetch the VirtualMachine resource
+			if err = r.Get(ctx, req.NamespacedName, vm); err != nil {
+				logger.Error(err, "unable to fetch VirtualMachine")
+				return ctrl.Result{}, client.IgnoreNotFound(err)
+			}
 			// Perform all operations to delete the VM
-			r.DeleteVirtualMachine(ctx, vm)
+			r.DeleteVirtualMachine(vm)
 			// Re-fetch the VirtualMachine resource
 			if err = r.Get(ctx, req.NamespacedName, vm); err != nil {
 				logger.Error(err, "unable to fetch VirtualMachine")
@@ -135,7 +120,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
 				Type:    typeDeletingVirtualMachine,
 				Status:  metav1.ConditionTrue,
-				Reason:  "Deleting",
+				Reason:  "Deleted",
 				Message: "VirtualMachine deleted",
 			})
 			if err = r.Status().Update(ctx, vm); err != nil {
@@ -143,6 +128,12 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
 			logger.Info("Removing finalizer from VirtualMachine", "name", vm.Spec.Name)
+
+			// Re-fetch the VirtualMachine resource
+			if err = r.Get(ctx, req.NamespacedName, vm); err != nil {
+				logger.Error(err, "unable to fetch VirtualMachine")
+				return ctrl.Result{}, client.IgnoreNotFound(err)
+			}
 			// Remove finalizer
 			if ok := controllerutil.RemoveFinalizer(vm, virtualMachineFinalizerName); !ok {
 				logger.Error(err, "Error removing finalizer from VirtualMachine")
@@ -156,6 +147,11 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// Stop reconciliation as the item is being deleted
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	// Refetch the VirtualMachine resource
+	if err = r.Get(ctx, req.NamespacedName, vm); err != nil {
+		logger.Error(err, "unable to fetch VirtualMachine")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
 
 	// Check if this VirtualMachine already exists
 	vmName := vm.Spec.Name
@@ -165,7 +161,21 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if !vmExists {
 		// If not exists, create the VM
 		logger.Info("Creating VirtualMachine", "name", vmName)
-		r.CreateVirtualMachine(ctx, vm)
+		err = r.CreateVirtualMachine(vm)
+		if err != nil {
+			logger.Error(err, "Error creating VirtualMachine")
+			meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
+				Type:    typeErrorVirtualMachine,
+				Status:  metav1.ConditionTrue,
+				Reason:  "Error",
+				Message: fmt.Sprintf("Error creating VirtualMachine: %s", err),
+			})
+			if err = r.Status().Update(ctx, vm); err != nil {
+				logger.Error(err, "Error updating VirtualMachine status")
+				return ctrl.Result{}, client.IgnoreNotFound(err)
+			}
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
 		metrics.IncVirtualMachineCount()
 	} else {
 		// If exists, check if it is running or not
@@ -177,23 +187,20 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			logger.Info(fmt.Sprintf("VirtualMachine %s already exists and running", vmName))
 		}
 	}
-	// Implement the logic to update the VM if needed
-
-	// proxmox.UpdateVM(vmName, nodeName, vm)
-	// err = r.Update(context.Background(), vm)
-	// if err != nil {
-	// return ctrl.Result{}, client.IgnoreNotFound(err)
-	// }
-
-	// If template and created VM has different resources then update the VM with new resources the function itself
-	// decides if VM restart needed or not
-	proxmox.UpdateVM(vmName, nodeName, vm)
-	err = r.Update(context.Background(), vm)
-	if err != nil {
+	// Re-fetch the VirtualMachine resource
+	if err = r.Get(ctx, req.NamespacedName, vm); err != nil {
+		logger.Error(err, "unable to fetch VirtualMachine")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// return ctrl.Result{}, nil
+	// Update the VirtualMachine spec if needed
+	proxmox.UpdateVM(vmName, nodeName, vm)
+	err = r.Update(context.Background(), vm)
+	if err != nil {
+		logger.Error(err, "Error updating VirtualMachine")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
 	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
 
@@ -214,7 +221,7 @@ func (r *VirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) error {
+func (r *VirtualMachineReconciler) CreateVirtualMachine(vm *proxmoxv1alpha1.VirtualMachine) error {
 	vmName := vm.Spec.Name
 	nodeName := vm.Spec.NodeName
 
@@ -224,6 +231,9 @@ func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, vm 
 	case "template":
 		kubernetes.CreateVMKubernetesEvent(vm, Clientset, "Creating")
 		proxmox.CreateVMFromTemplate(vm)
+		if err := r.Status().Update(context.Background(), vm); err != nil {
+			return err
+		}
 		proxmox.StartVM(vmName, nodeName)
 		kubernetes.CreateVMKubernetesEvent(vm, Clientset, "Created")
 	case "scratch":
@@ -240,29 +250,9 @@ func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, vm 
 	return nil
 }
 
-func (r *VirtualMachineReconciler) DeleteVirtualMachine(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) {
+func (r *VirtualMachineReconciler) DeleteVirtualMachine(vm *proxmoxv1alpha1.VirtualMachine) {
 	// Delete the VM
 	kubernetes.CreateVMKubernetesEvent(vm, kubernetes.Clientset, "Deleting")
 	proxmox.DeleteVM(vm.Spec.Name, vm.Spec.NodeName)
 	metrics.DecVirtualMachineCount()
-}
-
-func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) error {
-	// Update the status of VirtualMachine resource
-	Status, err := proxmox.UpdateVMStatus(vm.Name, vm.Spec.NodeName)
-	if err != nil {
-		return fmt.Errorf("%s, Error updating VirtualMachine status", err)
-	}
-	vm.Status = *Status
-	err = r.Status().Update(ctx, vm)
-	if err != nil {
-		return fmt.Errorf("%s, Error updating VirtualMachine status", err)
-	}
-	return nil
-}
-
-func (r *VirtualMachineReconciler) ReconcileStatus(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-	logger.Info(fmt.Sprintf("Reconciling VirtualMachine status %s", req.Name))
-	return ctrl.Result{Requeue: true, RequeueAfter: VMreconcilationPeriod * time.Second}, client.IgnoreNotFound(nil)
 }

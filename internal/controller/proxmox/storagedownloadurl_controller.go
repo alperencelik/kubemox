@@ -172,6 +172,7 @@ func (r *StorageDownloadURLReconciler) SetupWithManager(mgr ctrl.Manager) error 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.StorageDownloadURL{}).
 		WithEventFilter(predicate.GenerationChangedPredicate{}).
+		Owns(&proxmoxv1alpha1.StorageDownloadURL{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: SDUmaxConcurrentReconciles}).
 		Complete(&StorageDownloadURLReconciler{
 			Client: mgr.GetClient(),
