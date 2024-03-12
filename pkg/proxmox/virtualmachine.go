@@ -655,7 +655,7 @@ func UpdateVM(vmName, nodeName string, vm *proxmoxv1alpha1.VirtualMachine) {
 		case false:
 			log.Log.Error(taskErr, "Can't update VM")
 		case true:
-			log.Log.Info(fmt.Sprintf("VM %s has been updated", vmName))
+			log.Log.Info(fmt.Sprintf("VM %s updating", vmName))
 		default:
 			log.Log.Info("VM is already updated")
 		}

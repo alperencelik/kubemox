@@ -98,13 +98,13 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachine")
 		os.Exit(1)
 	}
-	if err = (&proxmoxcontroller.VirtualMachineStatusReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineStatus")
-		os.Exit(1)
-	}
+	// 	if err = (&proxmoxcontroller.VirtualMachineStatusReconciler{
+	// Client: mgr.GetClient(),
+	// Scheme: mgr.GetScheme(),
+	// }).SetupWithManager(mgr); err != nil {
+	// setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineStatus")
+	// os.Exit(1)
+	// }
 	if err = (&proxmoxcontroller.ManagedVirtualMachineReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
