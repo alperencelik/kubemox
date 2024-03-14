@@ -126,8 +126,9 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				}
 			}
 			// Get VM list and delete them
-			for _, vm := range vmList.Items {
-				if err = r.Delete(ctx, &vm); err != nil {
+			for i := range vmList.Items {
+				vm := &vmList.Items[i]
+				if err = r.Delete(ctx, vm); err != nil {
 					logger.Error(err, "unable to delete VirtualMachine")
 					return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 				}
@@ -162,8 +163,8 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// If the number of the VirtualMachines is less than the desired number of replicas and the object
 	// is not being deleted, create the VirtualMachines
-	if len(vmList.Items) < int(replicas) && vmSet.ObjectMeta.DeletionTimestamp.IsZero() {
-		if err := r.scaleUpVMs(vmSet, replicas, vmList); err != nil {
+	if len(vmList.Items) < replicas && vmSet.ObjectMeta.DeletionTimestamp.IsZero() {
+		if err = r.scaleUpVMs(vmSet, replicas, vmList); err != nil {
 			logger.Error(err, "unable to scale up VirtualMachines")
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
@@ -180,8 +181,8 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// If the number of the VirtualMachines is more than the desired number of replicas
-	if len(vmList.Items) > int(replicas) {
-		if err := r.scaleDownVMs(ctx, replicas, vmList); err != nil {
+	if len(vmList.Items) > replicas {
+		if err = r.scaleDownVMs(ctx, replicas, vmList); err != nil {
 			logger.Error(err, "unable to scale down VirtualMachines")
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
@@ -198,7 +199,7 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		}
 	}
 
-	if err := r.updateVMs(ctx, vmSet, vmList); err != nil {
+	if err = r.updateVMs(ctx, vmSet, vmList); err != nil {
 		logger.Error(err, "unable to update VirtualMachines")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -220,7 +221,7 @@ func (r *VirtualMachineSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *VirtualMachineSetReconciler) CreateVirtualMachineCR(vmSet *proxmoxv1alpha1.VirtualMachineSet, index string) error {
-
+	// Define a new VirtualMachine object
 	virtualMachine := &proxmoxv1alpha1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      vmSet.Name + "-" + index,
@@ -250,14 +251,26 @@ func labelsSetter(vmSet *proxmoxv1alpha1.VirtualMachineSet) map[string]string {
 	return labels
 }
 
-func (r *VirtualMachineSetReconciler) scaleUpVMs(vmSet *proxmoxv1alpha1.VirtualMachineSet, replicas int, vmList *proxmoxv1alpha1.VirtualMachineList) error {
-	for i := len(vmList.Items); i < int(replicas); i++ {
-		index := strconv.Itoa(i)
-		if err := r.CreateVirtualMachineCR(vmSet, index); err != nil {
-			return fmt.Errorf("unable to create VirtualMachine: %w", err)
+func (r *VirtualMachineSetReconciler) scaleUpVMs(vmSet *proxmoxv1alpha1.VirtualMachineSet,
+	replicas int, vmList *proxmoxv1alpha1.VirtualMachineList) error {
+
+	// Create a map of existing VMs
+	// Create a map of existing VirtualMachines for quick lookup
+	vmMap := make(map[string]bool)
+	for _, vm := range vmList.Items {
+		vmMap[vm.Name] = true
+	}
+	// Loop from 0 to replicas and also create any missing VirtualMachines
+	for i := 0; i < replicas; i++ {
+		vmName := fmt.Sprintf("%s-%d", vmSet.Name, i)
+		if _, exists := vmMap[vmName]; !exists {
+			if err := r.CreateVirtualMachineCR(vmSet, strconv.Itoa(i)); err != nil {
+				return fmt.Errorf("unable to create VirtualMachine: %w", err)
+			}
 		}
 	}
 	return nil
+
 }
 
 func (r *VirtualMachineSetReconciler) scaleDownVMs(ctx context.Context, replicas int, vmList *proxmoxv1alpha1.VirtualMachineList) error {
@@ -271,7 +284,8 @@ func (r *VirtualMachineSetReconciler) scaleDownVMs(ctx context.Context, replicas
 	return nil
 }
 
-func (r *VirtualMachineSetReconciler) updateVMs(ctx context.Context, vmSet *proxmoxv1alpha1.VirtualMachineSet, vmList *proxmoxv1alpha1.VirtualMachineList) error {
+func (r *VirtualMachineSetReconciler) updateVMs(ctx context.Context,
+	vmSet *proxmoxv1alpha1.VirtualMachineSet, vmList *proxmoxv1alpha1.VirtualMachineList) error {
 	for i := range vmList.Items {
 		vm := &vmList.Items[i]
 		if !reflect.DeepEqual(vm.Spec.Template, vmSet.Spec.Template) {

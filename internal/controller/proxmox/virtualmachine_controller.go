@@ -226,11 +226,6 @@ func (r *VirtualMachineReconciler) CreateVirtualMachine(vm *proxmoxv1alpha1.Virt
 	default:
 		return fmt.Errorf("VM %s doesn't have any template or vmSpec defined", vmName)
 	}
-	// 	if vm.ObjectMeta.GetOwnerReferences() == nil {
-	// if err := controllerutil.SetControllerReference(vm, vm, r.Scheme); err != nil {
-	// return err
-	// }
-	// }
 	return nil
 }
 

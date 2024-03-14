@@ -38,8 +38,8 @@ const (
 	virtualMachineCreateSteps     = 20
 	virtualMachineStartTimesNum   = 10
 	virtualMachineStartSteps      = 20
-	virtualMachineStopTimesNum    = 10
-	virtualMachineStopSteps       = 20
+	virtualMachineStopTimesNum    = 3
+	virtualMachineStopSteps       = 5
 	virtualMachineRestartTimesNum = 10
 	virtualMachineRestartSteps    = 20
 	virtualMachineUpdateTimesNum  = 2
