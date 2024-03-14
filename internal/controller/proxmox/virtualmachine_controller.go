@@ -112,12 +112,11 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 					logger.Error(err, "Error updating VirtualMachine status")
 					return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 				}
-				// ---> Test block
 			} else {
 				return ctrl.Result{}, nil
 			}
-			// <--- Test block
 			// Perform all operations to delete the VM if the VM is not marked as deleting
+			// TODO: Check if the VM is already deleting
 			r.DeleteVirtualMachine(vm)
 
 			// Remove finalizer
@@ -155,7 +154,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				logger.Error(err, "Error updating VirtualMachine status")
 				return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 			}
-			return ctrl.Result{}, client.IgnoreNotFound(err)
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}
 		metrics.IncVirtualMachineCount()
 	} else {
@@ -191,18 +190,13 @@ func (r *VirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	logger.Info(fmt.Sprintf("Connected to the Proxmox, version is: %s", version))
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.VirtualMachine{}).
-		Owns(&proxmoxv1alpha1.VirtualMachine{}).
 		WithEventFilter(predicate.Funcs{
 			UpdateFunc: func(e event.UpdateEvent) bool {
 				oldVM := e.ObjectOld.(*proxmoxv1alpha1.VirtualMachine)
 				newVM := e.ObjectNew.(*proxmoxv1alpha1.VirtualMachine)
 				condition1 := !reflect.DeepEqual(oldVM.Spec, newVM.Spec)
-				condition2 := newVM.ObjectMeta.GetDeletionTimestamp().IsZero() && oldVM.Generation != newVM.Generation
+				condition2 := newVM.ObjectMeta.GetDeletionTimestamp().IsZero()
 				return condition1 || !condition2
-				//				if reflect.DeepEqual(oldVM.Spec, newVM.Spec) {
-				//return false
-				//}
-				//return true
 			},
 		}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: VMmaxConcurrentReconciles}).
@@ -232,9 +226,11 @@ func (r *VirtualMachineReconciler) CreateVirtualMachine(vm *proxmoxv1alpha1.Virt
 	default:
 		return fmt.Errorf("VM %s doesn't have any template or vmSpec defined", vmName)
 	}
-	if err := controllerutil.SetControllerReference(vm, vm, r.Scheme); err != nil {
-		return err
-	}
+	// 	if vm.ObjectMeta.GetOwnerReferences() == nil {
+	// if err := controllerutil.SetControllerReference(vm, vm, r.Scheme); err != nil {
+	// return err
+	// }
+	// }
 	return nil
 }
 
