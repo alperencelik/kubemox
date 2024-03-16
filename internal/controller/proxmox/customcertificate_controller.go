@@ -18,14 +18,19 @@ package proxmox
 
 import (
 	"context"
-	"fmt"
-	"time"
+	"reflect"
 
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
@@ -42,6 +47,12 @@ const (
 	customCertificateFinalizerName    = "customcertificate.proxmox.alperen.cloud/finalizer"
 	CustomCertReconcilationPeriod     = 10
 	CustomCertMaxConcurrentReconciles = 10
+
+	// Status conditions
+	typeAvailableCustomCertificate = "Available"
+	typeCreatingCustomCertificate  = "Creating"
+	typeDeletingCustomCertificate  = "Deleting"
+	typeErrorCustomCertificate     = "Error"
 )
 
 //+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=customcertificates,verbs=get;list;watch;create;update;patch;delete
@@ -59,12 +70,16 @@ const (
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
 func (r *CustomCertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	customCert := &proxmoxv1alpha1.CustomCertificate{}
 	err := r.Get(ctx, req.NamespacedName, customCert)
 	if err != nil {
-		log.Log.Error(err, "unable to fetch CustomCertificate")
+		if errors.IsNotFound(err) {
+			logger.Info("CustomCertificate resource not found. Ignoring since object must be deleted")
+			return ctrl.Result{}, nil
+		}
+		logger.Error(err, "unable to fetch CustomCertificate")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -80,14 +95,29 @@ func (r *CustomCertificateReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	} else {
 		// The object is being deleted
 		if controllerutil.ContainsFinalizer(customCert, customCertificateFinalizerName) {
-			deletionKey := fmt.Sprintf("%s/%s-deletion", customCert.Namespace, customCert.Name)
-			if isProcessed(deletionKey) {
+			// Delete the custom certificate
+			logger.Info("Deleting the CustomCertificate")
+
+			// Update the condition for the CustomCertificate if it is being deleted
+			if !meta.IsStatusConditionPresentAndEqual(customCert.Status.Conditions, typeDeletingCustomCertificate, metav1.ConditionTrue) {
+				meta.SetStatusCondition(&customCert.Status.Conditions, metav1.Condition{
+					Type:    typeDeletingCustomCertificate,
+					Status:  metav1.ConditionTrue,
+					Reason:  "Deleting",
+					Message: "Deleting CustomCertificate",
+				})
+				if err = r.Status().Update(ctx, customCert); err != nil {
+					logger.Error(err, "Error updating CustomCertificate status")
+					return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+				}
 			} else {
-				// Delete the custom certificate
-				proxmox.DeleteCustomCertificate(customCert.Spec.NodeName)
-				processedResources[deletionKey] = true
+				return ctrl.Result{}, nil
 			}
+			// Delete the custom certificate from Proxmox
+			proxmox.DeleteCustomCertificate(customCert.Spec.NodeName)
 			// Remove the finalizer
+			logger.Info("Removing finalizer from CustomCertificate")
+
 			controllerutil.RemoveFinalizer(customCert, customCertificateFinalizerName)
 			if err = r.Update(ctx, customCert); err != nil {
 				log.Log.Error(err, "Error updating CustomCertificate")
@@ -107,13 +137,15 @@ func (r *CustomCertificateReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	certExists := kubernetes.CheckCertificateExists(customCert.Name, customCert.Namespace)
 	if !certExists {
 		// Create a Certificate resource
-		log.Log.Info("Creating a Certificate resource", "Certificate", customCert.Spec.CertManagerSpec)
+		logger.Info("Creating a Certificate resource", "Certificate", customCert.Spec.CertManagerSpec)
 		cert, certErr := kubernetes.CreateCertificate(customCert)
 		if certErr != nil {
-			log.Log.Error(certErr, "unable to create Certificate resource")
+			logger.Error(certErr, "unable to create Certificate resource")
 			return ctrl.Result{}, err
 		}
-		log.Log.Info("Certificate is created", "Certificate", cert)
+		logger.Info("Certificate is created", "Certificate", cert)
+		// Request the request to update the proxmoxCertSpec with the new certificate
+		return ctrl.Result{Requeue: true}, nil
 	} else {
 		// Get the Certificate resource
 		certManagerCertificate := kubernetes.GetCertificate(customCert)
@@ -124,18 +156,18 @@ func (r *CustomCertificateReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		customCert.Spec.ProxmoxCertSpec.Certificate = string(tlsCrt)
 		customCert.Spec.ProxmoxCertSpec.PrivateKey = string(tlsKey)
 		if err = r.Update(ctx, customCert); err != nil {
-			log.Log.Error(err, "unable to update CustomCertificate")
+			logger.Error(err, "unable to update CustomCertificate")
 			return ctrl.Result{}, err
 		}
 		// TODO: Diff the key in Proxmox and the key in the secret
 		// Upload the certificate to the Proxmox node
 		if err = proxmox.CreateCustomCertificate(customCert.Spec.NodeName, &customCert.Spec.ProxmoxCertSpec); err != nil {
-			log.Log.Error(err, "unable to create CustomCertificate in Proxmox")
+			logger.Error(err, "unable to create CustomCertificate in Proxmox")
 			return ctrl.Result{}, err
 		}
 	}
 
-	return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, client.IgnoreNotFound(err)
+	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -151,5 +183,15 @@ func (r *CustomCertificateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.CustomCertificate{}).
+		WithEventFilter(predicate.Funcs{
+			UpdateFunc: func(e event.UpdateEvent) bool {
+				oldCustomCert := e.ObjectOld.(*proxmoxv1alpha1.CustomCertificate)
+				newCustomCert := e.ObjectNew.(*proxmoxv1alpha1.CustomCertificate)
+				condition1 := !reflect.DeepEqual(oldCustomCert.Spec, newCustomCert.Spec)
+				condition2 := newCustomCert.ObjectMeta.GetDeletionTimestamp().IsZero()
+				return condition1 || !condition2
+			},
+		}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: CustomCertMaxConcurrentReconciles}).
 		Complete(r)
 }

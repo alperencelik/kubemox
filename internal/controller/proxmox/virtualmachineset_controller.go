@@ -182,7 +182,7 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// If the number of the VirtualMachines is more than the desired number of replicas
 	if len(vmList.Items) > replicas {
-		if err = r.scaleDownVMs(ctx, replicas, vmList); err != nil {
+		if err = r.scaleDownVMs(vmSet, vmList); err != nil {
 			logger.Error(err, "unable to scale down VirtualMachines")
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
@@ -253,11 +253,10 @@ func labelsSetter(vmSet *proxmoxv1alpha1.VirtualMachineSet) map[string]string {
 
 func (r *VirtualMachineSetReconciler) scaleUpVMs(vmSet *proxmoxv1alpha1.VirtualMachineSet,
 	replicas int, vmList *proxmoxv1alpha1.VirtualMachineList) error {
-
-	// Create a map of existing VMs
 	// Create a map of existing VirtualMachines for quick lookup
 	vmMap := make(map[string]bool)
-	for _, vm := range vmList.Items {
+	for i := range vmList.Items {
+		vm := &vmList.Items[i]
 		vmMap[vm.Name] = true
 	}
 	// Loop from 0 to replicas and also create any missing VirtualMachines
@@ -270,15 +269,23 @@ func (r *VirtualMachineSetReconciler) scaleUpVMs(vmSet *proxmoxv1alpha1.VirtualM
 		}
 	}
 	return nil
-
 }
 
-func (r *VirtualMachineSetReconciler) scaleDownVMs(ctx context.Context, replicas int, vmList *proxmoxv1alpha1.VirtualMachineList) error {
-	for i := len(vmList.Items); i > replicas; i-- {
-		index := i - 1
-		vm := &vmList.Items[index]
-		if err := r.Delete(ctx, vm); err != nil {
-			return fmt.Errorf("unable to delete VirtualMachine object: %w", err)
+func (r *VirtualMachineSetReconciler) scaleDownVMs(vmSet *proxmoxv1alpha1.VirtualMachineSet,
+	vmList *proxmoxv1alpha1.VirtualMachineList) error {
+	// Create a map of expected VirtualMachines
+	expectedVMMap := make(map[string]bool)
+	for i := 0; i < vmSet.Spec.Replicas; i++ {
+		vmName := fmt.Sprintf("%s-%d", vmSet.Name, i)
+		expectedVMMap[vmName] = true
+	}
+	// Delete any VirtualMachines that are not in the expectedVmMap
+	for i := range vmList.Items {
+		vm := &vmList.Items[i]
+		if _, exists := expectedVMMap[vm.Name]; !exists {
+			if err := r.Delete(context.Background(), vm); err != nil {
+				return fmt.Errorf("unable to delete VirtualMachine: %w", err)
+			}
 		}
 	}
 	return nil

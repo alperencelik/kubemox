@@ -816,10 +816,47 @@ func CreateVMSnapshot(vmName, snapshotName string) (statusCode int) {
 		log.Log.Error(taskErr, "Can't create snapshot for the VirtualMachine %s", vmName)
 		return 1
 	case true:
-		log.Log.Info(fmt.Sprintf("VirtualMachine %s has been snapshotted with %s name", vmName, snapshotName))
 		return 0
 	default:
 		log.Log.Info("VirtualMachine has already a snapshot with the same name")
 		return 2
 	}
+}
+
+func GetVMSnapshots(vmName string) ([]string, error) {
+	nodeName := GetNodeOfVM(vmName)
+	node, err := Client.Node(ctx, nodeName)
+	if err != nil {
+		panic(err)
+	}
+	// Get VMID
+	vmID := GetVMID(vmName, nodeName)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for snapshot listing")
+	}
+	// Get snapshots
+	snapshots, err := VirtualMachine.Snapshots(ctx)
+	if err != nil {
+		log.Log.Error(err, "Error getting snapshots")
+	}
+	var snapshotNames []string
+	for _, snapshot := range snapshots {
+		snapshotNames = append(snapshotNames, snapshot.Name)
+	}
+	return snapshotNames, err
+}
+
+func VMSnapshotExists(vmName, snapshotName string) bool {
+	snapshots, err := GetVMSnapshots(vmName)
+	if err != nil {
+		log.Log.Error(err, "Error getting snapshots")
+		return false
+	}
+	for _, snapshot := range snapshots {
+		if strings.EqualFold(snapshot, snapshotName) {
+			return true
+		}
+	}
+	return false
 }

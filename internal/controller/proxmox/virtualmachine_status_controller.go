@@ -20,7 +20,6 @@ import (
 	"context"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -29,8 +28,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
-	"github.com/alperencelik/kubemox/pkg/proxmox"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // VirtualMachineReconciler reconciles a VirtualMachine object
@@ -55,53 +52,54 @@ const (
 func (r *VirtualMachineStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	// Fetch the VirtualMachine instance's status
-	vm := &proxmoxv1alpha1.VirtualMachine{}
-	err := r.Get(ctx, req.NamespacedName, vm)
-	if err != nil {
-		logger.Error(err, "unable to fetch VirtualMachine")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
-	// No need to output since it's ONLY tracking the status
-	// logger.Info(fmt.Sprintf("Reconciling VirtualMachine status %s", vm.Name))
+	_ = logger
+	// vm := &proxmoxv1alpha1.VirtualMachine{}
+	// err := r.Get(ctx, req.NamespacedName, vm)
+	// if err != nil {
+	// logger.Error(err, "unable to fetch VirtualMachine")
+	// return ctrl.Result{}, client.IgnoreNotFound(err)
+	// }
+	// // No need to output since it's ONLY tracking the status
+	// // logger.Info(fmt.Sprintf("Reconciling VirtualMachine status %s", vm.Name))
 
-	if vm.Status.Conditions == nil || len(vm.Status.Conditions) == 0 {
-		meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
-			Type:    typeAvailableVirtualMachine,
-			Status:  metav1.ConditionUnknown,
-			Reason:  "Reconciling",
-			Message: "Starting reconciliation",
-		})
-		err = r.Status().Update(ctx, vm)
-		if err != nil {
-			logger.Error(err, "Error updating VirtualMachine status")
-		}
-	}
+	// if vm.Status.Conditions == nil || len(vm.Status.Conditions) == 0 {
+	// meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
+	// Type:    typeAvailableVirtualMachine,
+	// Status:  metav1.ConditionUnknown,
+	// Reason:  "Reconciling",
+	// Message: "Starting reconciliation",
+	// })
+	// err = r.Status().Update(ctx, vm)
+	// if err != nil {
+	// logger.Error(err, "Error updating VirtualMachine status")
+	// }
+	// }
 
-	// Re-fetch the VirtualMachine resource
-	err = r.Get(ctx, req.NamespacedName, vm)
-	if err != nil {
-		logger.Error(err, "unable to fetch VirtualMachine")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
+	// // Re-fetch the VirtualMachine resource
+	// err = r.Get(ctx, req.NamespacedName, vm)
+	// if err != nil {
+	// logger.Error(err, "unable to fetch VirtualMachine")
+	// return ctrl.Result{}, client.IgnoreNotFound(err)
+	// }
 
-	status, err := proxmox.UpdateVMStatus(vm.Name, vm.Spec.NodeName)
-	if err != nil {
-		logger.Error(err, "unable to get status of VirtualMachine")
-		return ctrl.Result{}, err
-	}
-	// Re-fetch the VirtualMachine resource
-	if err = r.Get(ctx, req.NamespacedName, vm); err != nil {
-		logger.Error(err, "unable to fetch VirtualMachine")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
+	// status, err := proxmox.UpdateVMStatus(vm.Name, vm.Spec.NodeName)
+	// if err != nil {
+	// logger.Error(err, "unable to get status of VirtualMachine")
+	// return ctrl.Result{}, err
+	// }
+	// // Re-fetch the VirtualMachine resource
+	// if err = r.Get(ctx, req.NamespacedName, vm); err != nil {
+	// logger.Error(err, "unable to fetch VirtualMachine")
+	// return ctrl.Result{}, client.IgnoreNotFound(err)
+	// }
 
-	vm.Status = *status
-	err = r.Status().Update(ctx, vm)
-	if err != nil {
-		logger.Error(err, "unable to update VirtualMachine status")
-		return ctrl.Result{}, err
-	}
-	return ctrl.Result{Requeue: true, RequeueAfter: StatusReconcilationPeriod * time.Second}, client.IgnoreNotFound(err)
+	// vm.Status = *status
+	// err = r.Status().Update(ctx, vm)
+	// if err != nil {
+	// logger.Error(err, "unable to update VirtualMachine status")
+	// return ctrl.Result{}, err
+	// }
+	return ctrl.Result{Requeue: true, RequeueAfter: StatusReconcilationPeriod * time.Second}, nil
 }
 
 func (r *VirtualMachineStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
