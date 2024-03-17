@@ -169,10 +169,6 @@ spec:
           status:
             description: VirtualMachineStatus defines the observed state of VirtualMachine
             properties:
-              IPAddress:
-                type: string
-              OSInfo:
-                type: string
               conditions:
                 description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
                   of cluster Important: Run "make" to regenerate code after modifying
@@ -244,16 +240,34 @@ spec:
                   - type
                   type: object
                 type: array
-              id:
-                type: integer
-              name:
-                type: string
-              node:
-                type: string
-              state:
-                type: string
-              uptime:
-                type: string
+              status:
+                properties:
+                  IPAddress:
+                    description: IPAddress is the IP address of the VM
+                    type: string
+                  OSInfo:
+                    description: OSInfo is the OS information of the VM
+                    type: string
+                  id:
+                    description: ID is the ID of the VM
+                    type: integer
+                  node:
+                    description: Node is the name of the node
+                    type: string
+                  state:
+                    description: State is the state of the VM
+                    type: string
+                  uptime:
+                    description: Uptime is the uptime of the VM
+                    type: string
+                required:
+                - IPAddress
+                - OSInfo
+                - id
+                - node
+                - state
+                - uptime
+                type: object
             type: object
         type: object
     served: true

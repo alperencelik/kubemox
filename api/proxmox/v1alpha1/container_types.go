@@ -71,11 +71,7 @@ type ContainerStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"` //nolint:lll // This is required by kubebuilder
-	State      string             `json:"state,omitempty"`
-	Node       string             `json:"node,omitempty"`
-	Name       string             `json:"name,omitempty"`
-	ID         int                `json:"id,omitempty"`
-	Uptime     string             `json:"uptime,omitempty"`
+	Status     QEMUStatus         `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true

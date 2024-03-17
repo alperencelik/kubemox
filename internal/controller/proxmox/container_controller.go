@@ -200,11 +200,14 @@ func (r *ContainerReconciler) UpdateContainer(ctx context.Context, container *pr
 
 func (r *ContainerReconciler) UpdateContainerStatus(ctx context.Context, container *proxmoxv1alpha1.Container) error {
 	containerStatus := proxmox.UpdateContainerStatus(container.Name, container.Spec.NodeName)
-	container.Status.State = containerStatus.State
-	container.Status.ID = containerStatus.ID
-	container.Status.Name = containerStatus.Name
-	container.Status.Node = containerStatus.Node
-	container.Status.Uptime = containerStatus.Uptime
+
+	qemuStatus := proxmoxv1alpha1.QEMUStatus{
+		State:  containerStatus.State,
+		Node:   containerStatus.Node,
+		Uptime: containerStatus.Uptime,
+		ID:     containerStatus.ID,
+	}
+	container.Status.Status = qemuStatus
 	// // Update Container
 	err := r.Status().Update(ctx, container)
 	if err != nil {

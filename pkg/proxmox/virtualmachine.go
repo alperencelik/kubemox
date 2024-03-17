@@ -537,10 +537,10 @@ func GetManagedVMSpec(managedVMName, nodeName string) (cores, memory, disk int) 
 	return cores, memory, disk
 }
 
-func UpdateVMStatus(vmName, nodeName string) (*proxmoxv1alpha1.VirtualMachineStatus, error) {
+func UpdateVMStatus(vmName, nodeName string) (*proxmoxv1alpha1.QEMUStatus, error) {
 	var VirtualMachineIP string
 	var VirtualMachineOS string
-	var VirtualmachineStatus *proxmoxv1alpha1.VirtualMachineStatus
+	var VirtualmachineStatus *proxmoxv1alpha1.QEMUStatus
 	// Get VM status
 	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
@@ -561,7 +561,7 @@ func UpdateVMStatus(vmName, nodeName string) (*proxmoxv1alpha1.VirtualMachineSta
 			VirtualMachineIP = "nil"
 			VirtualMachineOS = "nil"
 		}
-		VirtualmachineStatus = &proxmoxv1alpha1.VirtualMachineStatus{
+		VirtualmachineStatus = &proxmoxv1alpha1.QEMUStatus{
 			State:     VirtualMachine.Status,
 			ID:        int(VirtualMachine.VMID),
 			Node:      VirtualMachine.Node,
@@ -571,7 +571,7 @@ func UpdateVMStatus(vmName, nodeName string) (*proxmoxv1alpha1.VirtualMachineSta
 		}
 		return VirtualmachineStatus, nil
 	} else {
-		VirtualmachineStatus = &proxmoxv1alpha1.VirtualMachineStatus{
+		VirtualmachineStatus = &proxmoxv1alpha1.QEMUStatus{
 			State:     "nil",
 			ID:        0,
 			Node:      "nil",
@@ -691,10 +691,6 @@ func CreateManagedVM(managedVM string) *proxmoxv1alpha1.ManagedVirtualMachine {
 			Cores:    cores,
 			Memory:   memory,
 			Disk:     disk,
-		},
-
-		Status: proxmoxv1alpha1.VirtualMachineStatus{
-			ID: 0,
 		},
 	}
 	return VirtualMachine
