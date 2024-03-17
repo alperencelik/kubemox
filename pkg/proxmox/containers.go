@@ -147,15 +147,16 @@ func DeleteContainer(containerName, nodeName string) {
 	mutex.Unlock()
 }
 
-func StartContainer(containerName, nodeName string) {
+func StartContainer(containerName, nodeName string) error {
 	// Get container
 	container := GetContainer(containerName, nodeName)
 	// Start container
 	status, err := container.Start(ctx)
 	log.Log.Info(fmt.Sprintf("Container %s status: %s", containerName, status))
 	if err != nil {
-		log.Log.Error(err, "Can't start container")
+		return err
 	}
+	return nil
 }
 
 func GetContainerState(containerName, nodeName string) string {

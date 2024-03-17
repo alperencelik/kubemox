@@ -105,7 +105,6 @@ type VirtualMachineStatus struct {
 
 	State     string `json:"state,omitempty"`
 	Node      string `json:"node,omitempty"`
-	Name      string `json:"name,omitempty"`
 	Uptime    string `json:"uptime,omitempty"`
 	ID        int    `json:"id,omitempty"`
 	IPAddress string `json:"IPAddress,omitempty"`

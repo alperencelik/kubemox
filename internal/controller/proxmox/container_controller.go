@@ -128,7 +128,11 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// Update Container
 		containerState := proxmox.GetContainerState(containerName, nodeName)
 		if containerState == "stopped" {
-			proxmox.StartContainer(containerName, nodeName)
+			err = proxmox.StartContainer(containerName, nodeName)
+			if err != nil {
+				logger.Error(err, "Failed to start Container")
+				return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			}
 		} else {
 			logger.Info(fmt.Sprintf("Container %s already exists and running", containerName))
 			// Update Container
@@ -145,7 +149,11 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			logger.Error(err, "Failed to clone Container")
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
-		proxmox.StartContainer(containerName, nodeName)
+		err = proxmox.StartContainer(containerName, nodeName)
+		if err != nil {
+			logger.Error(err, "Failed to start Container")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		}
 	}
 	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
@@ -170,14 +178,20 @@ func (r *ContainerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *ContainerReconciler) CloneContainer(container *proxmoxv1alpha1.Container) error {
 	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
-	proxmox.CloneContainer(container)
-	proxmox.StartContainer(containerName, nodeName)
+	err := proxmox.CloneContainer(container)
+	if err != nil {
+		return err
+	}
+	err = proxmox.StartContainer(containerName, nodeName)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 func (r *ContainerReconciler) UpdateContainer(ctx context.Context, container *proxmoxv1alpha1.Container) error {
 	proxmox.UpdateContainer(container)
-	err := r.Update(context.Background(), container)
+	err := r.Update(ctx, container)
 	if err != nil {
 		return err
 	}
@@ -192,7 +206,7 @@ func (r *ContainerReconciler) UpdateContainerStatus(ctx context.Context, contain
 	container.Status.Node = containerStatus.Node
 	container.Status.Uptime = containerStatus.Uptime
 	// // Update Container
-	err := r.Status().Update(context.Background(), container)
+	err := r.Status().Update(ctx, container)
 	if err != nil {
 		return err
 	}
