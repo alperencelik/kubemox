@@ -253,7 +253,7 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(vm *proxmoxv1alpha
 	// Update the QEMU status
 	qemuStatus, err := proxmox.UpdateVMStatus(vm.Spec.Name, vm.Spec.NodeName)
 	if err != nil {
-
+		return err
 	}
 	vm.Status.Status = *qemuStatus
 	if err := r.Status().Update(context.Background(), vm); err != nil {
