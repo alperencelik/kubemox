@@ -177,6 +177,13 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 	logger.Info(fmt.Sprintf("VirtualMachine %s already exists and running", vmName))
 
+	// Update the VirtualMachine status
+	err = r.UpdateVirtualMachineStatus(vm)
+	if err != nil {
+		logger.Error(err, "Error updating VirtualMachine status")
+		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+	}
+
 	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
 
@@ -234,4 +241,23 @@ func (r *VirtualMachineReconciler) DeleteVirtualMachine(vm *proxmoxv1alpha1.Virt
 	kubernetes.CreateVMKubernetesEvent(vm, kubernetes.Clientset, "Deleting")
 	proxmox.DeleteVM(vm.Spec.Name, vm.Spec.NodeName)
 	metrics.DecVirtualMachineCount()
+}
+
+func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(vm *proxmoxv1alpha1.VirtualMachine) error {
+	meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
+		Type:    typeAvailableVirtualMachine,
+		Status:  metav1.ConditionTrue,
+		Reason:  "Available",
+		Message: "VirtualMachine status is updated",
+	})
+	// Update the QEMU status
+	qemuStatus, err := proxmox.UpdateVMStatus(vm.Spec.Name, vm.Spec.NodeName)
+	if err != nil {
+
+	}
+	vm.Status.Status = *qemuStatus
+	if err := r.Status().Update(context.Background(), vm); err != nil {
+		return err
+	}
+	return nil
 }

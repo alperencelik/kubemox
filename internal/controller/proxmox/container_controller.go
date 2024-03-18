@@ -155,6 +155,12 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}
 	}
+	// Update Container Status
+	err = r.UpdateContainerStatus(ctx, container)
+	if err != nil {
+		logger.Error(err, "Failed to update Container status")
+		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+	}
 	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
 
