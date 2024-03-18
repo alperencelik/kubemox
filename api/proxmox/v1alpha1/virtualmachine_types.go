@@ -97,17 +97,27 @@ type VirtualMachineSpecTemplateNetwork struct {
 	Bridge string `json:"bridge"`
 }
 
+type QEMUStatus struct {
+	// State is the state of the VM
+	State string `json:"state"`
+	// Node is the name of the node
+	Node string `json:"node"`
+	// Uptime is the uptime of the VM
+	Uptime string `json:"uptime"`
+	// ID is the ID of the VM
+	ID int `json:"id"`
+	// IPAddress is the IP address of the VM
+	IPAddress string `json:"IPAddress"`
+	// OSInfo is the OS information of the VM
+	OSInfo string `json:"OSInfo"`
+}
+
 // VirtualMachineStatus defines the observed state of VirtualMachine
 type VirtualMachineStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	State     string `json:"state,omitempty"`
-	Node      string `json:"node,omitempty"`
-	Name      string `json:"name,omitempty"`
-	Uptime    string `json:"uptime,omitempty"`
-	ID        int    `json:"id,omitempty"`
-	IPAddress string `json:"IPAddress,omitempty"`
-	OSInfo    string `json:"OSInfo,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"` //nolint:lll // This is required by kubebuilder
+	Status     QEMUStatus         `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true

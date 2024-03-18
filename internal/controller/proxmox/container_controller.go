@@ -19,13 +19,17 @@ package proxmox
 import (
 	"context"
 	"fmt"
-	"time"
+	"reflect"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/alperencelik/kubemox/pkg/proxmox"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,6 +46,11 @@ type ContainerReconciler struct {
 
 const (
 	containerFinalizerName = "container.proxmox.alperen.cloud/finalizer"
+
+	typeDeletingContainer  = "Deleting"
+	typeAvailableContainer = "Available"
+	typeCreatingContainer  = "Creating"
+	typeErrorContainer     = "Error"
 )
 
 //+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=containers,verbs=get;list;watch;create;update;patch;delete
@@ -58,20 +67,22 @@ const (
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
 func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	Log := log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 	// Get the Container resource with this namespace/name
 	container := &proxmoxv1alpha1.Container{}
 	err := r.Get(ctx, req.NamespacedName, container)
 	if err != nil {
-		// Error reading the object - requeue the request.
-		Log.Error(err, "Failed to get Container")
+		if errors.IsNotFound(err) {
+			logger.Info("Container resource not found. Ignoring since object must be deleted")
+			return ctrl.Result{}, nil
+		}
+		logger.Error(err, "unable to fetch Container")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	logger.Info(fmt.Sprintf("Reconciling Container %s", container.Name))
 
 	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
-
-	resourceKey := fmt.Sprintf("%s/%s", container.Namespace, container.Name)
 
 	// Check if the Container instance is marked to be deleted, which is indicated by the deletion timestamp being set.
 	if container.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -79,7 +90,7 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if !controllerutil.ContainsFinalizer(container, containerFinalizerName) {
 			controllerutil.AddFinalizer(container, containerFinalizerName)
 			if err = r.Update(ctx, container); err != nil {
-				log.Log.Error(err, "Error updating Container")
+				logger.Error(err, "Error updating Container")
 				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
 		}
@@ -87,18 +98,26 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// The object is being deleted
 		if controllerutil.ContainsFinalizer(container, containerFinalizerName) {
 			// Delete the Container
-			deletionKey := fmt.Sprintf("%s/%s-deletion", container.Namespace, container.Name)
-			if isProcessed(deletionKey) {
-			} else {
-				// Delete the Container
-				proxmox.DeleteContainer(containerName, nodeName)
-				// Mark it as processed
-				processedResources[deletionKey] = true
+			logger.Info("Deleting Container", "name", container.Name)
+
+			if !meta.IsStatusConditionPresentAndEqual(container.Status.Conditions, typeDeletingContainer, metav1.ConditionTrue) {
+				meta.SetStatusCondition(&container.Status.Conditions, metav1.Condition{
+					Type:    typeDeletingContainer,
+					Status:  metav1.ConditionTrue,
+					Reason:  "Deleting",
+					Message: "Deleting Container",
+				})
+				if err = r.Status().Update(ctx, container); err != nil {
+					logger.Error(err, "Error updating Container status")
+					return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+				}
+				return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 			}
+			proxmox.DeleteContainer(containerName, nodeName)
 			// Remove finalizer
 			controllerutil.RemoveFinalizer(container, containerFinalizerName)
 			if err = r.Update(ctx, container); err != nil {
-				Log.Error(err, "Error updating Container")
+				logger.Error(err, "Error updating Container")
 			}
 		}
 		// Stop reconciliation as the item is being deleted
@@ -109,55 +128,96 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// Update Container
 		containerState := proxmox.GetContainerState(containerName, nodeName)
 		if containerState == "stopped" {
-			proxmox.StartContainer(containerName, nodeName)
+			err = proxmox.StartContainer(containerName, nodeName)
+			if err != nil {
+				logger.Error(err, "Failed to start Container")
+				return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			}
 		} else {
-			if isProcessed(resourceKey) {
-			} else {
-				Log.Info(fmt.Sprintf("Container %s already exists and running", containerName))
-				// Mark it as processed
-				processedResources[resourceKey] = true
-			}
-			// Update Container status
-			containerStatus := proxmox.UpdateContainerStatus(containerName, nodeName)
-			container.Status.State = containerStatus.State
-			container.Status.ID = containerStatus.ID
-			container.Status.Name = containerStatus.Name
-			container.Status.Node = containerStatus.Node
-			container.Status.Uptime = containerStatus.Uptime
-			// // Update Container
-			err = r.Status().Update(context.Background(), container)
-			if err != nil {
-				Log.Error(err, "Failed to update Container")
-				return ctrl.Result{}, client.IgnoreNotFound(err)
-			}
+			logger.Info(fmt.Sprintf("Container %s already exists and running", containerName))
 			// Update Container
-			proxmox.UpdateContainer(container)
-			err = r.Update(context.Background(), container)
+			err = r.UpdateContainer(ctx, container)
 			if err != nil {
-				Log.Error(err, "Failed to update Container")
-				return ctrl.Result{}, client.IgnoreNotFound(err)
+				logger.Error(err, "Failed to update Container")
+				return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 			}
 		}
 	} else {
 		// Create Container
-		err = proxmox.CloneContainer(container)
+		err = r.CloneContainer(container)
 		if err != nil {
-			Log.Error(err, "Failed to clone Container")
+			logger.Error(err, "Failed to clone Container")
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
-		proxmox.StartContainer(containerName, nodeName)
+		err = proxmox.StartContainer(containerName, nodeName)
+		if err != nil {
+			logger.Error(err, "Failed to start Container")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		}
 	}
-	return ctrl.Result{Requeue: true, RequeueAfter: 10 * time.Second}, client.IgnoreNotFound(err)
+	// Update Container Status
+	err = r.UpdateContainerStatus(ctx, container)
+	if err != nil {
+		logger.Error(err, "Failed to update Container status")
+		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+	}
+	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ContainerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.Container{}).
-		WithEventFilter(predicate.GenerationChangedPredicate{}).
+		WithEventFilter(predicate.Funcs{
+			UpdateFunc: func(e event.UpdateEvent) bool {
+				oldContainer := e.ObjectOld.(*proxmoxv1alpha1.Container)
+				newContainer := e.ObjectNew.(*proxmoxv1alpha1.Container)
+				condition1 := !reflect.DeepEqual(oldContainer.Spec, newContainer.Spec)
+				condition2 := newContainer.ObjectMeta.GetDeletionTimestamp().IsZero()
+				return condition1 || !condition2
+			},
+		}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
-		Complete(&ContainerReconciler{
-			Client: mgr.GetClient(),
-			Scheme: mgr.GetScheme(),
-		})
+		Complete(r)
+}
+
+func (r *ContainerReconciler) CloneContainer(container *proxmoxv1alpha1.Container) error {
+	containerName := container.Spec.Name
+	nodeName := container.Spec.NodeName
+	err := proxmox.CloneContainer(container)
+	if err != nil {
+		return err
+	}
+	err = proxmox.StartContainer(containerName, nodeName)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *ContainerReconciler) UpdateContainer(ctx context.Context, container *proxmoxv1alpha1.Container) error {
+	proxmox.UpdateContainer(container)
+	err := r.Update(ctx, container)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *ContainerReconciler) UpdateContainerStatus(ctx context.Context, container *proxmoxv1alpha1.Container) error {
+	containerStatus := proxmox.UpdateContainerStatus(container.Name, container.Spec.NodeName)
+
+	qemuStatus := proxmoxv1alpha1.QEMUStatus{
+		State:  containerStatus.State,
+		Node:   containerStatus.Node,
+		Uptime: containerStatus.Uptime,
+		ID:     containerStatus.ID,
+	}
+	container.Status.Status = qemuStatus
+	// // Update Container
+	err := r.Status().Update(ctx, container)
+	if err != nil {
+		return err
+	}
+	return nil
 }

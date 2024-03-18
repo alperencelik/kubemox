@@ -38,8 +38,8 @@ const (
 	virtualMachineCreateSteps     = 20
 	virtualMachineStartTimesNum   = 10
 	virtualMachineStartSteps      = 20
-	virtualMachineStopTimesNum    = 10
-	virtualMachineStopSteps       = 20
+	virtualMachineStopTimesNum    = 3
+	virtualMachineStopSteps       = 5
 	virtualMachineRestartTimesNum = 10
 	virtualMachineRestartSteps    = 20
 	virtualMachineUpdateTimesNum  = 2
@@ -256,13 +256,13 @@ func DeleteVM(vmName, nodeName string) {
 func StartVM(vmName, nodeName string) {
 	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
-		panic(err)
+		log.Log.Error(err, "Unable to get node to start node")
 	}
 	// Get VMID
 	vmID := GetVMID(vmName, nodeName)
 	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
-		log.Log.Error(err, "Error getting VM")
+		log.Log.Error(err, "Unable to get VM to start VM")
 	}
 	// Start VM
 	task, err := VirtualMachine.Start(ctx)
@@ -289,7 +289,7 @@ func RestartVM(vmName, nodeName string) *proxmox.Task {
 	vmID := GetVMID(vmName, nodeName)
 	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
-		log.Log.Error(err, "Error getting VM")
+		log.Log.Error(err, "Error getting VM to restart")
 	}
 	// Restart VM
 	task, err := VirtualMachine.Reboot(ctx)
@@ -528,7 +528,7 @@ func GetManagedVMSpec(managedVMName, nodeName string) (cores, memory, disk int) 
 	vmID := GetVMID(managedVMName, nodeName)
 	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
-		log.Log.Error(err, "Error getting VM")
+		log.Log.Error(err, "Error getting VM for managed VM spec")
 	}
 	cores = VirtualMachine.CPUs
 	memory = int(VirtualMachine.MaxMem / 1024 / 1024) // As MB
@@ -537,10 +537,10 @@ func GetManagedVMSpec(managedVMName, nodeName string) (cores, memory, disk int) 
 	return cores, memory, disk
 }
 
-func UpdateVMStatus(vmName, nodeName string) (*proxmoxv1alpha1.VirtualMachineStatus, error) {
+func UpdateVMStatus(vmName, nodeName string) (*proxmoxv1alpha1.QEMUStatus, error) {
 	var VirtualMachineIP string
 	var VirtualMachineOS string
-	var VirtualmachineStatus *proxmoxv1alpha1.VirtualMachineStatus
+	var VirtualmachineStatus *proxmoxv1alpha1.QEMUStatus
 	// Get VM status
 	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
@@ -561,22 +561,20 @@ func UpdateVMStatus(vmName, nodeName string) (*proxmoxv1alpha1.VirtualMachineSta
 			VirtualMachineIP = "nil"
 			VirtualMachineOS = "nil"
 		}
-		VirtualmachineStatus = &proxmoxv1alpha1.VirtualMachineStatus{
+		VirtualmachineStatus = &proxmoxv1alpha1.QEMUStatus{
 			State:     VirtualMachine.Status,
 			ID:        int(VirtualMachine.VMID),
 			Node:      VirtualMachine.Node,
-			Name:      VirtualMachine.Name,
 			Uptime:    GetVMUptime(vmName, nodeName),
 			IPAddress: VirtualMachineIP,
 			OSInfo:    VirtualMachineOS,
 		}
 		return VirtualmachineStatus, nil
 	} else {
-		VirtualmachineStatus = &proxmoxv1alpha1.VirtualMachineStatus{
+		VirtualmachineStatus = &proxmoxv1alpha1.QEMUStatus{
 			State:     "nil",
 			ID:        0,
 			Node:      "nil",
-			Name:      "nil",
 			Uptime:    "nil",
 			IPAddress: "nil",
 			OSInfo:    "nil",
@@ -655,7 +653,7 @@ func UpdateVM(vmName, nodeName string, vm *proxmoxv1alpha1.VirtualMachine) {
 		case false:
 			log.Log.Error(taskErr, "Can't update VM")
 		case true:
-			log.Log.Info(fmt.Sprintf("VM %s has been updated", vmName))
+			log.Log.Info(fmt.Sprintf("VM %s updating", vmName))
 		default:
 			log.Log.Info("VM is already updated")
 		}
@@ -693,10 +691,6 @@ func CreateManagedVM(managedVM string) *proxmoxv1alpha1.ManagedVirtualMachine {
 			Cores:    cores,
 			Memory:   memory,
 			Disk:     disk,
-		},
-
-		Status: proxmoxv1alpha1.VirtualMachineStatus{
-			ID: 0,
 		},
 	}
 	return VirtualMachine
@@ -736,7 +730,7 @@ func UpdateManagedVM(managedVMName, nodeName string, managedVM *proxmoxv1alpha1.
 		vmID := GetVMID(managedVMName, nodeName)
 		VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 		if err != nil {
-			log.Log.Error(err, "Error getting VM")
+			log.Log.Error(err, "Error getting VM for managed VM update")
 		}
 		VirtualMachineMem := VirtualMachine.MaxMem / 1024 / 1024 // As MB
 		var cpuOption proxmox.VirtualMachineOption
@@ -803,7 +797,7 @@ func CreateVMSnapshot(vmName, snapshotName string) (statusCode int) {
 	vmID := GetVMID(vmName, nodeName)
 	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
-		log.Log.Error(err, "Error getting VM")
+		log.Log.Error(err, "Error getting VM for snapshot creation")
 	}
 	// Create snapshot
 	task, err := VirtualMachine.NewSnapshot(ctx, snapshotName)
@@ -816,10 +810,47 @@ func CreateVMSnapshot(vmName, snapshotName string) (statusCode int) {
 		log.Log.Error(taskErr, "Can't create snapshot for the VirtualMachine %s", vmName)
 		return 1
 	case true:
-		log.Log.Info(fmt.Sprintf("VirtualMachine %s has been snapshotted with %s name", vmName, snapshotName))
 		return 0
 	default:
 		log.Log.Info("VirtualMachine has already a snapshot with the same name")
 		return 2
 	}
+}
+
+func GetVMSnapshots(vmName string) ([]string, error) {
+	nodeName := GetNodeOfVM(vmName)
+	node, err := Client.Node(ctx, nodeName)
+	if err != nil {
+		panic(err)
+	}
+	// Get VMID
+	vmID := GetVMID(vmName, nodeName)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for snapshot listing")
+	}
+	// Get snapshots
+	snapshots, err := VirtualMachine.Snapshots(ctx)
+	if err != nil {
+		log.Log.Error(err, "Error getting snapshots")
+	}
+	var snapshotNames []string
+	for _, snapshot := range snapshots {
+		snapshotNames = append(snapshotNames, snapshot.Name)
+	}
+	return snapshotNames, err
+}
+
+func VMSnapshotExists(vmName, snapshotName string) bool {
+	snapshots, err := GetVMSnapshots(vmName)
+	if err != nil {
+		log.Log.Error(err, "Error getting snapshots")
+		return false
+	}
+	for _, snapshot := range snapshots {
+		if strings.EqualFold(snapshot, snapshotName) {
+			return true
+		}
+	}
+	return false
 }

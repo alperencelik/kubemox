@@ -38,7 +38,7 @@ type VirtualMachineSetSpec struct {
 type VirtualMachineSetStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Condition string `json:"condition"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"` //nolint:lll // This is required by kubebuilder
 }
 
 //+kubebuilder:object:root=true

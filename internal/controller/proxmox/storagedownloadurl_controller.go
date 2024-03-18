@@ -19,13 +19,17 @@ package proxmox
 import (
 	"context"
 	"fmt"
-	"time"
+	"reflect"
 
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -47,6 +51,12 @@ const (
 	SDUmaxConcurrentReconciles = 3
 	storageDownloadURLTimesNum = 5
 	storageDownloadURLSteps    = 12
+
+	// Status conditions
+	typeAvailableStorageDownloadURL = "Available"
+	typeCreatingStorageDownloadURL  = "Creating"
+	typeDeletingStorageDownloadURL  = "Deleting"
+	typeErrorStorageDownloadURL     = "Error"
 )
 
 //+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=storagedownloadurls,verbs=get;list;watch;create;update;patch;delete
@@ -63,118 +73,130 @@ const (
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
 func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	Log := log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	// Fetch the StorageDownloadURL resource
 	storageDownloadURL := &proxmoxv1alpha1.StorageDownloadURL{}
 	err := r.Get(ctx, req.NamespacedName, storageDownloadURL)
 	if err != nil {
 		// Error reading the object - requeue the request.
+		if errors.IsNotFound(err) {
+			logger.Info("StorageDownloadURL resource not found. Ignoring since object must be deleted")
+			return ctrl.Result{}, nil
+		}
+		logger.Error(err, "unable to fetch StorageDownloadURL")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
+	logger.Info(fmt.Sprintf("Reconciling StorageDownloadURL %s", storageDownloadURL.Name))
+
 	// Get fields from the spec
 	content := storageDownloadURL.Spec.Content
 	node := storageDownloadURL.Spec.Node
 	storage := storageDownloadURL.Spec.Storage
 	// Check if the content is only iso or vztmpl
 	if content != "iso" && content != "vztmpl" {
-		Log.Info("Content should be either iso or vztmpl")
+		logger.Info("Content should be either iso or vztmpl")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	if storageDownloadURL.ObjectMeta.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(storageDownloadURL, storageDownloadURLFinalizerName) {
 			controllerutil.AddFinalizer(storageDownloadURL, storageDownloadURLFinalizerName)
 			if err = r.Update(ctx, storageDownloadURL); err != nil {
-				log.Log.Error(err, "unable to update StorageDownloadURL")
+				logger.Error(err, "unable to update StorageDownloadURL")
 				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
 		}
 	} else {
 		if controllerutil.ContainsFinalizer(storageDownloadURL, storageDownloadURLFinalizerName) {
-			deletionKey := fmt.Sprintf("%s/%s-deletion", storageDownloadURL.Namespace, storageDownloadURL.Name)
-			if isProcessed(deletionKey) {
-			} else {
-				// Delete the file from the storage
-				err = proxmox.DeleteStorageContent(storage, &storageDownloadURL.Spec)
-				if err != nil {
-					Log.Error(err, "unable to delete the file")
-					return ctrl.Result{}, client.IgnoreNotFound(err)
+			if !meta.IsStatusConditionPresentAndEqual(storageDownloadURL.Status.Conditions, typeDeletingStorageDownloadURL, metav1.ConditionTrue) {
+				meta.SetStatusCondition(&storageDownloadURL.Status.Conditions, metav1.Condition{
+					Type:    typeDeletingStorageDownloadURL,
+					Status:  metav1.ConditionTrue,
+					Reason:  "Deleting",
+					Message: "Deleting StorageDownloadURL",
+				})
+				if err = r.Status().Update(ctx, storageDownloadURL); err != nil {
+					logger.Error(err, "unable to update StorageDownloadURL status")
+					return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 				}
-				processedResources[deletionKey] = true
-			}
-			controllerutil.RemoveFinalizer(storageDownloadURL, storageDownloadURLFinalizerName)
-			if err = r.Update(ctx, storageDownloadURL); err != nil {
-				log.Log.Error(err, "unable to update StorageDownloadURL")
-				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
 		}
+		// Delete the file from the storage
+		err = proxmox.DeleteStorageContent(storage, &storageDownloadURL.Spec)
+		if err != nil {
+			logger.Error(err, "unable to delete the file")
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
+		controllerutil.RemoveFinalizer(storageDownloadURL, storageDownloadURLFinalizerName)
+		if err = r.Update(ctx, storageDownloadURL); err != nil {
+			logger.Error(err, "unable to update StorageDownloadURL")
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
 		// Stop reconciliation as the object is being deleted
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, nil
 	}
 
 	// Check if the filename exists in the storage
 	storageContent, err := proxmox.GetStorageContent(node, storage)
 	if err != nil {
-		Log.Error(err, "unable to get storage content")
+		logger.Error(err, "unable to get storage content")
 		return ctrl.Result{}, err
 	}
-	resourceKey := fmt.Sprintf("%s:%s/%s", storage, content, storageDownloadURL.Spec.Filename)
 	// Check if the filename exists in the storage
 	if !proxmox.HasFile(storageContent, &storageDownloadURL.Spec) {
-		if isProcessed(resourceKey) {
-		} else {
-			Log.Info("File does not exist in the storage, so downloading it")
-			// Download the file
-			taskUPID, taskErr := proxmox.StorageDownloadURL(node, &storageDownloadURL.Spec)
-			if taskErr != nil {
-				Log.Error(taskErr, "unable to download the file")
-				return ctrl.Result{}, taskErr
-			}
-			// Get the task
-			task := proxmox.GetTask(taskUPID)
-			var logChannel <-chan string
-			logChannel, err = task.Watch(ctx, 5)
-			if err != nil {
-				Log.Error(err, "unable to watch the task")
-				return ctrl.Result{}, err
-			}
-			for logEntry := range logChannel {
-				log.Log.Info(fmt.Sprintf("Download task for %s: %s", storageDownloadURL.Spec.Filename, logEntry))
-			}
-			_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, storageDownloadURLTimesNum, storageDownloadURLSteps)
-			if taskErr != nil {
-				Log.Error(taskErr, "unable to get the task status")
-				return ctrl.Result{}, taskErr
-			}
-			switch {
-			case !taskCompleted:
-				log.Log.Error(taskErr, "Download task did not complete")
-			case taskCompleted:
-				Log.Info("Download task completed")
-				processedResources[resourceKey] = true
-			default:
-				Log.Info("Download task did not complete yet")
-			}
+		logger.Info("File does not exist in the storage, so downloading it")
+		// Download the file
+		taskUPID, taskErr := proxmox.StorageDownloadURL(node, &storageDownloadURL.Spec)
+		if taskErr != nil {
+			logger.Error(taskErr, "unable to download the file")
+			return ctrl.Result{Requeue: true}, taskErr
+		}
+		// Get the task
+		task := proxmox.GetTask(taskUPID)
+		var logChannel <-chan string
+		logChannel, err = task.Watch(ctx, 5)
+		if err != nil {
+			logger.Error(err, "unable to watch the task")
+			return ctrl.Result{}, err
+		}
+		for logEntry := range logChannel {
+			logger.Info(fmt.Sprintf("Download task for %s: %s", storageDownloadURL.Spec.Filename, logEntry))
+		}
+		_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, storageDownloadURLTimesNum, storageDownloadURLSteps)
+		if taskErr != nil {
+			logger.Error(taskErr, "unable to get the task status")
+			return ctrl.Result{}, taskErr
+		}
+		switch {
+		case !taskCompleted:
+			logger.Error(taskErr, "Download task did not complete")
+		case taskCompleted:
+			logger.Info("Download task completed")
+		default:
+			logger.Info("Download task did not complete yet")
 		}
 	} else {
-		if isProcessed(resourceKey) {
-		} else {
-			// File exists in the storage
-			Log.Info(fmt.Sprintf("File %s exists in the storage %s", storageDownloadURL.Spec.Filename, storage))
-			processedResources[resourceKey] = true
-		}
+		logger.Info("File exists in the storage")
 	}
-	return ctrl.Result{Requeue: true, RequeueAfter: SDUreconcilationPeriod * time.Second}, client.IgnoreNotFound(err)
+
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *StorageDownloadURLReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.StorageDownloadURL{}).
-		WithEventFilter(predicate.GenerationChangedPredicate{}).
+		WithEventFilter(predicate.Funcs{
+			UpdateFunc: func(e event.UpdateEvent) bool {
+				oldStorageDownloadURL := e.ObjectOld.(*proxmoxv1alpha1.StorageDownloadURL)
+				newStorageDownloadURL := e.ObjectNew.(*proxmoxv1alpha1.StorageDownloadURL)
+				condition1 := !reflect.DeepEqual(oldStorageDownloadURL.Spec, newStorageDownloadURL.Spec)
+				condition2 := newStorageDownloadURL.ObjectMeta.GetDeletionTimestamp().IsZero()
+				return condition1 || !condition2
+			},
+		}).
+		Owns(&proxmoxv1alpha1.StorageDownloadURL{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: SDUmaxConcurrentReconciles}).
-		Complete(&StorageDownloadURLReconciler{
-			Client: mgr.GetClient(),
-			Scheme: mgr.GetScheme(),
-		})
+		Complete(r)
 }

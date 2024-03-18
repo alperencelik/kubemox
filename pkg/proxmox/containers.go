@@ -147,15 +147,16 @@ func DeleteContainer(containerName, nodeName string) {
 	mutex.Unlock()
 }
 
-func StartContainer(containerName, nodeName string) {
+func StartContainer(containerName, nodeName string) error {
 	// Get container
 	container := GetContainer(containerName, nodeName)
 	// Start container
 	status, err := container.Start(ctx)
 	log.Log.Info(fmt.Sprintf("Container %s status: %s", containerName, status))
 	if err != nil {
-		log.Log.Error(err, "Can't start container")
+		return err
 	}
+	return nil
 }
 
 func GetContainerState(containerName, nodeName string) string {
@@ -165,16 +166,15 @@ func GetContainerState(containerName, nodeName string) string {
 	return container.Status
 }
 
-func UpdateContainerStatus(containerName, nodeName string) proxmoxv1alpha1.ContainerStatus {
-	var containerStatus proxmoxv1alpha1.ContainerStatus
+func UpdateContainerStatus(containerName, nodeName string) proxmoxv1alpha1.QEMUStatus {
 	container := GetContainer(containerName, nodeName)
 
-	containerStatus.State = container.Status
-	containerStatus.ID = int(container.VMID)
-	containerStatus.Uptime = utils.FormatUptime(int(container.Uptime))
-	containerStatus.Node = container.Node
-	containerStatus.Name = container.Name
-
+	containerStatus := proxmoxv1alpha1.QEMUStatus{
+		State:  container.Status,
+		Node:   container.Node,
+		Uptime: utils.FormatUptime(int(container.Uptime)),
+		ID:     int(container.VMID),
+	}
 	return containerStatus
 }
 

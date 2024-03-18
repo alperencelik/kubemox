@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/robfig/cron/v3"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -59,16 +60,41 @@ const (
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.15.0/pkg/reconcile
 func (r *VirtualMachineSnapshotPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	Log := log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	// TODO(user): your logic here
 	vmSnapshotPolicy := &proxmoxv1alpha1.VirtualMachineSnapshotPolicy{}
-	if err := r.Get(ctx, req.NamespacedName, vmSnapshotPolicy); err != nil {
-		Log.Error(err, "unable to fetch VirtualMachineSnapshotPolicy")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+	err := r.Get(ctx, req.NamespacedName, vmSnapshotPolicy)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("VirtualMachineSnapshotPolicy resource not found. Ignoring since object must be deleted")
+			return ctrl.Result{}, nil
+		}
+		logger.Error(err, "unable to fetch VirtualMachineSnapshotPolicy")
+		return ctrl.Result{}, err
 	}
-	cronSpec := vmSnapshotPolicy.Spec.SnapshotSchedule
-	// delete later
+	// TODO: Add deletion logic for snapshots
+
+	// Start snapshot cron jobs
+	if err := r.StartSnapshotCronJobs(ctx, vmSnapshotPolicy); err != nil {
+		logger.Error(err, "unable to start snapshot cron jobs")
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *VirtualMachineSnapshotPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&proxmoxv1alpha1.VirtualMachineSnapshotPolicy{}).
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: VMSnapshotPolicymaxConcurrentReconciles}).
+		Complete(r)
+}
+
+func GetMatchingVirtualMachines(vmSnapshotPolicy *proxmoxv1alpha1.VirtualMachineSnapshotPolicy,
+	r *VirtualMachineSnapshotPolicyReconciler, ctx context.Context) []proxmoxv1alpha1.VirtualMachine {
 	matchingNamepaces := vmSnapshotPolicy.Spec.NamespaceSelector
 	matchingLabels := vmSnapshotPolicy.Spec.LabelSelector.MatchLabels
 	// Find matching VirtualMachines on matching namespaces
@@ -81,7 +107,28 @@ func (r *VirtualMachineSnapshotPolicyReconciler) Reconcile(ctx context.Context, 
 		}
 		MatchingVirtualMachines = append(MatchingVirtualMachines, virtualMachineList.Items...)
 	}
-	// Print length of vmList
+	return MatchingVirtualMachines
+}
+
+func VMSnapshotCR(vmName, snapshotName, namespace string) *proxmoxv1alpha1.VirtualMachineSnapshot {
+	return &proxmoxv1alpha1.VirtualMachineSnapshot{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-%s", vmName, time.Now().Format("2006-01-2t15-040-5z07-00")),
+			Namespace: namespace,
+		},
+		Spec: proxmoxv1alpha1.VirtualMachineSnapshotSpec{
+			VirtualMachineName: vmName,
+			SnapshotName:       snapshotName,
+		},
+	}
+}
+
+func (r *VirtualMachineSnapshotPolicyReconciler) StartSnapshotCronJobs(ctx context.Context,
+	vmSnapshotPolicy *proxmoxv1alpha1.VirtualMachineSnapshotPolicy) error {
+	logger := log.FromContext(ctx)
+	cronSpec := vmSnapshotPolicy.Spec.SnapshotSchedule
+	// Get matching VirtualMachines
+	MatchingVirtualMachines := GetMatchingVirtualMachines(vmSnapshotPolicy, r, ctx)
 
 	// Iterate over matching VirtualMachines to create snapshot
 	c := cron.New()
@@ -90,49 +137,31 @@ func (r *VirtualMachineSnapshotPolicyReconciler) Reconcile(ctx context.Context, 
 			vm := &MatchingVirtualMachines[i]
 			// Create snapshot
 			vmName := vm.Spec.Name
-			snapshotName := fmt.Sprintf("snapshot_%s", time.Now().Format("2006_01_02T15_04_05Z07_00"))
+			snapshotName := fmt.Sprintf("snapshot_%s", time.Now().Format("2006_01_02T15_04_05"))
+			namespace := vm.Namespace
 			// Create VirtualMachineSnapshot object
-			vmSnapshot := &proxmoxv1alpha1.VirtualMachineSnapshot{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      fmt.Sprintf("%s-%s", vmName, time.Now().Format("2006-01-2t15-040-5z07-00")),
-					Namespace: vmSnapshotPolicy.Namespace,
-				},
-				Spec: proxmoxv1alpha1.VirtualMachineSnapshotSpec{
-					VirtualMachineName: vmName,
-					SnapshotName:       snapshotName,
-				},
-			}
-			// If vmSnapshot doesn't exist, create it if it does, return
-			snapshotKey := fmt.Sprintf("%s/%s", vmSnapshot.Namespace, vmSnapshot.Name)
-			if isProcessed(snapshotKey) {
-				return // already processed
-			} else {
-				if err := r.Create(ctx, vmSnapshot); err != nil {
-					return // requeue
+			vmSnapshot := VMSnapshotCR(vmName, snapshotName, namespace)
+			// Get VirtualMachineSnapshot object and if it does not exist, create it
+			// If it exists, do nothing
+			foundvmSnapshot := &proxmoxv1alpha1.VirtualMachineSnapshot{}
+			err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: vmSnapshot.Name}, foundvmSnapshot)
+			if err != nil {
+				if errors.IsNotFound(err) {
+					// Create the VirtualMachineSnapshot
+					logger.Info("Creating a new VirtualMachineSnapshot", "VirtualMachineSnapshot.Namespace",
+						vmSnapshot.Namespace, "VirtualMachineSnapshot.Name", vmSnapshot.Name)
+					if err := r.Create(ctx, vmSnapshot); err != nil {
+						logger.Error(err, "unable to create VirtualMachineSnapshot")
+						return
+					}
 				}
-				processedResources[snapshotKey] = true
 			}
 		}
 	}); err != nil {
 		log.Log.Error(err, "unable to add cronjob")
-		return ctrl.Result{}, err
+		return err
 	}
-
 	c.Start()
-	// Create snapshot
 
-	return ctrl.Result{Requeue: true, RequeueAfter: VMSnapshotPolicyreconcilationPeriod * time.Second},
-		client.IgnoreNotFound(r.Get(ctx, req.NamespacedName, &proxmoxv1alpha1.VirtualMachineSnapshotPolicy{}))
-}
-
-// SetupWithManager sets up the controller with the Manager.
-func (r *VirtualMachineSnapshotPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&proxmoxv1alpha1.VirtualMachineSnapshotPolicy{}).
-		WithEventFilter(predicate.GenerationChangedPredicate{}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: VMSnapshotPolicymaxConcurrentReconciles}).
-		Complete(&VirtualMachineSnapshotPolicyReconciler{
-			Client: mgr.GetClient(),
-			Scheme: mgr.GetScheme(),
-		})
+	return nil
 }
