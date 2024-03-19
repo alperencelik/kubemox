@@ -28,6 +28,7 @@ type StorageDownloadURLSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
+	// +kubebuilder:validation:Pattern=\b(iso|vztmpl)\b
 	Content  string `json:"content"`
 	Filename string `json:"filename"`
 	Node     string `json:"node"`

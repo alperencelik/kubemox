@@ -75,12 +75,7 @@ func (r *CustomCertificateReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	customCert := &proxmoxv1alpha1.CustomCertificate{}
 	err := r.Get(ctx, req.NamespacedName, customCert)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			logger.Info("CustomCertificate resource not found. Ignoring since object must be deleted")
-			return ctrl.Result{}, nil
-		}
-		logger.Error(err, "unable to fetch CustomCertificate")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
 
 	// Check if the CustomCertificate resource is marked for deletion
@@ -194,4 +189,14 @@ func (r *CustomCertificateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: CustomCertMaxConcurrentReconciles}).
 		Complete(r)
+}
+
+func (r *CustomCertificateReconciler) handleResourceNotFound(ctx context.Context, err error) error {
+	logger := log.FromContext(ctx)
+	if errors.IsNotFound(err) {
+		logger.Info("CustomCertificate resource not found. Ignoring since object must be deleted")
+		return nil
+	}
+	logger.Error(err, "Failed to get CustomCertificate")
+	return err
 }

@@ -77,17 +77,11 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	vmSet := &proxmoxv1alpha1.VirtualMachineSet{}
 	err := r.Get(ctx, req.NamespacedName, vmSet)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			logger.Info("VirtualMachineSet resource not found. Ignoring since object must be deleted")
-			return ctrl.Result{}, nil
-		}
-		logger.Error(err, "unable to fetch VirtualMachineSet")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
 
 	logger.Info(fmt.Sprintf("Reconciling VirtualMachineSet %s", vmSet.Name))
 
-	replicas := vmSet.Spec.Replicas
 	vmList := &proxmoxv1alpha1.VirtualMachineList{}
 	listOptions := []client.ListOption{
 		client.InNamespace(vmSet.Namespace),
@@ -101,11 +95,10 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// DELETE
 	if vmSet.ObjectMeta.DeletionTimestamp.IsZero() {
-		if !controllerutil.ContainsFinalizer(vmSet, virtualMachineSetFinalizerName) {
-			controllerutil.AddFinalizer(vmSet, virtualMachineSetFinalizerName)
-			if err = r.Update(ctx, vmSet); err != nil {
-				return ctrl.Result{}, client.IgnoreNotFound(err)
-			}
+		err = r.handleFinalizer(ctx, vmSet)
+		if err != nil {
+			logger.Error(err, "unable to handle finalizer")
+			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 	} else {
 		// The object is being deleted
@@ -163,44 +156,9 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// If the number of the VirtualMachines is less than the desired number of replicas and the object
 	// is not being deleted, create the VirtualMachines
-	if len(vmList.Items) < replicas && vmSet.ObjectMeta.DeletionTimestamp.IsZero() {
-		if err = r.scaleUpVMs(vmSet, replicas, vmList); err != nil {
-			logger.Error(err, "unable to scale up VirtualMachines")
-			return ctrl.Result{}, client.IgnoreNotFound(err)
-		}
-		meta.SetStatusCondition(&vmSet.Status.Conditions, metav1.Condition{
-			Type:    typeScalingUpVirtualMachineSet,
-			Status:  metav1.ConditionTrue,
-			Reason:  "ScaledUp",
-			Message: "VirtualMachines scaled up",
-		})
-		if err = r.Status().Update(ctx, vmSet); err != nil {
-			logger.Error(err, "Error updating VirtualMachineSet status")
-			return ctrl.Result{}, client.IgnoreNotFound(err)
-		}
-	}
-
-	// If the number of the VirtualMachines is more than the desired number of replicas
-	if len(vmList.Items) > replicas {
-		if err = r.scaleDownVMs(vmSet, vmList); err != nil {
-			logger.Error(err, "unable to scale down VirtualMachines")
-			return ctrl.Result{}, client.IgnoreNotFound(err)
-		}
-		// Set the condition for the VirtualMachineSet
-		meta.SetStatusCondition(&vmSet.Status.Conditions, metav1.Condition{
-			Type:    typeScalingDownVirtualMachineSet,
-			Status:  metav1.ConditionTrue,
-			Reason:  "ScaledDown",
-			Message: "VirtualMachines scaled down",
-		})
-		if err = r.Status().Update(ctx, vmSet); err != nil {
-			logger.Error(err, "Error updating VirtualMachineSet status")
-			return ctrl.Result{}, client.IgnoreNotFound(err)
-		}
-	}
-
-	if err = r.updateVMs(ctx, vmSet, vmList); err != nil {
-		logger.Error(err, "unable to update VirtualMachines")
+	err = r.handleVMsetOperations(ctx, vmSet, vmList)
+	if err != nil {
+		logger.Error(err, "unable to handle VirtualMachineSet operations")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -304,6 +262,76 @@ func (r *VirtualMachineSetReconciler) updateVMs(ctx context.Context,
 					return fmt.Errorf("unable to update VirtualMachine: %w", err)
 				}
 			}
+		}
+	}
+	return nil
+}
+
+func (r *VirtualMachineSetReconciler) handleResourceNotFound(ctx context.Context, err error) error {
+	logger := log.FromContext(ctx)
+	if errors.IsNotFound(err) {
+		logger.Info("VirtualMachineSet resource not found. Ignoring since object must be deleted")
+		return nil
+	}
+	logger.Error(err, "Failed to get VirtualMachineSet")
+	return err
+}
+
+func (r *VirtualMachineSetReconciler) handleVMsetOperations(ctx context.Context, vmSet *proxmoxv1alpha1.VirtualMachineSet,
+	vmList *proxmoxv1alpha1.VirtualMachineList) error {
+	logger := log.FromContext(ctx)
+	replicas := vmSet.Spec.Replicas
+
+	if len(vmList.Items) < replicas && vmSet.ObjectMeta.DeletionTimestamp.IsZero() {
+		if err := r.scaleUpVMs(vmSet, replicas, vmList); err != nil {
+			logger.Error(err, "unable to scale up VirtualMachines")
+			return err
+		}
+		meta.SetStatusCondition(&vmSet.Status.Conditions, metav1.Condition{
+			Type:    typeScalingUpVirtualMachineSet,
+			Status:  metav1.ConditionTrue,
+			Reason:  "ScaledUp",
+			Message: "VirtualMachines scaled up",
+		})
+		if err := r.Status().Update(ctx, vmSet); err != nil {
+			logger.Error(err, "Error updating VirtualMachineSet status")
+			return err
+		}
+	}
+
+	// If the number of the VirtualMachines is more than the desired number of replicas
+	if len(vmList.Items) > replicas {
+		if err := r.scaleDownVMs(vmSet, vmList); err != nil {
+			logger.Error(err, "unable to scale down VirtualMachines")
+			return err
+		}
+		// Set the condition for the VirtualMachineSet
+		meta.SetStatusCondition(&vmSet.Status.Conditions, metav1.Condition{
+			Type:    typeScalingDownVirtualMachineSet,
+			Status:  metav1.ConditionTrue,
+			Reason:  "ScaledDown",
+			Message: "VirtualMachines scaled down",
+		})
+		if err := r.Status().Update(ctx, vmSet); err != nil {
+			logger.Error(err, "Error updating VirtualMachineSet status")
+			return err
+		}
+	}
+
+	if err := r.updateVMs(ctx, vmSet, vmList); err != nil {
+		logger.Error(err, "unable to update VirtualMachines")
+		return err
+	}
+	return nil
+}
+
+func (r *VirtualMachineSetReconciler) handleFinalizer(ctx context.Context, vmSet *proxmoxv1alpha1.VirtualMachineSet) error {
+	logger := log.FromContext(ctx)
+	if !controllerutil.ContainsFinalizer(vmSet, virtualMachineSetFinalizerName) {
+		controllerutil.AddFinalizer(vmSet, virtualMachineSetFinalizerName)
+		if err := r.Update(ctx, vmSet); err != nil {
+			logger.Error(err, "Error updating VirtualMachineSet")
+			return err
 		}
 	}
 	return nil

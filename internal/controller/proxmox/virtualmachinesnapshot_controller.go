@@ -74,12 +74,7 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 	vmSnapshot := &proxmoxv1alpha1.VirtualMachineSnapshot{}
 	err := r.Get(ctx, req.NamespacedName, vmSnapshot)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			logger.Info("VirtualMachineSnapshot not found. Ignoring since object must be deleted")
-			return ctrl.Result{}, nil
-		}
-		logger.Error(err, "unable to fetch VirtualMachineSnapshot")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
 
 	vmName := vmSnapshot.Spec.VirtualMachineName
@@ -165,4 +160,14 @@ func (r *VirtualMachineSnapshotReconciler) SetupWithManager(mgr ctrl.Manager) er
 		}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: VMSnapshotmaxConcurrentReconciles}).
 		Complete(r)
+}
+
+func (r *VirtualMachineSnapshotReconciler) handleResourceNotFound(ctx context.Context, err error) error {
+	logger := log.FromContext(ctx)
+	if errors.IsNotFound(err) {
+		logger.Info("VirtualMachineSnapshot resource not found. Ignoring since object must be deleted")
+		return nil
+	}
+	logger.Error(err, "Failed to get VirtualMachineSnapshot")
+	return err
 }

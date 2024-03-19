@@ -76,12 +76,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	vm := &proxmoxv1alpha1.VirtualMachine{}
 	err := r.Get(ctx, req.NamespacedName, vm)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			logger.Info("VirtualMachine resource not found. Ignoring since object must be deleted")
-			return ctrl.Result{}, nil
-		}
-		logger.Error(err, "Failed to get VirtualMachine")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
 
 	logger.Info(fmt.Sprintf("Reconciling VirtualMachine %s", vm.Name))
@@ -260,4 +255,14 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(vm *proxmoxv1alpha
 		return err
 	}
 	return nil
+}
+
+func (r *VirtualMachineReconciler) handleResourceNotFound(ctx context.Context, err error) error {
+	logger := log.FromContext(ctx)
+	if errors.IsNotFound(err) {
+		logger.Info("VirtualMachine resource not found. Ignoring since object must be deleted")
+		return nil
+	}
+	logger.Error(err, "Failed to get VirtualMachine")
+	return err
 }
