@@ -66,12 +66,7 @@ func (r *VirtualMachineSnapshotPolicyReconciler) Reconcile(ctx context.Context, 
 	vmSnapshotPolicy := &proxmoxv1alpha1.VirtualMachineSnapshotPolicy{}
 	err := r.Get(ctx, req.NamespacedName, vmSnapshotPolicy)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			logger.Info("VirtualMachineSnapshotPolicy resource not found. Ignoring since object must be deleted")
-			return ctrl.Result{}, nil
-		}
-		logger.Error(err, "unable to fetch VirtualMachineSnapshotPolicy")
-		return ctrl.Result{}, err
+		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
 	// TODO: Add deletion logic for snapshots
 
@@ -164,4 +159,14 @@ func (r *VirtualMachineSnapshotPolicyReconciler) StartSnapshotCronJobs(ctx conte
 	c.Start()
 
 	return nil
+}
+
+func (r *VirtualMachineSnapshotPolicyReconciler) handleResourceNotFound(ctx context.Context, err error) error {
+	logger := log.FromContext(ctx)
+	if errors.IsNotFound(err) {
+		logger.Info("VirtualMachineSnapshotPolicy resource not found. Ignoring since object must be deleted")
+		return nil
+	}
+	logger.Error(err, "Failed to get VirtualMachineSnapshotPolicy")
+	return err
 }

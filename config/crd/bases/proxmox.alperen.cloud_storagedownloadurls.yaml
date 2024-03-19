@@ -43,6 +43,7 @@ spec:
               compression:
                 type: string
               content:
+                pattern: \b(iso|vztmpl)\b
                 type: string
               filename:
                 type: string

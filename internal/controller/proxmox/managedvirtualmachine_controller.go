@@ -80,12 +80,7 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 	managedVM := &proxmoxv1alpha1.ManagedVirtualMachine{}
 	err := r.Get(ctx, req.NamespacedName, managedVM)
 	if err != nil {
-		if errors.IsNotFound(err) {
-			logger.Info("ManagedVirtualMachine resource not found. Ignoring since object must be deleted")
-			return ctrl.Result{}, nil
-		}
-		logger.Error(err, "unable to fetch ManagedVirtualMachine")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
 	logger.Info(fmt.Sprintf("Reconciling ManagedVirtualMachine %s", managedVM.Name))
 
@@ -181,4 +176,14 @@ func (r *ManagedVirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) err
 		}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: ManagedVMmaxConcurrentReconciles}).
 		Complete(r)
+}
+
+func (r *ManagedVirtualMachineReconciler) handleResourceNotFound(ctx context.Context, err error) error {
+	logger := log.FromContext(ctx)
+	if errors.IsNotFound(err) {
+		logger.Info("VirtualMachine resource not found. Ignoring since object must be deleted")
+		return nil
+	}
+	logger.Error(err, "Failed to get VirtualMachine")
+	return err
 }

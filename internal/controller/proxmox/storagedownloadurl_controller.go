@@ -79,26 +79,15 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 	storageDownloadURL := &proxmoxv1alpha1.StorageDownloadURL{}
 	err := r.Get(ctx, req.NamespacedName, storageDownloadURL)
 	if err != nil {
-		// Error reading the object - requeue the request.
-		if errors.IsNotFound(err) {
-			logger.Info("StorageDownloadURL resource not found. Ignoring since object must be deleted")
-			return ctrl.Result{}, nil
-		}
-		logger.Error(err, "unable to fetch StorageDownloadURL")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
 
 	logger.Info(fmt.Sprintf("Reconciling StorageDownloadURL %s", storageDownloadURL.Name))
 
 	// Get fields from the spec
-	content := storageDownloadURL.Spec.Content
 	node := storageDownloadURL.Spec.Node
 	storage := storageDownloadURL.Spec.Storage
-	// Check if the content is only iso or vztmpl
-	if content != "iso" && content != "vztmpl" {
-		logger.Info("Content should be either iso or vztmpl")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
+
 	if storageDownloadURL.ObjectMeta.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(storageDownloadURL, storageDownloadURLFinalizerName) {
 			controllerutil.AddFinalizer(storageDownloadURL, storageDownloadURLFinalizerName)
@@ -146,40 +135,14 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// Check if the filename exists in the storage
 	if !proxmox.HasFile(storageContent, &storageDownloadURL.Spec) {
 		logger.Info("File does not exist in the storage, so downloading it")
-		// Download the file
-		taskUPID, taskErr := proxmox.StorageDownloadURL(node, &storageDownloadURL.Spec)
-		if taskErr != nil {
-			logger.Error(taskErr, "unable to download the file")
-			return ctrl.Result{Requeue: true}, taskErr
-		}
-		// Get the task
-		task := proxmox.GetTask(taskUPID)
-		var logChannel <-chan string
-		logChannel, err = task.Watch(ctx, 5)
+		err = r.handleDownloadURL(ctx, storageDownloadURL)
 		if err != nil {
-			logger.Error(err, "unable to watch the task")
+			logger.Error(err, "unable to download the file")
 			return ctrl.Result{}, err
-		}
-		for logEntry := range logChannel {
-			logger.Info(fmt.Sprintf("Download task for %s: %s", storageDownloadURL.Spec.Filename, logEntry))
-		}
-		_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, storageDownloadURLTimesNum, storageDownloadURLSteps)
-		if taskErr != nil {
-			logger.Error(taskErr, "unable to get the task status")
-			return ctrl.Result{}, taskErr
-		}
-		switch {
-		case !taskCompleted:
-			logger.Error(taskErr, "Download task did not complete")
-		case taskCompleted:
-			logger.Info("Download task completed")
-		default:
-			logger.Info("Download task did not complete yet")
 		}
 	} else {
 		logger.Info("File exists in the storage")
 	}
-
 	return ctrl.Result{}, nil
 }
 
@@ -199,4 +162,51 @@ func (r *StorageDownloadURLReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		Owns(&proxmoxv1alpha1.StorageDownloadURL{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: SDUmaxConcurrentReconciles}).
 		Complete(r)
+}
+
+func (r *StorageDownloadURLReconciler) handleResourceNotFound(ctx context.Context, err error) error {
+	logger := log.FromContext(ctx)
+	if errors.IsNotFound(err) {
+		logger.Info("StorageDownloadURL resource not found. Ignoring since object must be deleted")
+		return nil
+	}
+	logger.Error(err, "Failed to get StorageDownloadURL")
+	return err
+}
+
+func (r *StorageDownloadURLReconciler) handleDownloadURL(ctx context.Context,
+	storageDownloadURL *proxmoxv1alpha1.StorageDownloadURL) error {
+	// Download the file
+	logger := log.FromContext(ctx)
+
+	taskUPID, taskErr := proxmox.StorageDownloadURL(storageDownloadURL.Spec.Node, &storageDownloadURL.Spec)
+	if taskErr != nil {
+		logger.Error(taskErr, "unable to download the file")
+		return taskErr
+	}
+	// Get the task
+	task := proxmox.GetTask(taskUPID)
+	var logChannel <-chan string
+	logChannel, err := task.Watch(ctx, 5)
+	if err != nil {
+		logger.Error(err, "unable to watch the task")
+		return err
+	}
+	for logEntry := range logChannel {
+		logger.Info(fmt.Sprintf("Download task for %s: %s", storageDownloadURL.Spec.Filename, logEntry))
+	}
+	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, storageDownloadURLTimesNum, storageDownloadURLSteps)
+	if taskErr != nil {
+		logger.Error(taskErr, "unable to get the task status")
+		return taskErr
+	}
+	switch {
+	case !taskCompleted:
+		logger.Error(taskErr, "Download task did not complete")
+	case taskCompleted:
+		logger.Info("Download task completed")
+	default:
+		logger.Info("Download task did not complete yet")
+	}
+	return nil
 }
