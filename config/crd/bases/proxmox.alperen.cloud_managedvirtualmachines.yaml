@@ -36,16 +36,34 @@ spec:
             description: ManagedVirtualMachineSpec defines the desired state of ManagedVirtualMachine
             properties:
               cores:
+                description: Cores is the number of cores of the ManagedVirtualMachine
                 type: integer
+              deletionProtection:
+                default: false
+                description: DeletionProtection is a flag that indicates whether the
+                  VM should be protected from deletion. If true, the VM will not be
+                  deleted when the Kubernetes resource is deleted. If not set, it
+                  defaults to false.
+                type: boolean
               disk:
+                description: Disk is the amount of disk in GB of the ManagedVirtualMachine
                 type: integer
+              enableAutoStart:
+                default: true
+                description: EnableAutoStart is a flag that indicates whether the
+                  VM should automatically start when it's powered off. If true, the
+                  VM will start automatically when it's powered off. If not set, it
+                  defaults to true.
+                type: boolean
               memory:
+                description: Memory is the amount of memory in MB of the ManagedVirtualMachine
                 type: integer
               name:
-                description: Foo is an example field of ManagedVirtualMachine. Edit
-                  managedvirtualmachine_types.go to remove/update
+                description: Name is the name of the ManagedVirtualMachine
                 type: string
               nodeName:
+                description: NodeName is the name of the node where the ManagedVirtualMachine
+                  has exists
                 type: string
             required:
             - cores
@@ -58,9 +76,7 @@ spec:
             description: VirtualMachineStatus defines the observed state of VirtualMachine
             properties:
               conditions:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
-                  of cluster Important: Run "make" to regenerate code after modifying
-                  this file'
+                description: Conditions is the metav1.Condition of the Virtual Machine
                 items:
                   description: "Condition contains details for one aspect of the current
                     state of this API Resource. --- This struct is intended for direct
@@ -129,6 +145,8 @@ spec:
                   type: object
                 type: array
               status:
+                description: Status is the QEMU status of the Virtual Machine (state,
+                  node, uptime, id, IP address, os info)
                 properties:
                   IPAddress:
                     description: IPAddress is the IP address of the VM

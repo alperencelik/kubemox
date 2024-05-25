@@ -37,7 +37,6 @@ import (
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/metrics"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
-	"github.com/alperencelik/kubemox/pkg/utils"
 )
 
 const (
@@ -110,23 +109,36 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 				}
 			}
 			// Delete the VM
-			kubernetes.CreateManagedVMKubernetesEvent(managedVM, Clientset, "Deleting")
-			proxmox.DeleteVM(managedVM.Name, managedVM.Spec.NodeName)
-			metrics.DecManagedVirtualMachineCount()
+			if !managedVM.Spec.DeletionProtection {
+				kubernetes.CreateManagedVMKubernetesEvent(managedVM, Clientset, "Deleting")
+				proxmox.DeleteVM(managedVM.Name, managedVM.Spec.NodeName)
+				metrics.DecManagedVirtualMachineCount()
+			} else {
+				kubernetes.CreateManagedVMKubernetesEvent(managedVM, Clientset, "Deleting")
+				// Remove managedVirtualMachineTag from Managed Virtual Machine to not manage it anymore
+				err = proxmox.RemoveVirtualMachineTag(managedVM.Name, managedVM.Spec.NodeName, proxmox.ManagedVirtualMachineTag)
+				if err != nil {
+					logger.Error(err, "Error removing managedVirtualMachineTag from Managed Virtual Machine")
+					return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+				}
+				metrics.DecManagedVirtualMachineCount()
+			}
 		}
 		logger.Info("Removing finalizer from ManagedVirtualMachine", "name", managedVM.Name)
 		// Remove finalizer
 		controllerutil.RemoveFinalizer(managedVM, managedvirtualMachineFinalizerName)
 		if err = r.Update(ctx, managedVM); err != nil {
-			log.Log.Info(fmt.Sprintf("Error updatin ManagedVirtualMachine %s", managedVM.Name))
+			logger.Info(fmt.Sprintf("Error updating ManagedVirtualMachine %s", managedVM.Name))
 		}
 		return ctrl.Result{}, nil
 	}
-	// // Update ManagedVM
-	proxmox.UpdateManagedVM(managedVM.Name, proxmox.GetNodeOfVM(managedVM.Name), managedVM)
+	// If EnableAutoStart is true, start the VM if it's stopped
+	r.handleAutoStart(ctx, managedVM)
+	// Update ManagedVM
+	proxmox.UpdateManagedVM(ctx, managedVM)
 	err = r.Update(context.Background(), managedVM)
 	if err != nil {
-		log.Log.Info(fmt.Sprintf("ManagedVM %v could not be updated", managedVM.Name))
+		logger.Info(fmt.Sprintf("ManagedVM %v could not be updated", managedVM.Name))
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	// Update ManagedVMStatus
@@ -136,31 +148,19 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 	managedVM.Status.Status = *ManagedVMStatus
 	err = r.Status().Update(context.Background(), managedVM)
 	if err != nil {
-		log.Log.Info(fmt.Sprintf("ManagedVMStatus %v could not be updated", managedVM.Name))
+		logger.Info(fmt.Sprintf("ManagedVMStatus %v could not be updated", managedVM.Name))
 	}
 	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ManagedVirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	// Get all VMs with Proxmox API
-	AllVMs := proxmox.GetProxmoxVMs()
-	ControllerVMs := proxmox.GetControllerVMs()
-	// AllVMs - ControllerVMs = VMs that are not managed by the controller
-	ManagedVMs := utils.SubstractSlices(AllVMs, ControllerVMs)
-	for _, ManagedVM := range ManagedVMs {
-		if !proxmox.CheckManagedVMExists(ManagedVM) {
-			log.Log.Info(fmt.Sprintf("ManagedVM %v does not exist so creating it", ManagedVM))
-			managedVM := proxmox.CreateManagedVM(ManagedVM)
-			err := r.Create(context.Background(), managedVM)
-			if err != nil {
-				log.Log.Info(fmt.Sprintf("ManagedVM %v could not be created", ManagedVM))
-			}
-			// Add metrics
-			metrics.SetManagedVirtualMachineCPUCores(managedVM.Name, managedVM.Namespace, float64(managedVM.Spec.Cores))
-			metrics.SetManagedVirtualMachineMemory(managedVM.Name, managedVM.Namespace, float64(managedVM.Spec.Memory))
-		}
-		metrics.IncManagedVirtualMachineCount()
+	// Get list of VMs that tagged with managedVirtualMachineTag
+	managedVMs := proxmox.GetManagedVMs()
+	// Handle ManagedVM creation
+	err := r.handleManagedVMCreation(context.Background(), managedVMs)
+	if err != nil {
+		return err
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
@@ -181,9 +181,55 @@ func (r *ManagedVirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) err
 func (r *ManagedVirtualMachineReconciler) handleResourceNotFound(ctx context.Context, err error) error {
 	logger := log.FromContext(ctx)
 	if errors.IsNotFound(err) {
-		logger.Info("VirtualMachine resource not found. Ignoring since object must be deleted")
+		logger.Info("ManagedVirtualMachine resource not found. Ignoring since object must be deleted")
 		return nil
 	}
 	logger.Error(err, "Failed to get VirtualMachine")
 	return err
+}
+
+func (r *ManagedVirtualMachineReconciler) handleManagedVMCreation(ctx context.Context, managedVMs []string) error {
+	logger := log.FromContext(ctx)
+	for _, managedVM := range managedVMs {
+		// Create ManagedVM that matches with tag of managedVirtualMachineTag value
+		logger.Info(fmt.Sprintf("ManagedVM %v found!", managedVM))
+		if !proxmox.CheckManagedVMExists(managedVM) {
+			logger.Info(fmt.Sprintf("ManagedVM %v does not exist so creating it", managedVM))
+			managedVM := proxmox.CreateManagedVM(managedVM)
+			err := r.Create(context.Background(), managedVM)
+			if err != nil {
+				logger.Info(fmt.Sprintf("ManagedVM %v could not be created", managedVM.Name))
+				return err
+			}
+			// Add metrics
+			metrics.SetManagedVirtualMachineCPUCores(managedVM.Name, managedVM.Namespace, float64(managedVM.Spec.Cores))
+			metrics.SetManagedVirtualMachineMemory(managedVM.Name, managedVM.Namespace, float64(managedVM.Spec.Memory))
+			metrics.IncManagedVirtualMachineCount()
+		} else {
+			logger.Info(fmt.Sprintf("ManagedVM %v already exists", managedVM))
+		}
+	}
+	return nil
+}
+
+func (r *ManagedVirtualMachineReconciler) handleAutoStart(ctx context.Context,
+	managedVM *proxmoxv1alpha1.ManagedVirtualMachine) ctrl.Result {
+	logger := log.FromContext(ctx)
+	if managedVM.Spec.EnableAutoStart {
+		vmName := managedVM.Name
+		nodeName := managedVM.Spec.NodeName
+		vmState := proxmox.GetVMState(vmName, nodeName)
+		if vmState == proxmox.VirtualMachineStoppedState {
+			startResult, err := proxmox.StartVM(vmName, nodeName)
+			if err != nil {
+				logger.Info(fmt.Sprintf("ManagedVirtualMachine %s could not be started", vmName))
+				return ctrl.Result{Requeue: true}
+			} else {
+				logger.Info(startResult)
+			}
+			logger.Info(fmt.Sprintf("ManagedVirtualMachine %s started", vmName))
+			return ctrl.Result{Requeue: true}
+		}
+	}
+	return ctrl.Result{}
 }

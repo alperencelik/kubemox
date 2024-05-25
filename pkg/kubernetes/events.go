@@ -23,7 +23,7 @@ func CreateVMKubernetesEvent(vm *proxmoxv1alpha1.VirtualMachine, clientset *kube
 			Name:      fmt.Sprintf("%s-%s-%s", vm.ObjectMeta.Name, action, time.Now()),
 			Namespace: vm.ObjectMeta.Namespace,
 			Labels: map[string]string{
-				"app": "kube-proxmox-operator",
+				"app": "kubemox",
 			},
 		},
 		InvolvedObject: corev1.ObjectReference{
@@ -34,7 +34,7 @@ func CreateVMKubernetesEvent(vm *proxmoxv1alpha1.VirtualMachine, clientset *kube
 			UID:        vm.ObjectMeta.UID,
 		},
 		Source: corev1.EventSource{
-			Component: "kube-proxmox-operator",
+			Component: "kubemox",
 		},
 		FirstTimestamp: metav1.Time{Time: time.Now()},
 	}
@@ -68,7 +68,7 @@ func CreateManagedVMKubernetesEvent(managedVM *proxmoxv1alpha1.ManagedVirtualMac
 			Name:      fmt.Sprintf("%s-%s-%s", managedVM.Name, action, time.Now()),
 			Namespace: os.Getenv("POD_NAMESPACE"),
 			Labels: map[string]string{
-				"app": "kube-proxmox-operator",
+				"app": "kubemox",
 			},
 		},
 		InvolvedObject: corev1.ObjectReference{
@@ -79,7 +79,7 @@ func CreateManagedVMKubernetesEvent(managedVM *proxmoxv1alpha1.ManagedVirtualMac
 			UID:        managedVM.ObjectMeta.UID,
 		},
 		Source: corev1.EventSource{
-			Component: "kube-proxmox-operator",
+			Component: "kubemox",
 		},
 		FirstTimestamp: metav1.Time{Time: time.Now()},
 		Reason:         action,

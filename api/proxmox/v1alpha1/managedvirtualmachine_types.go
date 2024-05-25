@@ -28,12 +28,26 @@ type ManagedVirtualMachineSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of ManagedVirtualMachine. Edit managedvirtualmachine_types.go to remove/update
-	Name     string `json:"name"`
+	// Name is the name of the ManagedVirtualMachine
+	Name string `json:"name"`
+	// NodeName is the name of the node where the ManagedVirtualMachine has exists
 	NodeName string `json:"nodeName"`
-	Cores    int    `json:"cores"`
-	Memory   int    `json:"memory"`
-	Disk     int    `json:"disk"`
+	// Cores is the number of cores of the ManagedVirtualMachine
+	Cores int `json:"cores"`
+	// Memory is the amount of memory in MB of the ManagedVirtualMachine
+	Memory int `json:"memory"`
+	// Disk is the amount of disk in GB of the ManagedVirtualMachine
+	Disk int `json:"disk"`
+	// DeletionProtection is a flag that indicates whether the VM should be protected from deletion.
+	// If true, the VM will not be deleted when the Kubernetes resource is deleted.
+	// If not set, it defaults to false.
+	// +kubebuilder:default:=false
+	DeletionProtection bool `json:"deletionProtection,omitempty"`
+	// EnableAutoStart is a flag that indicates whether the VM should automatically start when it's powered off.
+	// If true, the VM will start automatically when it's powered off.
+	// If not set, it defaults to true.
+	// +kubebuilder:default:=true
+	EnableAutoStart bool `json:"enableAutoStart,omitempty"`
 }
 
 //+kubebuilder:object:root=true

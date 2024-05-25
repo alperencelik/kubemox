@@ -1,6 +1,9 @@
 package utils
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+)
 
 func FormatUptime(uptime int) string {
 	// Convert seconds to format like 1d 2h 3m 4s
@@ -39,4 +42,20 @@ func ExistsIn(first, second []string) bool {
 		}
 	}
 	return true
+}
+
+func StringInSlice(str string, list []string) bool {
+	for _, v := range list {
+		if v == str {
+			return true
+		}
+	}
+	return false
+}
+
+func EnsurePodNamespaceEnv() string {
+	if os.Getenv("POD_NAMESPACE") == "" {
+		os.Setenv("POD_NAMESPACE", "default")
+	}
+	return os.Getenv("POD_NAMESPACE")
 }

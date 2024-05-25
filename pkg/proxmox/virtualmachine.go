@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
-	kubernetes "github.com/alperencelik/kubemox/pkg/kubernetes"
+	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/metrics"
 	"github.com/alperencelik/kubemox/pkg/utils"
 	proxmox "github.com/luthermonson/go-proxmox"
@@ -23,9 +23,8 @@ var mutex = &sync.Mutex{}
 
 const (
 	// The tag that will be added to VMs in Proxmox cluster
-	virtualMachineTag          = "kube-proxmox-operator"
-	virtualMachineRunningState = "running"
-	virtualMachineStoppedState = "stopped"
+	VirtualMachineRunningState = "running"
+	VirtualMachineStoppedState = "stopped"
 	virtualMachineTemplateType = "template"
 	virtualMachineScratchType  = "scratch"
 	virtualMachineCPUOption    = "cores"
@@ -34,19 +33,35 @@ const (
 	AgentTimeoutSeconds = 10
 	// The timeouts for VirtualMachine operations
 	// Timeout = operationTimesNum * operationSteps
-	virtualMachineCreateTimesNum  = 20
-	virtualMachineCreateSteps     = 20
+	virtualMachineCreateTimesNum  = 15
+	virtualMachineCreateSteps     = 10
 	virtualMachineStartTimesNum   = 10
-	virtualMachineStartSteps      = 20
-	virtualMachineStopTimesNum    = 3
-	virtualMachineStopSteps       = 5
+	virtualMachineStartSteps      = 3
+	virtualMachineStopTimesNum    = 10
+	virtualMachineStopSteps       = 3
 	virtualMachineRestartTimesNum = 10
-	virtualMachineRestartSteps    = 20
-	virtualMachineUpdateTimesNum  = 2
-	virtualMachineUpdateSteps     = 5
-	VirtualMachineDeleteTimesNum  = 10
-	VirtualMachineDeleteSteps     = 20
+	virtualMachineRestartSteps    = 3
+	virtualMachineUpdateTimesNum  = 10
+	virtualMachineUpdateSteps     = 3
+	virtualMachineDeleteTimesNum  = 10
+	virtualMachineDeleteSteps     = 3
 )
+
+var (
+	virtualMachineTag        string
+	ManagedVirtualMachineTag string
+)
+
+func init() {
+	virtualMachineTag = os.Getenv("VIRTUAL_MACHINE_TAG")
+	if virtualMachineTag == "" {
+		virtualMachineTag = "kubemox"
+	}
+	ManagedVirtualMachineTag = os.Getenv("MANAGED_VIRTUAL_MACHINE_TAG")
+	if ManagedVirtualMachineTag == "" {
+		ManagedVirtualMachineTag = "kubemox-managed-vm"
+	}
+}
 
 func CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine) {
 	nodeName := vm.Spec.NodeName
@@ -222,7 +237,7 @@ func DeleteVM(vmName, nodeName string) {
 	mutex.Unlock()
 	// Stop VM
 	vmStatus := VirtualMachine.Status
-	if vmStatus == virtualMachineRunningState {
+	if vmStatus == VirtualMachineRunningState {
 		stopTask, stopErr := VirtualMachine.Stop(ctx)
 		if stopErr != nil {
 			panic(err)
@@ -242,7 +257,7 @@ func DeleteVM(vmName, nodeName string) {
 	if err != nil {
 		panic(err)
 	}
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 3, 20)
+	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineDeleteTimesNum, virtualMachineDeleteSteps)
 	switch {
 	case !taskCompleted:
 		log.Log.Error(taskErr, "Can't delete VM")
@@ -253,7 +268,7 @@ func DeleteVM(vmName, nodeName string) {
 	}
 }
 
-func StartVM(vmName, nodeName string) {
+func StartVM(vmName, nodeName string) (string, error) {
 	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Unable to get node to start node")
@@ -272,11 +287,11 @@ func StartVM(vmName, nodeName string) {
 	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineStartTimesNum, virtualMachineStartSteps)
 	switch {
 	case !taskCompleted:
-		log.Log.Error(taskErr, "Can't start VM")
+		return "", taskErr
 	case taskCompleted:
-		log.Log.Info(fmt.Sprintf("VM %s has been started", vmName))
+		return fmt.Sprintf("VirtualMachine %s has been started", vmName), nil
 	default:
-		log.Log.Info("VM is already started")
+		return fmt.Sprintf("VirtualMachine %s is already running", vmName), nil
 	}
 }
 
@@ -312,10 +327,10 @@ func GetVMState(vmName, nodeName string) string {
 		panic(err)
 	}
 	switch VirtualMachineState {
-	case virtualMachineRunningState:
-		return virtualMachineRunningState
-	case virtualMachineStoppedState:
-		return virtualMachineStoppedState
+	case VirtualMachineRunningState:
+		return VirtualMachineRunningState
+	case VirtualMachineStoppedState:
+		return VirtualMachineStoppedState
 	default:
 		return "unknown"
 	}
@@ -484,39 +499,26 @@ func GetProxmoxVMs() []string {
 	return VMs
 }
 
-func GetControllerVMs() []string {
-	// From proxmox get VM's that has tag "kube-proxmox-operator"
-	nodes := GetOnlineNodes()
-	var ControllerVMs []string
-	for _, node := range nodes {
-		node, err := Client.Node(ctx, node)
-		if err != nil {
-			panic(err)
-		}
-		VirtualMachines, err := node.VirtualMachines(ctx)
-		if err != nil {
-			panic(err)
-		}
-		for _, VirtualMachine := range VirtualMachines {
-			vmTags := VirtualMachine.Tags
-			if vmTags == "kube-proxmox-operator" {
-				ControllerVMs = append(ControllerVMs, VirtualMachine.Name)
-			}
-		}
-	}
-	return ControllerVMs
-}
-
 func CheckManagedVMExists(managedVM string) bool {
+	var existingManagedVMNames []string
 	// Get managed VMs
-	managedVMs := GetManagedVMs()
-	// Check if ManagedVM exists in ManagedVMs
-	for _, VM := range managedVMs {
-		if strings.EqualFold(VM, managedVM) {
-			return true
-		}
+	crd := kubernetes.GetManagedVMCRD()
+	customResource := schema.GroupVersionResource{
+		Group:    crd.Spec.Group,
+		Version:  crd.Spec.Versions[0].Name,
+		Resource: crd.Spec.Names.Plural,
 	}
-	return false
+	// Get managedVirtualMachine CRD
+	ClientManagedVMs, err := kubernetes.DynamicClient.Resource(customResource).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		log.Log.Error(err, "Error getting managed VMs")
+	}
+	// Get all managed VM names as array
+	for _, ClientManagedVM := range ClientManagedVMs.Items {
+		existingManagedVMNames = append(existingManagedVMNames, ClientManagedVM.GetName())
+	}
+	// Check if managed VM exists
+	return utils.StringInSlice(managedVM, existingManagedVMNames)
 }
 
 func GetManagedVMSpec(managedVMName, nodeName string) (cores, memory, disk int) {
@@ -583,7 +585,10 @@ func UpdateVMStatus(vmName, nodeName string) (*proxmoxv1alpha1.QEMUStatus, error
 	}
 }
 
-func UpdateVM(vmName, nodeName string, vm *proxmoxv1alpha1.VirtualMachine) {
+func UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) bool {
+	vmName := vm.Spec.Name
+	nodeName := vm.Spec.NodeName
+	updateStatus := false
 	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
 		panic(err)
@@ -662,8 +667,11 @@ func UpdateVM(vmName, nodeName string, vm *proxmoxv1alpha1.VirtualMachine) {
 		_, taskCompleted, taskErr = task.WaitForCompleteStatus(ctx, virtualMachineRestartTimesNum, virtualMachineRestartSteps)
 		if !taskCompleted {
 			log.Log.Error(taskErr, "Can't restart VM")
+		} else {
+			updateStatus = true
 		}
 	}
+	return updateStatus
 }
 
 func CreateManagedVM(managedVM string) *proxmoxv1alpha1.ManagedVirtualMachine {
@@ -697,29 +705,36 @@ func CreateManagedVM(managedVM string) *proxmoxv1alpha1.ManagedVirtualMachine {
 }
 
 func GetManagedVMs() []string {
-	// Get my custom resource "ManagedVirtualMachine"
-	customResource := schema.GroupVersionResource{
-		Group:    "proxmox.alperen.cloud",
-		Version:  "v1alpha1",
-		Resource: "managedvirtualmachines",
-	}
-	// Get all ManagedVirtualMachines with client-go
+	// Get VMs with tag managedVirtualMachineTag
+	nodes := GetOnlineNodes()
 	var ManagedVMs []string
-	ClientManagedVMs, err := kubernetes.DynamicClient.Resource(customResource).List(context.Background(), metav1.ListOptions{})
-	if err != nil {
-		panic(err)
-	}
-	for _, VM := range ClientManagedVMs.Items {
-		ManagedVMName := VM.GetName()
-		ManagedVMName = strings.ToLower(ManagedVMName)
-		ManagedVMs = append(ManagedVMs, ManagedVMName)
+	for _, node := range nodes {
+		node, err := Client.Node(ctx, node)
+		if err != nil {
+			panic(err)
+		}
+		VirtualMachines, err := node.VirtualMachines(ctx)
+		if err != nil {
+			panic(err)
+		}
+		for _, VirtualMachine := range VirtualMachines {
+			vmTags := strings.Split(VirtualMachine.Tags, ";")
+			// Check if VM has managedVirtualMachineTag but not kubemox tag
+			if utils.StringInSlice(ManagedVirtualMachineTag, vmTags) && !utils.StringInSlice(virtualMachineTag, vmTags) {
+				ManagedVMs = append(ManagedVMs, VirtualMachine.Name)
+			}
+		}
 	}
 	return ManagedVMs
 }
 
-func UpdateManagedVM(managedVMName, nodeName string, managedVM *proxmoxv1alpha1.ManagedVirtualMachine) {
-	if GetVMState(managedVMName, nodeName) != virtualMachineRunningState {
+func UpdateManagedVM(ctx context.Context, managedVM *proxmoxv1alpha1.ManagedVirtualMachine) {
+	managedVMName := managedVM.Spec.Name
+	nodeName := GetNodeOfVM(managedVMName)
+	logger := log.FromContext(ctx)
+	if GetVMState(managedVMName, nodeName) != VirtualMachineRunningState {
 		// Break if VM is not running
+		logger.Info(fmt.Sprintf("Managed virtual machine %s is not running, update can't be applied", managedVMName))
 		return
 	} else {
 		node, err := Client.Node(ctx, nodeName)
@@ -730,7 +745,7 @@ func UpdateManagedVM(managedVMName, nodeName string, managedVM *proxmoxv1alpha1.
 		vmID := GetVMID(managedVMName, nodeName)
 		VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 		if err != nil {
-			log.Log.Error(err, "Error getting VM for managed VM update")
+			logger.Error(err, "Error getting VM for managed VM update")
 		}
 		VirtualMachineMem := VirtualMachine.MaxMem / 1024 / 1024 // As MB
 		var cpuOption proxmox.VirtualMachineOption
@@ -772,16 +787,16 @@ func UpdateManagedVM(managedVMName, nodeName string, managedVM *proxmoxv1alpha1.
 			_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineUpdateTimesNum, virtualMachineUpdateSteps)
 			switch taskCompleted {
 			case false:
-				log.Log.Error(taskErr, "Can't update VM")
+				logger.Error(taskErr, "Can't update managed VM")
 			case true:
-				log.Log.Info(fmt.Sprintf("VM %s has been updated", managedVMName))
+				logger.Info(fmt.Sprintf("Managed VM %s has been updated", managedVMName))
 			default:
-				log.Log.Info("VM is already updated")
+				logger.Info("Managed VM is already updated")
 			}
 			task = RestartVM(managedVMName, nodeName)
 			_, taskCompleted, taskErr = task.WaitForCompleteStatus(ctx, virtualMachineRestartTimesNum, virtualMachineRestartSteps)
 			if !taskCompleted {
-				log.Log.Error(taskErr, "Can't restart VM")
+				logger.Error(taskErr, "Can't restart managed VM")
 			}
 		}
 	}
@@ -853,4 +868,23 @@ func VMSnapshotExists(vmName, snapshotName string) bool {
 		}
 	}
 	return false
+}
+
+func RemoveVirtualMachineTag(vmName, nodeName, tag string) error {
+	node, err := Client.Node(ctx, nodeName)
+	if err != nil {
+		panic(err)
+	}
+	// Get VMID
+	vmID := GetVMID(vmName, nodeName)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for removing tag")
+	}
+	removeTagTask, err := VirtualMachine.RemoveTag(ctx, tag)
+	_, taskCompleted, taskErr := removeTagTask.WaitForCompleteStatus(ctx, 5, 3)
+	if !taskCompleted {
+		log.Log.Error(taskErr, "Error removing tag from VirtualMachine")
+	}
+	return err
 }
