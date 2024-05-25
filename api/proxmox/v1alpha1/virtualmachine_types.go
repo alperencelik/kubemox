@@ -49,7 +49,7 @@ type VirtualMachineSpec struct {
 }
 
 type NewVMSpec struct {
-	// CPUs
+	// Cores is the number of CPU cores
 	Cores int `json:"cores,omitempty"`
 	// Memory is the amount of memory in MB
 	Memory int `json:"memory,omitempty"`
@@ -124,10 +124,10 @@ type QEMUStatus struct {
 
 // VirtualMachineStatus defines the observed state of VirtualMachine
 type VirtualMachineStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Conditions is the metav1.Condition of the Virtual Machine
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"` //nolint:lll // This is required by kubebuilder
-	Status     QEMUStatus         `json:"status,omitempty"`
+	// Status is the QEMU status of the Virtual Machine (state, node, uptime, id, IP address, os info)
+	Status QEMUStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true

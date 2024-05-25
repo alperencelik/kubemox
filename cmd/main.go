@@ -92,8 +92,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	POD_NAMESPACE := utils.EnsurePodNamespaceEnv()
-	setupLog.Info("Pod namespace has been found as:", "POD_NAMESPACE", POD_NAMESPACE)
+	PodNamespace := utils.EnsurePodNamespaceEnv()
+	setupLog.Info("Pod namespace has been found as:", "POD_NAMESPACE", PodNamespace)
 
 	if err = (&proxmoxcontroller.VirtualMachineReconciler{
 		Client: mgr.GetClient(),

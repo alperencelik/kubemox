@@ -220,7 +220,13 @@ func (r *ManagedVirtualMachineReconciler) handleAutoStart(ctx context.Context,
 		nodeName := managedVM.Spec.NodeName
 		vmState := proxmox.GetVMState(vmName, nodeName)
 		if vmState == proxmox.VirtualMachineStoppedState {
-			proxmox.StartVM(vmName, nodeName)
+			startResult, err := proxmox.StartVM(vmName, nodeName)
+			if err != nil {
+				logger.Info(fmt.Sprintf("ManagedVirtualMachine %s could not be started", vmName))
+				return ctrl.Result{Requeue: true}
+			} else {
+				logger.Info(startResult)
+			}
 			logger.Info(fmt.Sprintf("ManagedVirtualMachine %s started", vmName))
 			return ctrl.Result{Requeue: true}
 		}

@@ -33,18 +33,18 @@ const (
 	AgentTimeoutSeconds = 10
 	// The timeouts for VirtualMachine operations
 	// Timeout = operationTimesNum * operationSteps
-	virtualMachineCreateTimesNum  = 20
-	virtualMachineCreateSteps     = 20
+	virtualMachineCreateTimesNum  = 15
+	virtualMachineCreateSteps     = 10
 	virtualMachineStartTimesNum   = 10
-	virtualMachineStartSteps      = 20
-	virtualMachineStopTimesNum    = 3
-	virtualMachineStopSteps       = 5
+	virtualMachineStartSteps      = 3
+	virtualMachineStopTimesNum    = 10
+	virtualMachineStopSteps       = 3
 	virtualMachineRestartTimesNum = 10
-	virtualMachineRestartSteps    = 20
-	virtualMachineUpdateTimesNum  = 2
-	virtualMachineUpdateSteps     = 5
-	VirtualMachineDeleteTimesNum  = 10
-	VirtualMachineDeleteSteps     = 20
+	virtualMachineRestartSteps    = 3
+	virtualMachineUpdateTimesNum  = 10
+	virtualMachineUpdateSteps     = 3
+	virtualMachineDeleteTimesNum  = 10
+	virtualMachineDeleteSteps     = 3
 )
 
 var (
@@ -257,7 +257,7 @@ func DeleteVM(vmName, nodeName string) {
 	if err != nil {
 		panic(err)
 	}
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 3, 20)
+	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineDeleteTimesNum, virtualMachineDeleteSteps)
 	switch {
 	case !taskCompleted:
 		log.Log.Error(taskErr, "Can't delete VM")
@@ -268,7 +268,7 @@ func DeleteVM(vmName, nodeName string) {
 	}
 }
 
-func StartVM(vmName, nodeName string) {
+func StartVM(vmName, nodeName string) (string, error) {
 	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Unable to get node to start node")
@@ -287,11 +287,11 @@ func StartVM(vmName, nodeName string) {
 	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineStartTimesNum, virtualMachineStartSteps)
 	switch {
 	case !taskCompleted:
-		log.Log.Error(taskErr, "Can't start VM")
+		return "", taskErr
 	case taskCompleted:
-		log.Log.Info(fmt.Sprintf("VM %s has been started", vmName))
+		return fmt.Sprintf("VirtualMachine %s has been started", vmName), nil
 	default:
-		log.Log.Info("VM is already started")
+		return fmt.Sprintf("VirtualMachine %s is already running", vmName), nil
 	}
 }
 

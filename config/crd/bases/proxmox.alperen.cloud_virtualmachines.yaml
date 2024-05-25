@@ -146,7 +146,7 @@ spec:
                 description: This field should be modified further
                 properties:
                   cores:
-                    description: CPUs
+                    description: Cores is the number of CPU cores
                     type: integer
                   disk:
                     description: Disks is the list of disks
@@ -184,9 +184,7 @@ spec:
             description: VirtualMachineStatus defines the observed state of VirtualMachine
             properties:
               conditions:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
-                  of cluster Important: Run "make" to regenerate code after modifying
-                  this file'
+                description: Conditions is the metav1.Condition of the Virtual Machine
                 items:
                   description: "Condition contains details for one aspect of the current
                     state of this API Resource. --- This struct is intended for direct
@@ -255,6 +253,8 @@ spec:
                   type: object
                 type: array
               status:
+                description: Status is the QEMU status of the Virtual Machine (state,
+                  node, uptime, id, IP address, os info)
                 properties:
                   IPAddress:
                     description: IPAddress is the IP address of the VM
