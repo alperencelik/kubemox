@@ -96,13 +96,13 @@ func StopContainer(containerName, nodeName string) (*proxmox.ContainerStatus, er
 	log.Log.Info(fmt.Sprintf("Stopping container %s", containerName))
 	container := GetContainer(containerName, nodeName)
 	// Stop container
-	if container.Status == virtualMachineRunningState {
+	if container.Status == VirtualMachineRunningState {
 		// Stop container called
 		status, err := container.Stop(ctx)
 		// Retry method to understand if container is stopped
 		for i := 0; i < 5; i++ {
 			contStatus := GetContainerState(containerName, nodeName)
-			if contStatus == virtualMachineStoppedState {
+			if contStatus == VirtualMachineStoppedState {
 				break
 			} else {
 				time.Sleep(5 * time.Second)
@@ -120,7 +120,7 @@ func DeleteContainer(containerName, nodeName string) {
 	container := GetContainer(containerName, nodeName)
 	mutex.Unlock()
 	containerStatus := container.Status
-	if containerStatus == virtualMachineRunningState {
+	if containerStatus == VirtualMachineRunningState {
 		// Stop container
 		_, err := StopContainer(containerName, nodeName)
 		if err != nil {
@@ -213,7 +213,7 @@ func RestartContainer(containerName, nodeName string) bool {
 	// Retry method to understand if container is stopped
 	for i := 0; i < 5; i++ {
 		contStatus := GetContainerState(containerName, nodeName)
-		if contStatus == virtualMachineRunningState {
+		if contStatus == VirtualMachineRunningState {
 			return true
 		} else {
 			time.Sleep(5 * time.Second)

@@ -170,7 +170,7 @@ func (r *CustomCertificateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Check if cert-manager exists
 	certManagerExists := kubernetes.CheckCertManagerCRDsExists()
 	if !certManagerExists {
-		log.Log.Error(nil, "cert-manager is not installed. Please install cert-manager to use CustomCertificate controller.")
+		log.Log.Info("cert-manager is not installed. Please install cert-manager to use CustomCertificate controller.")
 		return nil
 	} else {
 		log.Log.Info("cert-manager is installed")

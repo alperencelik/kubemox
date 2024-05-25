@@ -36,6 +36,16 @@ type VirtualMachineSpec struct {
 	Template VirtualMachineSpecTemplate `json:"template,omitempty"`
 	// This field should be modified further
 	VMSpec NewVMSpec `json:"vmSpec,omitempty"`
+	// DeletionProtection is a flag that indicates whether the VM should be protected from deletion.
+	// If true, the VM will not be deleted when the Kubernetes resource is deleted.
+	// If not set, it defaults to false.
+	// +kubebuilder:default:=false
+	DeletionProtection bool `json:"deletionProtection,omitempty"`
+	// EnableAutoStart is a flag that indicates whether the VM should automatically start when it's powered off.
+	// If true, the VM will start automatically when it's powered off.
+	// If not set, it defaults to true.
+	// +kubebuilder:default:=true
+	EnableAutoStart bool `json:"enableAutoStart,omitempty"`
 }
 
 type NewVMSpec struct {

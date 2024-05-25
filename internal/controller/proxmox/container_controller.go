@@ -201,10 +201,10 @@ func (r *ContainerReconciler) UpdateContainerStatus(ctx context.Context, contain
 func (r *ContainerReconciler) handleResourceNotFound(ctx context.Context, err error) error {
 	logger := log.FromContext(ctx)
 	if errors.IsNotFound(err) {
-		logger.Info("VirtualMachine resource not found. Ignoring since object must be deleted")
+		logger.Info("Container resource not found. Ignoring since object must be deleted")
 		return nil
 	}
-	logger.Error(err, "Failed to get VirtualMachine")
+	logger.Error(err, "Failed to get Container")
 	return err
 }
 

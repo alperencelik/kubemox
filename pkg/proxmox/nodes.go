@@ -46,9 +46,6 @@ func GetNodeOfVM(vmName string) string {
 				return node.Name
 			}
 		}
-		if err != nil {
-			panic(err)
-		}
 	}
 	return ""
 }

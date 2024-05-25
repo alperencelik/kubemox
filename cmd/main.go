@@ -35,6 +35,7 @@ import (
 	proxmoxcontroller "github.com/alperencelik/kubemox/internal/controller/proxmox"
 	_ "github.com/alperencelik/kubemox/pkg/kubernetes"
 	_ "github.com/alperencelik/kubemox/pkg/proxmox"
+	"github.com/alperencelik/kubemox/pkg/utils"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -90,6 +91,9 @@ func main() {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
+
+	POD_NAMESPACE := utils.EnsurePodNamespaceEnv()
+	setupLog.Info("Pod namespace has been found as:", "POD_NAMESPACE", POD_NAMESPACE)
 
 	if err = (&proxmoxcontroller.VirtualMachineReconciler{
 		Client: mgr.GetClient(),
