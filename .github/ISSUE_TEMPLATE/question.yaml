@@ -1,0 +1,13 @@
+name: Question
+description: Ask a question about Kubemox
+title: "[Question]: "
+labels: ["question"]
+body: 
+  - type: textarea
+    id: question
+    attributes:
+      label: What would you like to ask?
+      description: |
+        Please clearly describe the question you would like to ask about Kubemox.
+    validations:
+      required: true
