@@ -8,5 +8,5 @@ roleRef:
   name: kubemox 
 subjects:
 - kind: ServiceAccount
-  name: kubemox 
+  name: {{ include "kubemox.serviceAccountName" . }}
   namespace: {{ .Release.Namespace }} 
