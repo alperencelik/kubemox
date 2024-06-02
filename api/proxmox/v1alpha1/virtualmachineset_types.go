@@ -28,9 +28,21 @@ type VirtualMachineSetSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of VirtualMachineSet. Edit virtualmachineset_types.go to remove/update
-	Replicas int                        `json:"replicas"`
-	NodeName string                     `json:"nodeName"`
+	// DeletionProtection is a flag that indicates whether the VM should be protected from deletion.
+	// If true, the VM will not be deleted when the Kubernetes resource is deleted.
+	// If not set, it defaults to false.
+	// +kubebuilder:default:=false
+	DeletionProtection bool `json:"deletionProtection,omitempty"`
+	// EnableAutoStart is a flag that indicates whether the VM should automatically start when it's powered off.
+	// If true, the VM will start automatically when it's powered off.
+	// If not set, it defaults to true.
+	// +kubebuilder:default:=true
+	EnableAutoStart bool `json:"enableAutoStart,omitempty"`
+	// Replicas is the number of VMs
+	Replicas int `json:"replicas"`
+	// NodeName is the name of the target node of Proxmox
+	NodeName string `json:"nodeName"`
+	// Template is the name of the source VM template
 	Template VirtualMachineSpecTemplate `json:"template,omitempty"`
 }
 
