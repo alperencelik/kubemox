@@ -47,18 +47,30 @@ theme:
       name: Switch to light mode
 
 plugins: 
-   - glightbox:
-       touchNavigation: true
-       loop: false
-       effect: zoom
-       slide_effect: slide
-       width: 100%
-       height: auto
-       zoomable: true
-       draggable: true
-       skip_classes:
-         - custom-skip-class-name
-       auto_caption: false
-       caption_position: bottom
-       background: white
-       shadow: true
+  - glightbox:
+      touchNavigation: true
+      loop: false
+      effect: zoom
+      slide_effect: slide
+      width: 100%
+      height: auto
+      zoomable: true
+      draggable: true
+      skip_classes:
+        - custom-skip-class-name
+      auto_caption: false
+      caption_position: bottom
+      background: white
+      shadow: true
+  - mike:
+      # These fields are all optional; the defaults are as below...
+      alias_type: symlink
+      redirect_template: null
+      deploy_prefix: ''
+      canonical_version: null
+      version_selector: true
+      css_dir: css
+      javascript_dir: js
+extra:
+  version:
+    provider: mike
