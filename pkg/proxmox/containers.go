@@ -17,7 +17,7 @@ func CloneContainer(container *proxmoxv1alpha1.Container) error {
 		panic(err)
 	}
 	templateContainerName := container.Spec.Template.Name
-	templateContainerID := 101
+	templateContainerID := GetContainerID(templateContainerName, nodeName)
 	templateContainer, err := node.Container(ctx, templateContainerID)
 	if err != nil {
 		panic(err)
