@@ -174,6 +174,8 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		logger.Error(err, "Error updating VirtualMachine status")
 		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 	}
+	// Configure the VirtualMachine with required network and storage configurations
+	proxmox.ConfigureVirtualMachine(vm)
 
 	return ctrl.Result{}, client.IgnoreNotFound(err)
 }

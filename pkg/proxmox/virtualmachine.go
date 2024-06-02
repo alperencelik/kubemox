@@ -45,6 +45,8 @@ const (
 	virtualMachineUpdateSteps     = 3
 	virtualMachineDeleteTimesNum  = 10
 	virtualMachineDeleteSteps     = 3
+	// The network name
+	netStr = "net"
 )
 
 var (
@@ -888,3 +890,151 @@ func RemoveVirtualMachineTag(vmName, nodeName, tag string) error {
 	}
 	return err
 }
+
+func GetNetworkConfiguration(vmName, nodeName string) (map[string]string, error) {
+	node, err := Client.Node(ctx, nodeName)
+	if err != nil {
+		return make(map[string]string), err
+	}
+	// Get VMID
+	vmID := GetVMID(vmName, nodeName)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	if err != nil {
+		return make(map[string]string), err
+	}
+	// Get all networks of VM
+	return VirtualMachine.VirtualMachineConfig.MergeNets(), nil
+}
+
+func parseNetworkConfiguration(networks map[string]string) ([]proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork, error) {
+	var networkConfiguration []proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork
+
+	// Parse networks to use as VirtualMachineSpecTemplateNetwork
+	for _, network := range networks {
+		networkSplit := strings.Split(network, ",")
+		if len(networkSplit) < 2 {
+			return nil, fmt.Errorf("invalid format for network configuration: %s", network)
+		}
+		// Get the network model name
+		networkModel := strings.Split(networkSplit[0], "=")[0] // The key of first value
+		// Get the network bridge name
+		networkBridge := strings.Split(networkSplit[1], "=")[1] // The value of second value
+		networkConfiguration = append(networkConfiguration, proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork{
+			Model:  networkModel,
+			Bridge: networkBridge,
+		})
+	}
+	return networkConfiguration, nil
+}
+
+func ConfigureVirtualMachine(vm *proxmoxv1alpha1.VirtualMachine) {
+	err := configureVirtualMachineNetwork(vm)
+	if err != nil {
+		log.Log.Error(err, "Error configuring network for VirtualMachine")
+	}
+}
+
+func deleteVirtualMachineOption(vm *proxmoxv1alpha1.VirtualMachine, option string) (proxmox.Task, error) {
+	nodeName := vm.Spec.NodeName
+	node, err := Client.Node(ctx, nodeName)
+	if err != nil {
+		log.Log.Error(err, "Error getting node")
+	}
+	virtualMachine, err := node.VirtualMachine(ctx, GetVMID(vm.Name, vm.Spec.NodeName))
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for deleting option")
+	}
+	// Delete option
+	taskID, err := virtualMachine.Config(ctx, proxmox.VirtualMachineOption{
+		Name:  "delete",
+		Value: option,
+	})
+	return *taskID, err
+}
+
+func updateNetworkConfig(ctx context.Context,
+	vm *proxmoxv1alpha1.VirtualMachine, i int, networks []proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork) error {
+	// Get the network model&bridge name
+	networkModel := networks[i].Model
+	networkBridge := networks[i].Bridge
+	// Update the network configuration
+	node, err := Client.Node(ctx, vm.Spec.NodeName)
+	if err != nil {
+		log.Log.Error(err, "Error getting node")
+	}
+	virtualMachine, err := node.VirtualMachine(ctx, GetVMID(vm.Name, vm.Spec.NodeName))
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for updating network configuration")
+	}
+	_, err = virtualMachine.Config(ctx, proxmox.VirtualMachineOption{
+		Name:  netStr + strconv.Itoa(i),
+		Value: networkModel + "," + "bridge=" + networkBridge,
+	})
+	return err
+}
+
+func configureVirtualMachineNetwork(vm *proxmoxv1alpha1.VirtualMachine) error {
+	networks := vm.Spec.Template.Network
+	// Get actual network configuration
+	virtualMachineNetworks, err := GetNetworkConfiguration(vm.Name, vm.Spec.NodeName)
+	if err != nil {
+		return err
+	}
+	virtualMachineNetworksParsed, err := parseNetworkConfiguration(virtualMachineNetworks)
+	if err != nil {
+		return err
+	}
+
+	// Check if network configuration is different
+	if !reflect.DeepEqual(networks, virtualMachineNetworksParsed) {
+		// The desired network configuration is different than the actual one
+		log.Log.Info(fmt.Sprintf("Updating network configuration for VirtualMachine %s", vm.Name))
+		// Update the network configuration
+		for i := len(networks); i < len(virtualMachineNetworksParsed); i++ {
+			// Remove the network configuration
+			log.Log.Info(fmt.Sprintf("Removing the network configuration for net%d of VM %s", i, vm.Spec.Name))
+			taskID, _ := deleteVirtualMachineOption(vm, "net"+strconv.Itoa(i))
+			_, taskCompleted, taskErr := taskID.WaitForCompleteStatus(ctx, 5, 3)
+			if !taskCompleted {
+				log.Log.Error(taskErr, "Error removing network configuration from VirtualMachine")
+			}
+		}
+		for i := len(virtualMachineNetworksParsed); i < len(networks); i++ {
+			// Add the network configuration
+			log.Log.Info(fmt.Sprintf("Adding the network configuration for net%d of VM %s", i, vm.Spec.Name))
+			err = updateNetworkConfig(ctx, vm, i, networks)
+			if err != nil {
+				return err
+			}
+		}
+		for i := 0; i < len(virtualMachineNetworksParsed); i++ {
+			// Check if the network configuration is different
+			if !reflect.DeepEqual(networks[i], virtualMachineNetworksParsed[i]) {
+				// Update the network configuration
+				log.Log.Info(fmt.Sprintf("Updating the network configuration for net%d of VM %s", i, vm.Spec.Name))
+				// Get the network model&bridge name
+				err = updateNetworkConfig(ctx, vm, i, networks)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// func GetDiskConfiguration(vm *proxmoxv1alpha1.VirtualMachine) (map[string]string, error) {
+// nodeName := vm.Spec.NodeName
+// node, err := Client.Node(ctx, nodeName)
+// if err != nil {
+// return make(map[string]string), err
+// }
+// // Get VMID
+// vmID := GetVMID(vm.Spec.Name, nodeName)
+// VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+// if err != nil {
+// return make(map[string]string), err
+// }
+// // Get all disks of VM
+// return VirtualMachine.VirtualMachineConfig.MergeDisks(), nil
+// }
