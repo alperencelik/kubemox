@@ -9,6 +9,8 @@ metadata:
     app.kubernetes.io/created-by: kubemox
   name: virtualmachineset-test
 spec:
+  deletionProtection: false 
+  enableAutoStart: false
   # Number of VMs to be created
   replicas: 3
   nodeName: lowtower

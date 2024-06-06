@@ -187,9 +187,11 @@ func (r *VirtualMachineSetReconciler) CreateVirtualMachineCR(vmSet *proxmoxv1alp
 			Labels:    labelsSetter(vmSet),
 		},
 		Spec: proxmoxv1alpha1.VirtualMachineSpec{
-			Name:     vmSet.Name + "-" + index,
-			NodeName: vmSet.Spec.NodeName,
-			Template: vmSet.Spec.Template,
+			Name:               vmSet.Name + "-" + index,
+			NodeName:           vmSet.Spec.NodeName,
+			Template:           vmSet.Spec.Template,
+			DeletionProtection: vmSet.Spec.DeletionProtection,
+			EnableAutoStart:    vmSet.Spec.EnableAutoStart,
 		},
 	}
 	// Set VirtualMachineSet instance as the owner and controller
@@ -253,8 +255,10 @@ func (r *VirtualMachineSetReconciler) updateVMs(ctx context.Context,
 	vmSet *proxmoxv1alpha1.VirtualMachineSet, vmList *proxmoxv1alpha1.VirtualMachineList) error {
 	for i := range vmList.Items {
 		vm := &vmList.Items[i]
-		if !reflect.DeepEqual(vm.Spec.Template, vmSet.Spec.Template) {
+		if !reflect.DeepEqual(vm.Spec.Template, vmSet.Spec.Template) || vmSet.Spec.DeletionProtection != vm.Spec.DeletionProtection || vmSet.Spec.EnableAutoStart != vm.Spec.EnableAutoStart {
 			vm.Spec.Template = vmSet.Spec.Template
+			vm.Spec.DeletionProtection = vmSet.Spec.DeletionProtection
+			vm.Spec.EnableAutoStart = vmSet.Spec.EnableAutoStart
 			// If vm exists in Proxmox, update it
 			if proxmox.CheckVM(vm.Spec.Name, vm.Spec.NodeName) {
 				// Update the VM

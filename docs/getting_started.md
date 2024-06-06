@@ -56,4 +56,5 @@ tilt up
 
 ## Creating your first Proxmox resource
 
-You can create different Proxmox resources using the Kubemox CRDs. For more information, you can check the [Custom Resources](/crds/virtualmachine/). Example resource manifests can be found in the [examples](/examples) directory.
+
+You can create different Proxmox resources using the Kubemox CRDs. For more information, you can check the [Custom Resources](crds/virtualmachine.md). Example resource manifests can be found in the [examples](https://github.com/alperencelik/kubemox/tree/main/examples) directory.
