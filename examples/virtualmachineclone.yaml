@@ -16,11 +16,18 @@ spec:
     socket: 1
     # Memory to be allocated to the VM
     memory: 4096 # As MB
+    # Deletion protection is whether to delete VM from Proxmox or not
+    deleteProtection: false
+    # VM should be started any time found in stopped state
+    enableAutostart: true
     # Disk used by the VM
     disk: 
       - storage: nvme 
         size: 50 # As GB
-        type: scsi
+        device: scsi0
+      - storage: nvme 
+        size: 20 # As GB
+        device: scsi1
     # Network interfaces used by the VM
     network:
       - model: virtio
@@ -47,9 +54,11 @@ spec:
     disk: 
       - storage: nvme 
         size: 50 # As GB
-        type: scsi
+        device: scsi0
     # Network interfaces used by the VM
     network:
+      - model: virtio
+        bridge: vmbr0
       - model: virtio
         bridge: vmbr0
 ---
@@ -74,7 +83,7 @@ spec:
     disk: 
       - storage: nvme 
         size: 50 # As GB
-        type: scsi
+        device: scsi0
     # Network interfaces used by the VM
     network:
       - model: virtio

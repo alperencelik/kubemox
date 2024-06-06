@@ -36,7 +36,7 @@ helm install kubemox alperencelik/kubemox --set \
 
 ### Clone from the source
 
-* You can also clone the repository and run the operator locally with Make. 
+* You can also clone the repository and run the operator locally with Make.
 
 ```bash
 git clone https://github.com/alperencelik/kubemox.git
@@ -55,5 +55,6 @@ tilt up
 ```
 
 ## Creating your first Proxmox resource
+
 
 You can create different Proxmox resources using the Kubemox CRDs. For more information, you can check the [Custom Resources](crds/virtualmachine.md). Example resource manifests can be found in the [examples](https://github.com/alperencelik/kubemox/tree/main/examples) directory.

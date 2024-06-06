@@ -1,6 +1,6 @@
 # Virtual MachineSet
 
-`VirtualMachineSet` is a way to create multiple VirtualMachines in Proxmox. The relationship between `VirtualMachineSet` and `VirtualMachine` is similar to the relationship between `Deployment` and `Pod`. `VirtualMachineSet` creates multiple `VirtualMachine` resources and Kubemox will create them for you in Proxmox. You can only use `VirtualMachineSet` with templates. Creating multiple VirtualMachines from scratch is not supported yet. 
+`VirtualMachineSet` is a way to create multiple VirtualMachines in Proxmox. The relationship between `VirtualMachineSet` and `VirtualMachine` is similar to the relationship between `Deployment` and `Pod`. `VirtualMachineSet` creates multiple `VirtualMachine` resources and Kubemox will create them for you in Proxmox. You can only use `VirtualMachineSet` with templates. Creating multiple VirtualMachines from scratch is not supported yet.
 
 ## Creating VirtualMachineSet
 
@@ -32,11 +32,15 @@ spec:
     socket: 1
     # Memory to be allocated to the VM
     memory: 4096 # As MB
+    # Deletion protection is whether to delete VM from Proxmox or not
+    deleteProtection: false
+    # VM should be started any time found in stopped state
+    enableAutostart: true
     # Disk used by the VM
     disk: 
       - storage: nvme 
         size: 50 # As GB
-        type: scsi
+        device: scsi0
     # Network interfaces used by the VM
     network:
       - model: virtio

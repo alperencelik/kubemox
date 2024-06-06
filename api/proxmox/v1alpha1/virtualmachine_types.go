@@ -96,8 +96,8 @@ type VirtualMachineSpecTemplateDisk struct {
 	Storage string `json:"storage"`
 	// Size is the size of the disk in GB
 	Size int `json:"size"`
-	// Type is the type of the disk
-	Type string `json:"type"`
+	// Device is the name of the device
+	Device string `json:"device"`
 }
 
 type VirtualMachineSpecTemplateNetwork struct {

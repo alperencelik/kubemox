@@ -45,6 +45,8 @@ const (
 	virtualMachineUpdateSteps     = 3
 	virtualMachineDeleteTimesNum  = 10
 	virtualMachineDeleteSteps     = 3
+	// The network name
+	netStr = "net"
 )
 
 var (
@@ -599,51 +601,25 @@ func UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) bool {
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
-	// Change hostname
 	// Update VM
 	var cpuOption proxmox.VirtualMachineOption
 	var memoryOption proxmox.VirtualMachineOption
-	var Disk, DiskSize string
-	var DiskSizeInt int
 	cpuOption.Name = virtualMachineCPUOption
 	memoryOption.Name = virtualMachineMemoryOption
 	switch CheckVMType(vm) {
 	case virtualMachineTemplateType:
 		cpuOption.Value = vm.Spec.Template.Cores
 		memoryOption.Value = uint64(vm.Spec.Template.Memory)
-		DiskSize = strconv.Itoa(vm.Spec.Template.Disk[0].Size) + "G"
-		Disk = vm.Spec.Template.Disk[0].Type + "0"
-		DiskSizeInt = vm.Spec.Template.Disk[0].Size
 		metrics.SetVirtualMachineCPUCores(vmName, vm.Namespace, float64(vm.Spec.Template.Cores))
 		metrics.SetVirtualMachineMemory(vmName, vm.Namespace, float64(vm.Spec.Template.Memory))
 	case virtualMachineScratchType:
 		cpuOption.Value = vm.Spec.VMSpec.Cores
 		memoryOption.Value = uint64(vm.Spec.VMSpec.Memory)
-		DiskValue := vm.Spec.VMSpec.Disk.Value
-		DiskSize = DiskValue + "G"
-		DiskSizeInt, _ = strconv.Atoi(DiskValue)
-		Disk = vm.Spec.VMSpec.Disk.Name
 		metrics.SetVirtualMachineCPUCores(vmName, vm.Namespace, float64(vm.Spec.VMSpec.Cores))
 		metrics.SetVirtualMachineMemory(vmName, vm.Namespace, float64(vm.Spec.VMSpec.Memory))
 	default:
 		log.Log.Info(fmt.Sprintf("VM %s doesn't have any template or vmSpec defined", vmName))
 	}
-
-	// Convert disk size to string
-	VirtualMachineMaxDisk := VirtualMachine.MaxDisk / 1024 / 1024 / 1024 // As GB
-	//// log.Log.Info(fmt.Sprintf("Resizing disk %s to %s", disk, diskSize))
-	//// if current disk is lower than the updated disk size then resize the disk else don't do anything
-	if VirtualMachineMaxDisk <= uint64(DiskSizeInt) {
-		// Resize Disk
-		err = VirtualMachine.ResizeDisk(ctx, Disk, DiskSize)
-		if err != nil {
-			log.Log.Error(err, "Can't resize disk")
-		}
-	} else if CheckVMType(vm) == virtualMachineTemplateType {
-		log.Log.Info(fmt.Sprintf("VirtualMachine %s disk %s can't shrink.", vmName, Disk))
-		vm.Spec.Template.Disk[0].Size = int(VirtualMachineMaxDisk)
-	}
-
 	VirtualMachineMem := VirtualMachine.MaxMem / 1024 / 1024 // As MB
 
 	if VirtualMachine.CPUs != cpuOption.Value || VirtualMachineMem != memoryOption.Value {
@@ -885,6 +861,297 @@ func RemoveVirtualMachineTag(vmName, nodeName, tag string) error {
 	_, taskCompleted, taskErr := removeTagTask.WaitForCompleteStatus(ctx, 5, 3)
 	if !taskCompleted {
 		log.Log.Error(taskErr, "Error removing tag from VirtualMachine")
+	}
+	return err
+}
+
+func GetNetworkConfiguration(vmName, nodeName string) (map[string]string, error) {
+	node, err := Client.Node(ctx, nodeName)
+	if err != nil {
+		return make(map[string]string), err
+	}
+	// Get VMID
+	vmID := GetVMID(vmName, nodeName)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	if err != nil {
+		return make(map[string]string), err
+	}
+	// Get all networks of VM
+	return VirtualMachine.VirtualMachineConfig.MergeNets(), nil
+}
+
+func parseNetworkConfiguration(networks map[string]string) ([]proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork, error) {
+	var networkConfiguration []proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork
+
+	// Parse networks to use as VirtualMachineSpecTemplateNetwork
+	for _, network := range networks {
+		networkSplit := strings.Split(network, ",")
+		if len(networkSplit) < 2 {
+			return nil, fmt.Errorf("invalid format for network configuration: %s", network)
+		}
+		// Get the network model name
+		networkModel := strings.Split(networkSplit[0], "=")[0] // The key of first value
+		// Get the network bridge name
+		networkBridge := strings.Split(networkSplit[1], "=")[1] // The value of second value
+		networkConfiguration = append(networkConfiguration, proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork{
+			Model:  networkModel,
+			Bridge: networkBridge,
+		})
+	}
+	return networkConfiguration, nil
+}
+
+func ConfigureVirtualMachine(vm *proxmoxv1alpha1.VirtualMachine) error {
+	err := configureVirtualMachineNetwork(vm)
+	if err != nil {
+		return err
+	}
+	err = configureVirtualMachineDisk(vm)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func deleteVirtualMachineOption(vm *proxmoxv1alpha1.VirtualMachine, option string) (proxmox.Task, error) {
+	nodeName := vm.Spec.NodeName
+	node, err := Client.Node(ctx, nodeName)
+	if err != nil {
+		log.Log.Error(err, "Error getting node")
+	}
+	virtualMachine, err := node.VirtualMachine(ctx, GetVMID(vm.Name, vm.Spec.NodeName))
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for deleting option")
+	}
+	// Delete option
+	taskID, err := virtualMachine.Config(ctx, proxmox.VirtualMachineOption{
+		Name:  "delete",
+		Value: option,
+	})
+	return *taskID, err
+}
+
+func updateNetworkConfig(ctx context.Context,
+	vm *proxmoxv1alpha1.VirtualMachine, i int, networks []proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork) error {
+	// Get the network model&bridge name
+	networkModel := networks[i].Model
+	networkBridge := networks[i].Bridge
+	// Update the network configuration
+	node, err := Client.Node(ctx, vm.Spec.NodeName)
+	if err != nil {
+		log.Log.Error(err, "Error getting node")
+	}
+	virtualMachine, err := node.VirtualMachine(ctx, GetVMID(vm.Name, vm.Spec.NodeName))
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for updating network configuration")
+	}
+	_, err = virtualMachine.Config(ctx, proxmox.VirtualMachineOption{
+		Name:  netStr + strconv.Itoa(i),
+		Value: networkModel + "," + "bridge=" + networkBridge,
+	})
+	return err
+}
+
+func configureVirtualMachineNetwork(vm *proxmoxv1alpha1.VirtualMachine) error {
+	networks := vm.Spec.Template.Network
+	// Get actual network configuration
+	virtualMachineNetworks, err := GetNetworkConfiguration(vm.Name, vm.Spec.NodeName)
+	if err != nil {
+		return err
+	}
+	virtualMachineNetworksParsed, err := parseNetworkConfiguration(virtualMachineNetworks)
+	if err != nil {
+		return err
+	}
+
+	// Check if network configuration is different
+	if !reflect.DeepEqual(networks, virtualMachineNetworksParsed) {
+		// The desired network configuration is different than the actual one
+		log.Log.Info(fmt.Sprintf("Updating network configuration for VirtualMachine %s", vm.Name))
+		// Update the network configuration
+		for i := len(networks); i < len(virtualMachineNetworksParsed); i++ {
+			// Remove the network configuration
+			log.Log.Info(fmt.Sprintf("Removing the network configuration for net%d of VM %s", i, vm.Spec.Name))
+			taskID, _ := deleteVirtualMachineOption(vm, "net"+strconv.Itoa(i))
+			_, taskCompleted, taskErr := taskID.WaitForCompleteStatus(ctx, 5, 3)
+			if !taskCompleted {
+				log.Log.Error(taskErr, "Error removing network configuration from VirtualMachine")
+			}
+		}
+		for i := len(virtualMachineNetworksParsed); i < len(networks); i++ {
+			// Add the network configuration
+			log.Log.Info(fmt.Sprintf("Adding the network configuration for net%d of VM %s", i, vm.Spec.Name))
+			err = updateNetworkConfig(ctx, vm, i, networks)
+			if err != nil {
+				return err
+			}
+		}
+		for i := 0; i < len(virtualMachineNetworksParsed); i++ {
+			// Check if the network configuration is different
+			if !reflect.DeepEqual(networks[i], virtualMachineNetworksParsed[i]) {
+				// Update the network configuration
+				log.Log.Info(fmt.Sprintf("Updating the network configuration for net%d of VM %s", i, vm.Spec.Name))
+				// Get the network model&bridge name
+				err = updateNetworkConfig(ctx, vm, i, networks)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func GetDiskConfiguration(vm *proxmoxv1alpha1.VirtualMachine) (map[string]string, error) {
+	nodeName := vm.Spec.NodeName
+	node, err := Client.Node(ctx, nodeName)
+	if err != nil {
+		return make(map[string]string), err
+	}
+	// Get VMID
+	vmID := GetVMID(vm.Spec.Name, nodeName)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	if err != nil {
+		return make(map[string]string), err
+	}
+	disks := VirtualMachine.VirtualMachineConfig.MergeDisks()
+	// Remove entries with media=cdrom
+	for key, value := range disks {
+		if strings.Contains(value, "media=cdrom") {
+			delete(disks, key)
+		}
+	}
+	return disks, nil
+}
+
+func configureVirtualMachineDisk(vm *proxmoxv1alpha1.VirtualMachine) error {
+	// Get VM disk spec and actual disk configuration
+	disks := vm.Spec.Template.Disk
+	virtualMachineDisks, err := GetDiskConfiguration(vm)
+	if err != nil {
+		return err
+	}
+	virtualMachineDisksParsed, err := parseDiskConfiguration(virtualMachineDisks)
+	if err != nil {
+		return err
+	}
+
+	// Classify disk configurations
+	disksToAdd, disksToUpdate, disksToDelete := classifyDisks(disks, virtualMachineDisksParsed)
+
+	// Apply disk changes
+	if err := applyDiskChanges(vm, disksToAdd, disksToUpdate, disksToDelete); err != nil {
+		return err
+	}
+	return nil
+}
+
+func classifyDisks(desiredDisks, actualDisks []proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) (
+	disksToAdd, disksToUpdate, disksToDelete []proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) {
+	// Create a map of actual disks
+	actualDisksMap := make(map[string]proxmoxv1alpha1.VirtualMachineSpecTemplateDisk)
+	for _, disk := range actualDisks {
+		actualDisksMap[disk.Device] = disk
+	}
+
+	diskDeviceList := make([]string, len(desiredDisks))
+	for i, disk := range desiredDisks {
+		diskDeviceList[i] = disk.Device
+		if actualDisk, ok := actualDisksMap[disk.Device]; ok {
+			if !reflect.DeepEqual(disk, actualDisk) {
+				disksToUpdate = append(disksToUpdate, disk)
+			}
+		} else {
+			disksToAdd = append(disksToAdd, disk)
+		}
+	}
+
+	for _, disk := range actualDisks {
+		if !utils.StringInSlice(disk.Device, diskDeviceList) {
+			disksToDelete = append(disksToDelete, disk)
+		}
+	}
+	return
+}
+
+func applyDiskChanges(vm *proxmoxv1alpha1.VirtualMachine,
+	disksToAdd, disksToUpdate, disksToDelete []proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) error {
+	for _, disk := range disksToAdd {
+		log.Log.Info(fmt.Sprintf("Adding disk %s to VirtualMachine %s", disk.Device, vm.Name))
+		if err := updateDiskConfig(ctx, vm, disk); err != nil {
+			return err
+		} else {
+			log.Log.Info(fmt.Sprintf("Disk %s of VirtualMachine %s has been added", disk.Device, vm.Name))
+		}
+	}
+	for _, disk := range disksToUpdate {
+		// TODO: Implement check for blocking shrink operation
+		if err := updateDiskConfig(ctx, vm, disk); err != nil {
+			return err
+		} else {
+			log.Log.Info(fmt.Sprintf("Disk %s of VirtualMachine %s has been updated", disk.Device, vm.Name))
+		}
+	}
+	for _, disk := range disksToDelete {
+		log.Log.Info(fmt.Sprintf("Deleting disk %s of VirtualMachine %s", disk.Device, vm.Name))
+		if _, err := deleteVirtualMachineOption(vm, disk.Device); err != nil {
+			return err
+		} else {
+			log.Log.Info(fmt.Sprintf("Disk %s of VirtualMachine %s has been deleted", disk.Device, vm.Name))
+		}
+	}
+	return nil
+}
+
+func parseDiskConfiguration(disks map[string]string) ([]proxmoxv1alpha1.VirtualMachineSpecTemplateDisk, error) {
+	var diskConfiguration []proxmoxv1alpha1.VirtualMachineSpecTemplateDisk
+
+	// Parse disks to use as VirtualMachineSpecTemplateDisk
+	for device, disk := range disks {
+		diskSplit := strings.Split(disk, ",")
+		if len(diskSplit) < 2 {
+			return nil, fmt.Errorf("invalid format for disk configuration: %s", disk)
+		}
+		// Get the disk storage name
+		diskStorage := strings.Split(diskSplit[0], ":")[0] // The key of first value
+		// Get the disk size from the key = size
+		var diskSize int
+		var err error
+		for _, part := range diskSplit {
+			if strings.Contains(part, "size") {
+				diskSize, err = strconv.Atoi(strings.TrimSuffix(strings.Split(part, "=")[1], "G"))
+				if err != nil {
+					return nil, err
+				}
+				break
+			}
+		}
+		diskConfiguration = append(diskConfiguration, proxmoxv1alpha1.VirtualMachineSpecTemplateDisk{
+			Storage: diskStorage,
+			Size:    diskSize,
+			Device:  device,
+		})
+	}
+	return diskConfiguration, nil
+}
+
+func updateDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
+	disk proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) error {
+	node, err := Client.Node(ctx, vm.Spec.NodeName)
+	if err != nil {
+		log.Log.Error(err, "Error getting node")
+	}
+	virtualMachine, err := node.VirtualMachine(ctx, GetVMID(vm.Name, vm.Spec.NodeName))
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for updating disk configuration")
+	}
+	taskID, err := virtualMachine.Config(ctx, proxmox.VirtualMachineOption{
+		Name:  disk.Device,
+		Value: disk.Storage + ":" + strconv.Itoa(disk.Size),
+	})
+	_, taskCompleted, taskErr := taskID.WaitForCompleteStatus(ctx, 5, 3)
+	if !taskCompleted {
+		log.Log.Error(taskErr, "Error updating disk configuration for VirtualMachine")
 	}
 	return err
 }

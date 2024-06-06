@@ -255,7 +255,9 @@ func (r *VirtualMachineSetReconciler) updateVMs(ctx context.Context,
 	vmSet *proxmoxv1alpha1.VirtualMachineSet, vmList *proxmoxv1alpha1.VirtualMachineList) error {
 	for i := range vmList.Items {
 		vm := &vmList.Items[i]
-		if !reflect.DeepEqual(vm.Spec.Template, vmSet.Spec.Template) || vmSet.Spec.DeletionProtection != vm.Spec.DeletionProtection || vmSet.Spec.EnableAutoStart != vm.Spec.EnableAutoStart {
+		if !reflect.DeepEqual(vm.Spec.Template, vmSet.Spec.Template) ||
+			vmSet.Spec.DeletionProtection != vm.Spec.DeletionProtection ||
+			vmSet.Spec.EnableAutoStart != vm.Spec.EnableAutoStart {
 			vm.Spec.Template = vmSet.Spec.Template
 			vm.Spec.DeletionProtection = vmSet.Spec.DeletionProtection
 			vm.Spec.EnableAutoStart = vmSet.Spec.EnableAutoStart
