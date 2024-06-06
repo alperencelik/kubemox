@@ -1083,7 +1083,6 @@ func applyDiskChanges(vm *proxmoxv1alpha1.VirtualMachine,
 		} else {
 			log.Log.Info(fmt.Sprintf("Disk %s of VirtualMachine %s has been added", disk.Device, vm.Name))
 		}
-
 	}
 	for _, disk := range disksToUpdate {
 		// TODO: Implement check for blocking shrink operation
@@ -1092,7 +1091,6 @@ func applyDiskChanges(vm *proxmoxv1alpha1.VirtualMachine,
 		} else {
 			log.Log.Info(fmt.Sprintf("Disk %s of VirtualMachine %s has been updated", disk.Device, vm.Name))
 		}
-
 	}
 	for _, disk := range disksToDelete {
 		log.Log.Info(fmt.Sprintf("Deleting disk %s of VirtualMachine %s", disk.Device, vm.Name))
