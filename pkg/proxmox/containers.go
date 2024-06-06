@@ -91,27 +91,23 @@ func GetContainer(containerName, nodeName string) *proxmox.Container {
 	return container
 }
 
-func StopContainer(containerName, nodeName string) (*proxmox.ContainerStatus, error) {
+func StopContainer(containerName, nodeName string) error {
 	// Get container
 	log.Log.Info(fmt.Sprintf("Stopping container %s", containerName))
 	container := GetContainer(containerName, nodeName)
 	// Stop container
 	if container.Status == VirtualMachineRunningState {
 		// Stop container called
-		status, err := container.Stop(ctx)
-		// Retry method to understand if container is stopped
-		for i := 0; i < 5; i++ {
-			contStatus := GetContainerState(containerName, nodeName)
-			if contStatus == VirtualMachineStoppedState {
-				break
-			} else {
-				time.Sleep(5 * time.Second)
-			}
+		taskID, err := container.Stop(ctx)
+		if err != nil {
+			return err
 		}
-		return status, err
-	} else {
-		return nil, nil
+		_, taskCompleted, taskErr := taskID.WaitForCompleteStatus(ctx, 3, 5)
+		if !taskCompleted {
+			return taskErr
+		}
 	}
+	return nil
 }
 
 func DeleteContainer(containerName, nodeName string) {
@@ -122,7 +118,7 @@ func DeleteContainer(containerName, nodeName string) {
 	containerStatus := container.Status
 	if containerStatus == VirtualMachineRunningState {
 		// Stop container
-		_, err := StopContainer(containerName, nodeName)
+		err := StopContainer(containerName, nodeName)
 		if err != nil {
 			panic(err)
 		}
@@ -151,10 +147,18 @@ func StartContainer(containerName, nodeName string) error {
 	// Get container
 	container := GetContainer(containerName, nodeName)
 	// Start container
-	status, err := container.Start(ctx)
-	log.Log.Info(fmt.Sprintf("Container %s status: %s", containerName, status))
+	taskID, err := container.Start(ctx)
 	if err != nil {
 		return err
+	}
+	_, taskCompleted, taskErr := taskID.WaitForCompleteStatus(ctx, 5, 5)
+	switch taskCompleted {
+	case false:
+		log.Log.Error(taskErr, "Can't start container")
+	case true:
+		log.Log.Info(fmt.Sprintf("Container %s has been started", containerName))
+	default:
+		log.Log.Info("Container is already started")
 	}
 	return nil
 }

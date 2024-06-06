@@ -49,19 +49,19 @@ spec:
                     description: Disks is the list of disks
                     items:
                       properties:
+                        device:
+                          description: Device is the name of the device
+                          type: string
                         size:
                           description: Size is the size of the disk in GB
                           type: integer
                         storage:
                           description: Storage is the name of the storage
                           type: string
-                        type:
-                          description: Type is the type of the disk
-                          type: string
                       required:
+                      - device
                       - size
                       - storage
-                      - type
                       type: object
                     type: array
                   memory:

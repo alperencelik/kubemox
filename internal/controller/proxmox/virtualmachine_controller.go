@@ -126,7 +126,6 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// Stop reconciliation as the item is being deleted
 		return ctrl.Result{}, nil
 	}
-	// Refetch the VirtualMachine resource
 
 	// Check if this VirtualMachine already exists
 	vmName := vm.Spec.Name
@@ -175,7 +174,6 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 	}
 	// Configure the VirtualMachine with required network and storage configurations
-	proxmox.ConfigureVirtualMachine(vm)
 
 	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
@@ -305,6 +303,10 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachine(ctx context.Context, vm 
 	logger := log.FromContext(ctx)
 	updateStatus := proxmox.UpdateVM(vm)
 	err := r.UpdateVirtualMachineStatus(vm)
+	if err != nil {
+		return err
+	}
+	err = proxmox.ConfigureVirtualMachine(vm)
 	if err != nil {
 		return err
 	}
