@@ -1,4 +1,4 @@
-# What is Kubemox? 
+# What is Kubemox?
 
 [![Pipeline Status](https://img.shields.io/github/actions/workflow/status/alperencelik/kubemox/.github/workflows/publish.yaml?branch=main)](https://github.com/alperencelik/kubemox/actions)
 [![Latest Release](https://img.shields.io/github/v/release/alperencelik/kubemox)](https://github.com/alperencelik/kubemox/releases)
@@ -12,4 +12,3 @@ Kubemox is a Kubernetes operator for Proxmox VE. It allows you to manage Proxmox
 <div style="text-align:center;">
   <img src="images/kubemox.jpg" alt="Logo" width="150" height="150">
 </div>
-

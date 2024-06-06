@@ -36,7 +36,7 @@ helm install kubemox alperencelik/kubemox --set \
 
 ### Clone from the source
 
-* You can also clone the repository and run the operator locally with Make. 
+* You can also clone the repository and run the operator locally with Make.
 
 ```bash
 git clone https://github.com/alperencelik/kubemox.git
