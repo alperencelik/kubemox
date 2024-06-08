@@ -1,31 +1,38 @@
 # Default values for kubemox.
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
-
+# -- Define how many replicas of the Kubemox to run
 replicaCount: 1
 
 proxmox:
+  # -- Proxmox VE endpoint
   endpoint: "10.0.0.99" 
-  # endpoint: 10.0.0.99
-  # insecureSkipTLSVerify: true
+  # -- Proxmox VE skip hostname verification for SSL
   insecureSkipTLSVerify: true
   # Either tokenID/secret or username/password must be set
+  # -- Proxmox VE token ID
   tokenID: ""
+  # -- Proxmox VE token secret
   secret: ""
   # Both username and password must be set if tokenID/secret is not set
+  # -- Proxmox VE username
   username: "root@pam"
+  # -- Proxmox VE password
   password: "PROXMOX_PASSWORD"
 
 image:
+  # -- Kubemox image repository
   repository: alperencelik/kubemox 
+  # -- Image pull policy for Kubemox
   pullPolicy: Always
-  # Overrides the image tag whose default is the chart appVersion.
-  # See https://github.com/alperencelik/kubemox/releases for the tags
+  # -- Kubemox image tag, see https://github.com/alperencelik/kubemox/releases for the tags
   tag: "latest"
 
 metrics:
   serviceMonitor:
+    # -- Prometheus ServiceMonitor enabled
     enabled: false
+    # -- Prometheus ServiceMonitor interval
     interval: 30s
     # -- Prometheus [MetricRelabelConfigs] to apply to samples before ingestion
     relabelings: []
@@ -51,12 +58,12 @@ nameOverride: ""
 fullnameOverride: ""
 
 serviceAccount:
-  # Specifies whether a service account should be created
+  # -- Specifies whether a service account should be created
   create: true
-  # Annotations to add to the service account
+  # -- Annotations to add to the service account
   annotations: {}
-  # The name of the service account to use.
-  # If not set and create is true, a name is generated using the fullname template
+  # -- The name of the service account to use.
+  # -- If not set and create is true, a name is generated using the fullname template
   name: ""
 
 podAnnotations: {}
@@ -101,16 +108,6 @@ resources:
   requests:
     cpu: 100m
     memory: 128Mi
-  # We usually recommend not to specify default resources and to leave this as a conscious
-  # choice for the user. This also increases chances charts run on environments with little
-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-  # limits:
-  #   cpu: 100m
-  #   memory: 128Mi
-  # requests:
-  #   cpu: 100m
-  #   memory: 128Mi
 
 autoscaling:
   enabled: false
