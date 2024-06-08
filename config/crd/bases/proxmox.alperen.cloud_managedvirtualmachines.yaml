@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.12.0
+    controller-gen.kubebuilder.io/version: v0.13.0
   name: managedvirtualmachines.proxmox.alperen.cloud
 spec:
   group: proxmox.alperen.cloud
@@ -11,10 +11,40 @@ spec:
     kind: ManagedVirtualMachine
     listKind: ManagedVirtualMachineList
     plural: managedvirtualmachines
+    shortNames:
+    - mvm
     singular: managedvirtualmachine
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: The node name
+      jsonPath: .spec.nodeName
+      name: Node
+      type: string
+    - description: The ID of the VM
+      jsonPath: .status.status.id
+      name: ID
+      type: integer
+    - description: The state of the VM
+      jsonPath: .status.status.state
+      name: State
+      type: string
+    - description: The uptime of the VM
+      jsonPath: .status.status.uptime
+      name: Uptime
+      type: string
+    - description: The IP address of the VM
+      jsonPath: .status.status.IPAddress
+      name: IP Address
+      type: string
+    - description: The OS information of the VM
+      jsonPath: .status.status.OSInfo
+      name: OS Info
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: ManagedVirtualMachine is the Schema for the managedvirtualmachines

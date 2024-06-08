@@ -23,6 +23,10 @@ spec:
   # Number of VMs to be created
   replicas: 3
   nodeName: lowtower
+  # Deletion protection is whether to delete VM from Proxmox or not
+  deleteProtection: false
+  # VM should be started any time found in stopped state
+  enableAutostart: true
   template:
     # Name of the template to be cloned
     name: centos-template-new
@@ -32,10 +36,6 @@ spec:
     socket: 1
     # Memory to be allocated to the VM
     memory: 4096 # As MB
-    # Deletion protection is whether to delete VM from Proxmox or not
-    deleteProtection: false
-    # VM should be started any time found in stopped state
-    enableAutostart: true
     # Disk used by the VM
     disk: 
       - storage: nvme 
