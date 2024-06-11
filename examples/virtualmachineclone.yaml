@@ -7,6 +7,10 @@ spec:
   name: virtualmachine-sample-clone
   # Name of the node where the VM will be created
   nodeName: lowtower
+  # Deletion protection is whether to delete VM from Proxmox or not
+  deletionProtection: false
+  # VM should be started any time found in stopped state
+  enableAutostart: true
   template:
     # Name of the template to be cloned
     name: fedora-template 
@@ -16,10 +20,6 @@ spec:
     socket: 1
     # Memory to be allocated to the VM
     memory: 4096 # As MB
-    # Deletion protection is whether to delete VM from Proxmox or not
-    deleteProtection: false
-    # VM should be started any time found in stopped state
-    enableAutostart: true
     # Disk used by the VM
     disk: 
       - storage: nvme 
@@ -28,62 +28,6 @@ spec:
       - storage: nvme 
         size: 20 # As GB
         device: scsi1
-    # Network interfaces used by the VM
-    network:
-      - model: virtio
-        bridge: vmbr0
----
-apiVersion: proxmox.alperen.cloud/v1alpha1
-kind: VirtualMachine
-metadata:
-  name: virtualmachine-sample-clone-2 
-spec:
-  name: virtualmachine-sample-clone-2
-  # Name of the node where the VM will be created
-  nodeName: lowtower
-  template:
-    # Name of the template to be cloned
-    name: fedora-template 
-    # CPU cores to be allocated to the VM
-    cores: 2
-    # CPU sockets to be allocated to the VM
-    socket: 1
-    # Memory to be allocated to the VM
-    memory: 4096 # As MB
-    # Disk used by the VM
-    disk: 
-      - storage: nvme 
-        size: 50 # As GB
-        device: scsi0
-    # Network interfaces used by the VM
-    network:
-      - model: virtio
-        bridge: vmbr0
-      - model: virtio
-        bridge: vmbr0
----
-apiVersion: proxmox.alperen.cloud/v1alpha1
-kind: VirtualMachine
-metadata:
-  name: virtualmachine-sample-clone-3
-spec:
-  name: virtualmachine-sample-clone-3
-  # Name of the node where the VM will be created
-  nodeName: lowtower
-  template:
-    # Name of the template to be cloned
-    name: fedora-template 
-    # CPU cores to be allocated to the VM
-    cores: 2
-    # CPU sockets to be allocated to the VM
-    socket: 1
-    # Memory to be allocated to the VM
-    memory: 4096 # As MB
-    # Disk used by the VM
-    disk: 
-      - storage: nvme 
-        size: 50 # As GB
-        device: scsi0
     # Network interfaces used by the VM
     network:
       - model: virtio
