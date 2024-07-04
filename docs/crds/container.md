@@ -15,6 +15,10 @@ metadata:
 spec:
   name: container-new
   nodeName: lowtower
+  # Deletion protection is whether to delete VM from Proxmox or not
+  deleteProtection: false
+  # VM should be started any time found in stopped state
+  enableAutostart: true
   template:
     # Name of the template to be cloned
     name: test-container 
