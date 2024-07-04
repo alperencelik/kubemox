@@ -3,8 +3,6 @@ kind: CustomResourceDefinition
 metadata:
   name: containers.proxmox.alperen.cloud
 spec:
-  conversion:
-    strategy: None
   group: proxmox.alperen.cloud
   names:
     kind: Container
@@ -63,6 +61,20 @@ spec:
           spec:
             description: ContainerSpec defines the desired state of Container
             properties:
+              deletionProtection:
+                default: false
+                description: DeletionProtection is a flag that indicates whether the
+                  resource should be protected from deletion. If true, the resource
+                  will not be deleted when the Kubernetes resource is deleted. If
+                  not set, it defaults to false.
+                type: boolean
+              enableAutoStart:
+                default: true
+                description: EnableAutoStart is a flag that indicates whether the
+                  resource should automatically start when it's powered off. If true,
+                  the resource will start automatically when it's powered off. If
+                  not set, it defaults to true.
+                type: boolean
               name:
                 description: Name is the name of the Container
                 type: string
@@ -127,7 +139,7 @@ spec:
                     \n type FooStatus struct{ // Represents the observations of a
                     foo's current state. // Known .status.conditions.type are: \"Available\",
                     \"Progressing\", and \"Degraded\" // +patchMergeKey=type // +patchStrategy=merge
-                    // +listType=map // +listMapKey=type Conditions ]metav1.Condition
+                    // +listType=map // +listMapKey=type Conditions []metav1.Condition
                     `json:\"conditions,omitempty\" patchStrategy:\"merge\" patchMergeKey:\"type\"
                     protobuf:\"bytes,1,rep,name=conditions\"` \n // other fields }"
                   properties:

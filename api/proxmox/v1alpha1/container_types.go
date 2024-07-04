@@ -34,7 +34,16 @@ type ContainerSpec struct {
 	NodeName string `json:"nodeName"`
 	// TemplateSpec of the source Container
 	Template ContainerTemplate `json:"template,omitempty"`
-	// This field should be modified further
+	// DeletionProtection is a flag that indicates whether the resource should be protected from deletion.
+	// If true, the resource will not be deleted when the Kubernetes resource is deleted.
+	// If not set, it defaults to false.
+	// +kubebuilder:default:=false
+	DeletionProtection bool `json:"deletionProtection,omitempty"`
+	// EnableAutoStart is a flag that indicates whether the resource should automatically start when it's powered off.
+	// If true, the resource will start automatically when it's powered off.
+	// If not set, it defaults to true.
+	// +kubebuilder:default:=true
+	EnableAutoStart bool `json:"enableAutoStart,omitempty"`
 }
 
 type ContainerTemplate struct {

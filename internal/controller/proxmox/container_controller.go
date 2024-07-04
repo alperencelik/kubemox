@@ -41,7 +41,8 @@ import (
 // ContainerReconciler reconciles a Container object
 type ContainerReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Watchers *proxmox.ExternalWatchers
 }
 
 const (
@@ -49,6 +50,7 @@ const (
 
 	typeDeletingContainer  = "Deleting"
 	typeAvailableContainer = "Available"
+	typeStoppedContainer   = "stopped"
 	typeCreatingContainer  = "Creating"
 	typeErrorContainer     = "Error"
 )
@@ -76,6 +78,9 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 	logger.Info(fmt.Sprintf("Reconciling Container %s", container.Name))
 
+	// Handle the external watcher for the Container
+	r.handleWatcher(ctx, req, container)
+
 	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
 
@@ -91,7 +96,7 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// The object is being deleted
 		if controllerutil.ContainsFinalizer(container, containerFinalizerName) {
 			// Delete the Container
-			logger.Info("Deleting Container", "name", container.Name)
+			logger.Info("Deleting Container", "name", containerName)
 
 			if !meta.IsStatusConditionPresentAndEqual(container.Status.Conditions, typeDeletingContainer, metav1.ConditionTrue) {
 				meta.SetStatusCondition(&container.Status.Conditions, metav1.Condition{
@@ -106,7 +111,13 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				}
 				return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 			}
-			proxmox.DeleteContainer(containerName, nodeName)
+			// Stop the watcher if resource is being deleted
+			if stopChan, exists := r.Watchers.Watchers[req.Name]; exists {
+				close(stopChan)
+				delete(r.Watchers.Watchers, req.Name)
+			}
+			// Handle deletion of the Container
+			r.handleContainerDeletion(ctx, container)
 			// Remove finalizer
 			controllerutil.RemoveFinalizer(container, containerFinalizerName)
 			if err = r.Update(ctx, container); err != nil {
@@ -131,12 +142,6 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 
-	// Update Container Status
-	err = r.UpdateContainerStatus(ctx, container)
-	if err != nil {
-		logger.Error(err, "Failed to update Container status")
-		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
-	}
 	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
 
@@ -190,7 +195,7 @@ func (r *ContainerReconciler) UpdateContainerStatus(ctx context.Context, contain
 		ID:     containerStatus.ID,
 	}
 	container.Status.Status = qemuStatus
-	// // Update Container
+	// Update Container
 	err := r.Status().Update(ctx, container)
 	if err != nil {
 		return err
@@ -222,13 +227,12 @@ func (r *ContainerReconciler) handleFinalizer(ctx context.Context, container *pr
 
 func (r *ContainerReconciler) StartOrUpdateContainer(ctx context.Context,
 	container *proxmoxv1alpha1.Container) error {
-	//
 	logger := log.FromContext(ctx)
 	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
 	// Update Container
 	containerState := proxmox.GetContainerState(containerName, nodeName)
-	if containerState == "stopped" {
+	if containerState == typeStoppedContainer {
 		err := proxmox.StartContainer(containerName, nodeName)
 		if err != nil {
 			logger.Error(err, "Failed to start Container")
@@ -247,7 +251,6 @@ func (r *ContainerReconciler) StartOrUpdateContainer(ctx context.Context,
 }
 
 func (r *ContainerReconciler) handleCloneContainer(ctx context.Context, container *proxmoxv1alpha1.Container) error {
-	//
 	logger := log.FromContext(ctx)
 	// Create Container
 	err := r.CloneContainer(container)
@@ -261,4 +264,62 @@ func (r *ContainerReconciler) handleCloneContainer(ctx context.Context, containe
 		return err
 	}
 	return nil
+}
+
+func (r *ContainerReconciler) handleAutoStart(ctx context.Context,
+	container *proxmoxv1alpha1.Container) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	containerName := container.Spec.Name
+	nodeName := container.Spec.NodeName
+	if container.Spec.EnableAutoStart {
+		containerState := proxmox.GetContainerState(containerName, nodeName)
+		if containerState == typeStoppedContainer {
+			err := proxmox.StartContainer(containerName, nodeName)
+			if err != nil {
+				logger.Error(err, "Failed to start Container")
+				return ctrl.Result{Requeue: true}, err
+			}
+			return ctrl.Result{Requeue: true}, nil
+		}
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r *ContainerReconciler) handleWatcher(ctx context.Context, req ctrl.Request, container *proxmoxv1alpha1.Container) {
+	r.Watchers.HandleWatcher(ctx, req, func(ctx context.Context, stopChan chan struct{}) (ctrl.Result, error) {
+		return proxmox.StartWatcher(ctx, container, stopChan, r.fetchResource, r.updateStatus,
+			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher)
+	})
+}
+
+func (r *ContainerReconciler) fetchResource(ctx context.Context, key client.ObjectKey, obj proxmox.Resource) error {
+	return r.Get(ctx, key, obj.(*proxmoxv1alpha1.Container))
+}
+
+func (r *ContainerReconciler) updateStatus(ctx context.Context, obj proxmox.Resource) error {
+	return r.UpdateContainerStatus(ctx, obj.(*proxmoxv1alpha1.Container))
+}
+
+func (r *ContainerReconciler) checkDelta(obj proxmox.Resource) (bool, error) {
+	return proxmox.CheckContainerDelta(obj.(*proxmoxv1alpha1.Container))
+}
+
+func (r *ContainerReconciler) handleAutoStartFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
+	return r.handleAutoStart(ctx, obj.(*proxmoxv1alpha1.Container))
+}
+
+func (r *ContainerReconciler) handleReconcileFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
+	return r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(obj)})
+}
+
+func (r *ContainerReconciler) handleContainerDeletion(ctx context.Context, container *proxmoxv1alpha1.Container) {
+	logger := log.FromContext(ctx)
+	containerName := container.Spec.Name
+	nodeName := container.Spec.NodeName
+	if container.Spec.DeletionProtection {
+		logger.Info(fmt.Sprintf("Container %s is protected from deletion", containerName))
+		return
+	} else {
+		proxmox.DeleteContainer(containerName, nodeName)
+	}
 }

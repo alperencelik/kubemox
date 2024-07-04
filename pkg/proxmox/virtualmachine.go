@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,6 +19,14 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+type VirtualMachineComparison struct {
+	Sockets  int `json:"sockets"`
+	Cores    int `json:"cores"`
+	Memory   int `json:"memory"`
+	Networks []proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork
+	Disks    []proxmoxv1alpha1.VirtualMachineSpecTemplateDisk
+}
 
 var mutex = &sync.Mutex{}
 
@@ -134,7 +143,6 @@ func GetVMID(vmName, nodeName string) int {
 		panic(err)
 	}
 	for _, vm := range vmList {
-		//	if vm.Name == vmName {
 		if strings.EqualFold(vm.Name, vmName) {
 			vmID := vm.VMID
 			// Convert vmID to int
@@ -443,62 +451,6 @@ func CheckVMType(vm *proxmoxv1alpha1.VirtualMachine) string {
 		VMType = "undefined"
 	}
 	return VMType
-}
-
-type VMMutex struct {
-	vmName string
-	mutex  sync.Mutex
-	locked bool
-}
-
-var vmMutexes = make(map[string]*VMMutex)
-
-func LockVM(vmName string) {
-	vmMutex, ok := vmMutexes[vmName]
-	if !ok {
-		vmMutex = &VMMutex{
-			vmName: vmName,
-		}
-		vmMutexes[vmName] = vmMutex
-	}
-	vmMutex.mutex.Lock()
-	vmMutex.locked = true
-}
-
-func UnlockVM(vmName string) {
-	vmMutex, ok := vmMutexes[vmName]
-	if !ok {
-		return
-	}
-	vmMutex.mutex.Unlock()
-	vmMutex.locked = false
-}
-
-func IsVMLocked(vmName string) bool {
-	vmMutex, ok := vmMutexes[vmName]
-	if !ok {
-		return false
-	}
-	return vmMutex.locked
-}
-
-func GetProxmoxVMs() []string {
-	var VMs []string
-	nodes := GetOnlineNodes()
-	for _, node := range nodes {
-		node, err := Client.Node(ctx, node)
-		if err != nil {
-			panic(err)
-		}
-		VirtualMachines, err := node.VirtualMachines(ctx)
-		if err != nil {
-			panic(err)
-		}
-		for _, vm := range VirtualMachines {
-			VMs = append(VMs, vm.Name)
-		}
-	}
-	return VMs
 }
 
 func CheckManagedVMExists(managedVM string) bool {
@@ -963,7 +915,6 @@ func configureVirtualMachineNetwork(vm *proxmoxv1alpha1.VirtualMachine) error {
 	if err != nil {
 		return err
 	}
-
 	// Check if network configuration is different
 	if !reflect.DeepEqual(networks, virtualMachineNetworksParsed) {
 		// The desired network configuration is different than the actual one
@@ -1154,4 +1105,91 @@ func updateDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 		log.Log.Error(taskErr, "Error updating disk configuration for VirtualMachine")
 	}
 	return err
+}
+
+func CheckVirtualMachineDelta(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) {
+	// Compare the actual state of the VM with the desired state
+	// If there is a difference, return true
+	node, err := Client.Node(ctx, vm.Spec.NodeName)
+	if err != nil {
+		panic(err)
+	}
+	// Get actual VM
+	vmID := GetVMID(vm.Spec.Name, vm.Spec.NodeName)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for watching")
+	}
+	// Get actual VM's network configuration
+	virtualMachineNetworks, err := GetNetworkConfiguration(vm.Name, vm.Spec.NodeName)
+	if err != nil {
+		return false, err
+	}
+	VirtualMachineNetworksParsed, err := parseNetworkConfiguration(virtualMachineNetworks)
+	if err != nil {
+		return false, err
+	}
+	virtualMachineDisks, err := GetDiskConfiguration(vm)
+	if err != nil {
+		return false, err
+	}
+	VirtualMachineDisksParsed, err := parseDiskConfiguration(virtualMachineDisks)
+	if err != nil {
+		return false, err
+	}
+
+	VirtualMachineConfig := VirtualMachine.VirtualMachineConfig
+	actualVM := VirtualMachineComparison{
+		Cores:    VirtualMachineConfig.Cores,
+		Sockets:  VirtualMachineConfig.Sockets,
+		Memory:   int(VirtualMachineConfig.Memory),
+		Networks: VirtualMachineNetworksParsed,
+		Disks:    sortDisks(VirtualMachineDisksParsed),
+	}
+	// Desired VM
+	desiredVM := VirtualMachineComparison{
+		Cores:    vm.Spec.Template.Cores,
+		Sockets:  vm.Spec.Template.Socket,
+		Memory:   vm.Spec.Template.Memory,
+		Networks: vm.Spec.Template.Network,
+		Disks:    sortDisks(vm.Spec.Template.Disk),
+	}
+	// Compare the actual VM with the desired VM
+	if !reflect.DeepEqual(actualVM, desiredVM) {
+		return true, nil
+	}
+	return false, nil
+}
+
+func sortDisks(disks []proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) []proxmoxv1alpha1.VirtualMachineSpecTemplateDisk {
+	sort.Slice(disks, func(i, j int) bool {
+		if disks[i].Storage == disks[j].Storage {
+			return disks[i].Device < disks[j].Device
+		}
+		return disks[i].Storage < disks[j].Storage
+	})
+	return disks
+}
+
+func CheckManagedVMDelta(managedVM *proxmoxv1alpha1.ManagedVirtualMachine) (
+	bool, error) {
+	// Compare the actual state of the VM with the desired state
+	// If there is a difference, return true
+	node, err := Client.Node(ctx, managedVM.Spec.NodeName)
+	if err != nil {
+		panic(err)
+	}
+	// Get actual VM
+	vmID := GetVMID(managedVM.Spec.Name, managedVM.Spec.NodeName)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for watching")
+	}
+	VirtualMachineConfig := VirtualMachine.VirtualMachineConfig
+
+	// Compare the actual VM with the desired VM
+	if VirtualMachineConfig.Cores != managedVM.Spec.Cores || int(VirtualMachineConfig.Memory) != managedVM.Spec.Memory {
+		return true, nil
+	}
+	return false, nil
 }

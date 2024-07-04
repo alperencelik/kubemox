@@ -22,10 +22,10 @@ spec:
     memory: 4096 # As MB
     # Disk used by the VM
     disk: 
-      - storage: nvme 
+      - storage: local-lvm 
         size: 50 # As GB
         device: scsi0
-      - storage: nvme 
+      - storage: local-lvm 
         size: 20 # As GB
         device: scsi1
     # Network interfaces used by the VM
