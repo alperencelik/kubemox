@@ -64,6 +64,20 @@ spec:
           spec:
             description: ContainerSpec defines the desired state of Container
             properties:
+              deletionProtection:
+                default: false
+                description: DeletionProtection is a flag that indicates whether the
+                  resource should be protected from deletion. If true, the resource
+                  will not be deleted when the Kubernetes resource is deleted. If
+                  not set, it defaults to false.
+                type: boolean
+              enableAutoStart:
+                default: true
+                description: EnableAutoStart is a flag that indicates whether the
+                  resource should automatically start when it's powered off. If true,
+                  the resource will start automatically when it's powered off. If
+                  not set, it defaults to true.
+                type: boolean
               name:
                 description: Name is the name of the Container
                 type: string

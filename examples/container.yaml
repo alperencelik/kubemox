@@ -5,6 +5,8 @@ metadata:
 spec:
   name: container-new
   nodeName: lowtower
+  deletionProtection: false
+  enableAutoStart: true
   template:
     # Name of the template to be cloned
     name: test-container 

@@ -34,7 +34,7 @@ import (
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	proxmoxcontroller "github.com/alperencelik/kubemox/internal/controller/proxmox"
 	_ "github.com/alperencelik/kubemox/pkg/kubernetes"
-	_ "github.com/alperencelik/kubemox/pkg/proxmox"
+	"github.com/alperencelik/kubemox/pkg/proxmox"
 	"github.com/alperencelik/kubemox/pkg/utils"
 	//+kubebuilder:scaffold:imports
 )
@@ -96,15 +96,17 @@ func main() {
 	setupLog.Info("Pod namespace has been found as:", "POD_NAMESPACE", PodNamespace)
 
 	if err = (&proxmoxcontroller.VirtualMachineReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Watchers: proxmox.NewExternalWatchers(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachine")
 		os.Exit(1)
 	}
 	if err = (&proxmoxcontroller.ManagedVirtualMachineReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Watchers: proxmox.NewExternalWatchers(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ManagedVirtualMachine")
 		os.Exit(1)
@@ -131,8 +133,9 @@ func main() {
 		os.Exit(1)
 	}
 	if err = (&proxmoxcontroller.ContainerReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Watchers: proxmox.NewExternalWatchers(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Container")
 		os.Exit(1)

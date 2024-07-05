@@ -60,7 +60,10 @@ var (
 // VirtualMachineReconciler reconciles a VirtualMachine object
 type VirtualMachineReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Watchers *proxmox.ExternalWatchers
+	// Watchers map[string]chan struct{}
+	// mu       sync.Mutex
 }
 
 //+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachines,verbs=get;list;watch;create;update;patch;delete
@@ -81,13 +84,15 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	logger.Info(fmt.Sprintf("Reconciling VirtualMachine %s", vm.Name))
 
+	// Handle the external watcher for the VirtualMachine
+	r.handleWatcher(ctx, req, vm)
+
 	// Check if the VirtualMachine instance is marked to be deleted, which is indicated by the deletion timestamp being set.
 	if vm.ObjectMeta.DeletionTimestamp.IsZero() {
-		if !controllerutil.ContainsFinalizer(vm, virtualMachineFinalizerName) {
-			controllerutil.AddFinalizer(vm, virtualMachineFinalizerName)
-			if err = r.Update(ctx, vm); err != nil {
-				return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
-			}
+		err = r.handleFinalizer(ctx, vm)
+		if err != nil {
+			logger.Error(err, "Error handling finalizer")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}
 	} else {
 		// The object is being deleted
@@ -110,9 +115,14 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			} else {
 				return ctrl.Result{}, nil
 			}
+			// Stop the watcher if resource is being deleted
+			if stopChan, exists := r.Watchers.Watchers[req.Name]; exists {
+				close(stopChan)
+				delete(r.Watchers.Watchers, req.Name)
+			}
 			// Perform all operations to delete the VM if the VM is not marked as deleting
 			// TODO: Check if the VM is already deleting
-			r.DeleteVirtualMachine(vm)
+			r.DeleteVirtualMachine(ctx, vm)
 
 			// Remove finalizer
 			logger.Info("Removing finalizer from VirtualMachine", "name", vm.Spec.Name)
@@ -166,14 +176,6 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	}
 	logger.Info(fmt.Sprintf("VirtualMachine %s already exists", vmName))
-
-	// Update the VirtualMachine status
-	err = r.UpdateVirtualMachineStatus(vm)
-	if err != nil {
-		logger.Error(err, "Error updating VirtualMachine status")
-		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
-	}
-	// Configure the VirtualMachine with required network and storage configurations
 
 	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
@@ -238,11 +240,13 @@ func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, vm 
 	return nil
 }
 
-func (r *VirtualMachineReconciler) DeleteVirtualMachine(vm *proxmoxv1alpha1.VirtualMachine) {
+func (r *VirtualMachineReconciler) DeleteVirtualMachine(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) {
+	logger := log.FromContext(ctx)
 	// Delete the VM
 	kubernetes.CreateVMKubernetesEvent(vm, kubernetes.Clientset, "Deleting")
 	if vm.Spec.DeletionProtection {
 		metrics.DecVirtualMachineCount()
+		logger.Info(fmt.Sprintf("VirtualMachine %s is protected from deletion", vm.Spec.Name))
 		return
 	} else {
 		proxmox.DeleteVM(vm.Spec.Name, vm.Spec.NodeName)
@@ -250,7 +254,7 @@ func (r *VirtualMachineReconciler) DeleteVirtualMachine(vm *proxmoxv1alpha1.Virt
 	}
 }
 
-func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(vm *proxmoxv1alpha1.VirtualMachine) error {
+func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) error {
 	meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
 		Type:    typeAvailableVirtualMachine,
 		Status:  metav1.ConditionTrue,
@@ -263,7 +267,7 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(vm *proxmoxv1alpha
 		return err
 	}
 	vm.Status.Status = *qemuStatus
-	if err := r.Status().Update(context.Background(), vm); err != nil {
+	if err := r.Status().Update(ctx, vm); err != nil {
 		return err
 	}
 	return nil
@@ -302,7 +306,7 @@ func (r *VirtualMachineReconciler) handleAutoStart(ctx context.Context,
 func (r *VirtualMachineReconciler) UpdateVirtualMachine(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) error {
 	logger := log.FromContext(ctx)
 	updateStatus := proxmox.UpdateVM(vm)
-	err := r.UpdateVirtualMachineStatus(vm)
+	err := r.UpdateVirtualMachineStatus(ctx, vm)
 	if err != nil {
 		return err
 	}
@@ -314,4 +318,43 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachine(ctx context.Context, vm 
 		logger.Info(fmt.Sprintf("VirtualMachine %s is updated", vm.Spec.Name))
 	}
 	return err
+}
+
+func (r *VirtualMachineReconciler) handleFinalizer(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) error {
+	logger := log.FromContext(ctx)
+	if !controllerutil.ContainsFinalizer(vm, virtualMachineFinalizerName) {
+		controllerutil.AddFinalizer(vm, virtualMachineFinalizerName)
+		if err := r.Update(ctx, vm); err != nil {
+			logger.Error(err, "Error updating VirtualMachine")
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *VirtualMachineReconciler) handleWatcher(ctx context.Context, req ctrl.Request, vm *proxmoxv1alpha1.VirtualMachine) {
+	r.Watchers.HandleWatcher(ctx, req, func(ctx context.Context, stopChan chan struct{}) (ctrl.Result, error) {
+		return proxmox.StartWatcher(ctx, vm, stopChan, r.fetchResource, r.updateStatus,
+			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher)
+	})
+}
+
+func (r *VirtualMachineReconciler) fetchResource(ctx context.Context, key client.ObjectKey, obj proxmox.Resource) error {
+	return r.Get(ctx, key, obj.(*proxmoxv1alpha1.VirtualMachine))
+}
+
+func (r *VirtualMachineReconciler) updateStatus(ctx context.Context, obj proxmox.Resource) error {
+	return r.UpdateVirtualMachineStatus(ctx, obj.(*proxmoxv1alpha1.VirtualMachine))
+}
+
+func (r *VirtualMachineReconciler) checkDelta(obj proxmox.Resource) (bool, error) {
+	return proxmox.CheckVirtualMachineDelta(obj.(*proxmoxv1alpha1.VirtualMachine))
+}
+
+func (r *VirtualMachineReconciler) handleAutoStartFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
+	return r.handleAutoStart(ctx, obj.(*proxmoxv1alpha1.VirtualMachine))
+}
+
+func (r *VirtualMachineReconciler) handleReconcileFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
+	return r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Namespace: obj.GetNamespace(), Name: obj.GetName()}})
 }

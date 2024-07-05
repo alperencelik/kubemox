@@ -225,3 +225,15 @@ func RestartContainer(containerName, nodeName string) bool {
 	}
 	return false
 }
+
+func CheckContainerDelta(container *proxmoxv1alpha1.Container) (bool, error) {
+	// Get container
+	containerName := container.Name
+	nodeName := container.Spec.NodeName
+	ProxmoxContainer := GetContainer(containerName, nodeName)
+	// Check if update is needed
+	if container.Spec.Template.Cores != ProxmoxContainer.CPUs || container.Spec.Template.Memory != int(ProxmoxContainer.MaxMem/1024/1024) {
+		return true, nil
+	}
+	return false, nil
+}

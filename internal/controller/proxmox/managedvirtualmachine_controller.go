@@ -55,7 +55,8 @@ const (
 // ManagedVirtualMachineReconciler reconciles a ManagedVirtualMachine object
 type ManagedVirtualMachineReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Watchers *proxmox.ExternalWatchers
 }
 
 //+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=managedvirtualmachines,verbs=get;list;watch;create;update;patch;delete
@@ -83,6 +84,9 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 	}
 	logger.Info(fmt.Sprintf("Reconciling ManagedVirtualMachine %s", managedVM.Name))
 
+	// Handle the external watcher for the ManagedVirtualMachine
+	r.handleWatcher(ctx, req, managedVM)
+
 	// Check if the ManagedVM instance is marked to be deleted, which is indicated by the deletion timestamp being set.
 	if managedVM.ObjectMeta.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(managedVM, managedvirtualMachineFinalizerName) {
@@ -108,6 +112,12 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 					return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 				}
 			}
+			// Stop the watcher if resource is being deleted
+			if stopChan, exists := r.Watchers.Watchers[req.Name]; exists {
+				close(stopChan)
+				delete(r.Watchers.Watchers, req.Name)
+			}
+
 			// Delete the VM
 			if !managedVM.Spec.DeletionProtection {
 				kubernetes.CreateManagedVMKubernetesEvent(managedVM, Clientset, "Deleting")
@@ -133,22 +143,17 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, nil
 	}
 	// If EnableAutoStart is true, start the VM if it's stopped
-	r.handleAutoStart(ctx, managedVM)
+	_, err = r.handleAutoStart(ctx, managedVM)
+	if err != nil {
+		logger.Error(err, "Error handling auto start")
+		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+	}
 	// Update ManagedVM
 	proxmox.UpdateManagedVM(ctx, managedVM)
 	err = r.Update(context.Background(), managedVM)
 	if err != nil {
 		logger.Info(fmt.Sprintf("ManagedVM %v could not be updated", managedVM.Name))
 		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
-	// Update ManagedVMStatus
-	managedVMName := managedVM.Name
-	nodeName := proxmox.GetNodeOfVM(managedVMName)
-	ManagedVMStatus, _ := proxmox.UpdateVMStatus(managedVMName, nodeName)
-	managedVM.Status.Status = *ManagedVMStatus
-	err = r.Status().Update(context.Background(), managedVM)
-	if err != nil {
-		logger.Info(fmt.Sprintf("ManagedVMStatus %v could not be updated", managedVM.Name))
 	}
 	return ctrl.Result{}, nil
 }
@@ -213,7 +218,7 @@ func (r *ManagedVirtualMachineReconciler) handleManagedVMCreation(ctx context.Co
 }
 
 func (r *ManagedVirtualMachineReconciler) handleAutoStart(ctx context.Context,
-	managedVM *proxmoxv1alpha1.ManagedVirtualMachine) ctrl.Result {
+	managedVM *proxmoxv1alpha1.ManagedVirtualMachine) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	if managedVM.Spec.EnableAutoStart {
 		vmName := managedVM.Name
@@ -223,13 +228,64 @@ func (r *ManagedVirtualMachineReconciler) handleAutoStart(ctx context.Context,
 			startResult, err := proxmox.StartVM(vmName, nodeName)
 			if err != nil {
 				logger.Info(fmt.Sprintf("ManagedVirtualMachine %s could not be started", vmName))
-				return ctrl.Result{Requeue: true}
+				return ctrl.Result{Requeue: true}, err
 			} else {
 				logger.Info(startResult)
 			}
 			logger.Info(fmt.Sprintf("ManagedVirtualMachine %s started", vmName))
-			return ctrl.Result{Requeue: true}
+			return ctrl.Result{Requeue: true}, nil
 		}
 	}
-	return ctrl.Result{}
+	return ctrl.Result{}, nil
+}
+
+func (r *ManagedVirtualMachineReconciler) handleWatcher(ctx context.Context, req ctrl.Request,
+	managedVM *proxmoxv1alpha1.ManagedVirtualMachine) {
+	r.Watchers.HandleWatcher(ctx, req, func(ctx context.Context, stopChan chan struct{}) (ctrl.Result, error) {
+		return proxmox.StartWatcher(ctx, managedVM, stopChan, r.fetchResource, r.updateStatus,
+			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher)
+	})
+}
+
+func (r *ManagedVirtualMachineReconciler) fetchResource(ctx context.Context, key client.ObjectKey, obj proxmox.Resource) error {
+	return r.Get(ctx, key, obj.(*proxmoxv1alpha1.ManagedVirtualMachine))
+}
+
+func (r *ManagedVirtualMachineReconciler) updateStatus(ctx context.Context, obj proxmox.Resource) error {
+	return r.UpdateManagedVirtualMachineStatus(ctx, obj.(*proxmoxv1alpha1.ManagedVirtualMachine))
+}
+
+func (r *ManagedVirtualMachineReconciler) checkDelta(obj proxmox.Resource) (bool, error) {
+	return proxmox.CheckManagedVMDelta(obj.(*proxmoxv1alpha1.ManagedVirtualMachine))
+}
+
+func (r *ManagedVirtualMachineReconciler) handleAutoStartFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
+	return r.handleAutoStart(ctx, obj.(*proxmoxv1alpha1.ManagedVirtualMachine))
+}
+
+func (r *ManagedVirtualMachineReconciler) handleReconcileFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
+	return r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Namespace: obj.GetNamespace(), Name: obj.GetName()}})
+}
+
+func (r *ManagedVirtualMachineReconciler) UpdateManagedVirtualMachineStatus(ctx context.Context,
+	managedVM *proxmoxv1alpha1.ManagedVirtualMachine) error {
+	// Update ManagedVMStatus
+	meta.SetStatusCondition(&managedVM.Status.Conditions, metav1.Condition{
+		Type:    typeAvailableVirtualMachine,
+		Status:  metav1.ConditionTrue,
+		Reason:  "Available",
+		Message: "VirtualMachine status is updated",
+	})
+	managedVMName := managedVM.Name
+	nodeName := proxmox.GetNodeOfVM(managedVMName)
+	// Update the QEMU status of the ManagedVirtualMachine
+	ManagedVMStatus, err := proxmox.UpdateVMStatus(managedVMName, nodeName)
+	if err != nil {
+		return err
+	}
+	managedVM.Status.Status = *ManagedVMStatus
+	if err := r.Status().Update(ctx, managedVM); err != nil {
+		return err
+	}
+	return nil
 }
