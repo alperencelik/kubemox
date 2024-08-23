@@ -205,6 +205,18 @@ func (r *StorageDownloadURLReconciler) handleDownloadURL(ctx context.Context,
 		logger.Error(taskErr, "Download task did not complete")
 	case taskCompleted:
 		logger.Info("Download task completed")
+		// Update the status
+		meta.SetStatusCondition(&storageDownloadURL.Status.Conditions, metav1.Condition{
+			Type:    typeAvailableStorageDownloadURL,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Downloaded",
+			Message: fmt.Sprintf("File %s has been downloaded successfully to %s storage", storageDownloadURL.Spec.Filename, storageDownloadURL.Spec.Storage),
+		})
+		storageDownloadURL.Status.Status = "Completed"
+		if err := r.Status().Update(ctx, storageDownloadURL); err != nil {
+			logger.Error(err, "unable to update StorageDownloadURL status")
+			return err
+		}
 	default:
 		logger.Info("Download task did not complete yet")
 	}

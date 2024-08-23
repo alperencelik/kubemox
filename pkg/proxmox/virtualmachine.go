@@ -37,6 +37,7 @@ const (
 	virtualMachineTemplateType = "template"
 	virtualMachineScratchType  = "scratch"
 	virtualMachineCPUOption    = "cores"
+	virtualMachineSocketOption = "sockets"
 	virtualMachineMemoryOption = "memory"
 	// The timeout for qemu-agent to start in seconds
 	AgentTimeoutSeconds = 10
@@ -172,13 +173,7 @@ func CheckVM(vmName, nodeName string) bool {
 }
 
 func GetVMIPAddress(vmName, nodeName string) string {
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	// Get VMID
-	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
@@ -196,13 +191,7 @@ func GetVMIPAddress(vmName, nodeName string) string {
 }
 
 func GetOSInfo(vmName, nodeName string) string {
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	// Get VMID
-	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
@@ -215,13 +204,7 @@ func GetOSInfo(vmName, nodeName string) string {
 }
 
 func GetVMUptime(vmName, nodeName string) string {
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	// Get VMID
-	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
@@ -306,13 +289,7 @@ func StartVM(vmName, nodeName string) (string, error) {
 }
 
 func RestartVM(vmName, nodeName string) *proxmox.Task {
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	// Get VMID
-	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM to restart")
 	}
@@ -402,13 +379,9 @@ func CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine) {
 		},
 	}
 	// Get next VMID
-	cluster, err := Client.Cluster(ctx)
+	vmID, err := getNextVMID(Client)
 	if err != nil {
-		panic(err)
-	}
-	vmID, err := cluster.NextID(ctx)
-	if err != nil {
-		panic(err)
+		log.Log.Error(err, "Error getting next VMID")
 	}
 	// Create VM
 	task, err := node.NewVirtualMachine(ctx, vmID, VMOptions...)
@@ -543,13 +516,7 @@ func UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) bool {
 	vmName := vm.Spec.Name
 	nodeName := vm.Spec.NodeName
 	updateStatus := false
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	// Get VMID
-	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
@@ -732,13 +699,7 @@ func UpdateManagedVM(ctx context.Context, managedVM *proxmoxv1alpha1.ManagedVirt
 
 func CreateVMSnapshot(vmName, snapshotName string) (statusCode int) {
 	nodeName := GetNodeOfVM(vmName)
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	// Get VMID
-	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for snapshot creation")
 	}
@@ -762,13 +723,7 @@ func CreateVMSnapshot(vmName, snapshotName string) (statusCode int) {
 
 func GetVMSnapshots(vmName string) ([]string, error) {
 	nodeName := GetNodeOfVM(vmName)
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	// Get VMID
-	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for snapshot listing")
 	}
@@ -799,13 +754,7 @@ func VMSnapshotExists(vmName, snapshotName string) bool {
 }
 
 func RemoveVirtualMachineTag(vmName, nodeName, tag string) error {
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	// Get VMID
-	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for removing tag")
 	}
@@ -1192,4 +1141,219 @@ func CheckManagedVMDelta(managedVM *proxmoxv1alpha1.ManagedVirtualMachine) (
 		return true, nil
 	}
 	return false, nil
+}
+
+func IsVMTemplate(vmName, nodeName string) bool {
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for checking if it's a template")
+	}
+	if VirtualMachine.Template {
+		return true
+	} else {
+		return false
+	}
+}
+
+func CreateVMTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (*proxmox.Task, error) {
+
+	vmTemplateName := vmTemplate.Spec.Name
+	nodeName := vmTemplate.Spec.NodeName
+	node, err := Client.Node(ctx, nodeName)
+	if err != nil {
+		panic(err)
+	}
+	vmID, err := getNextVMID(Client)
+	if err != nil {
+		log.Log.Error(err, "Error getting next VMID")
+	}
+	virtualMachineSpec := vmTemplate.Spec.VirtualMachineConfig
+	networkConfig := fmt.Sprintf("%s,bridge=%s", virtualMachineSpec.Network.Model, virtualMachineSpec.Network.Bridge)
+
+	VMOptions := []proxmox.VirtualMachineOption{
+		{
+			Name:  virtualMachineSocketOption,
+			Value: virtualMachineSpec.Sockets,
+		},
+		{
+			Name:  virtualMachineCPUOption,
+			Value: virtualMachineSpec.Cores,
+		},
+		{
+			Name:  virtualMachineMemoryOption,
+			Value: virtualMachineSpec.Memory,
+		},
+		{
+			Name:  "name",
+			Value: vmTemplateName,
+		},
+		{
+			Name:  "net0",
+			Value: networkConfig,
+		},
+		{
+			Name:  "scsihw",
+			Value: "virtio-scsi-pci",
+		},
+	}
+
+	// Create VM
+	task, err := node.NewVirtualMachine(ctx, vmID, VMOptions...)
+	if err != nil {
+		panic(err)
+	}
+	return task, err
+}
+
+func ImportDiskToVM(vmName, nodeName, diskName string) error {
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for importing disk")
+	}
+	// TODO: Get disk location from cluster storage
+	diskLocation := "/var/lib/vz/template/iso/" + diskName
+	log.Log.Info(fmt.Sprintf("Disk location: %s", diskLocation))
+
+	// Import disk
+	task, err := VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
+		Name:  "scsi0",
+		Value: "local-lvm:0,import-from=" + diskLocation,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 10, 10)
+	switch taskCompleted {
+	case false:
+		log.Log.Error(taskErr, "Can't import disk to VM")
+	case true:
+		log.Log.Info(fmt.Sprintf("Disk %s has been imported to VM %s", diskName, vmName))
+	default:
+		log.Log.Info("Disk is already imported")
+	}
+
+	return nil
+}
+
+func AddCloudInitDrive(vmName, nodeName string) error {
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for adding cloud-init drive")
+	}
+	// Add cloud-init drive
+	task, err := VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
+		Name:  "ide2",
+		Value: "local-lvm:cloudinit",
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 10, 10)
+	switch taskCompleted {
+	case false:
+		log.Log.Error(taskErr, "Can't add cloud-init drive to VM")
+	case true:
+		log.Log.Info(fmt.Sprintf("Cloud-init drive has been added to VM %s", vmName))
+	default:
+		log.Log.Info("Cloud-init drive is already added")
+	}
+	return nil
+}
+
+func SetCloudInitConfig(vmName string, nodeName string, ciConfig *proxmoxv1alpha1.CloudInitConfig) error {
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for updating cloud-init config")
+	}
+	// Find non-empty fields of CloudInitConfig
+
+	CloudInitOptions := []proxmox.VirtualMachineOption{
+		{
+			Name:  "ciuser",
+			Value: ciConfig.User,
+		},
+		{
+			Name:  "cipassword",
+			Value: ciConfig.Password,
+		},
+		{
+			Name:  "ciupgrade",
+			Value: ciConfig.UpgradePackages,
+		},
+		// {
+		// Name:  "searchdomain",
+		// Value: ciConfig.DNSDomain,
+		// },
+		// {
+		// Name:  "nameserver",
+		// Value: ciConfig.DNSServers,
+		// },
+		// {
+		// Name:  "sshkeys",
+		// Value: ciConfig.SSHKeys,
+		// },
+	}
+	// Update cloud-init config
+	task, err := VirtualMachine.Config(ctx, CloudInitOptions...)
+	if err != nil {
+		return err
+	}
+	// Wait for task completion
+	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 3, 10)
+	switch taskCompleted {
+	case false:
+		log.Log.Error(taskErr, "Can't update cloud-init config")
+	case true:
+		log.Log.Info(fmt.Sprintf("Cloud-init config has been updated for VM %s", vmName))
+	default:
+		log.Log.Info("Cloud-init config is already updated")
+	}
+	return nil
+}
+
+func SetBootOrder(vmName, nodeName string) error {
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for setting boot order")
+	}
+	// Set boot order
+	task, err := VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
+		Name:  "boot",
+		Value: "order=scsi0",
+	})
+	if err != nil {
+		return err
+	}
+	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 3)
+	if !taskCompleted {
+		log.Log.Error(taskErr, "Can't set boot order for VM")
+	}
+	return nil
+}
+
+func getNextVMID(client *proxmox.Client) (int, error) {
+	cluster, err := client.Cluster(ctx)
+	if err != nil {
+		return 0, err
+	}
+	vmID, err := cluster.NextID(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return vmID, nil
+}
+
+func getVirtualMachine(vmName, nodeName string) (*proxmox.VirtualMachine, error) {
+	node, err := Client.Node(ctx, nodeName)
+	if err != nil {
+		return nil, err
+	}
+	vmID := GetVMID(vmName, nodeName)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	if err != nil {
+		return nil, err
+	}
+	return VirtualMachine, nil
 }

@@ -232,3 +232,29 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - virtualmachinetemplates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - virtualmachinetemplates/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - virtualmachinetemplates/status
+  verbs:
+  - get
+  - patch
+  - update

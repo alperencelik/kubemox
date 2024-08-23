@@ -1,0 +1,27 @@
+# permissions for end users to edit virtualmachinetemplates.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: kubemox
+    app.kubernetes.io/managed-by: kustomize
+  name: proxmox-virtualmachinetemplate-editor-role
+rules:
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - virtualmachinetemplates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - virtualmachinetemplates/status
+  verbs:
+  - get

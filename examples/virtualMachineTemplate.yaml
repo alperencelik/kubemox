@@ -1,0 +1,27 @@
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachineTemplate
+metadata:
+  labels:
+    app.kubernetes.io/name: kubemox
+    app.kubernetes.io/managed-by: kustomize
+  name: virtualmachinetemplate-sample
+spec:
+  name: virtualmachinetemplate-sample
+  node: lowtower
+  imageConfig:
+    content: "iso" 
+    filename: "bionic-server-cloudimg-amd64.img"
+    node: "lowtower"
+    storage: "local" 
+    url: "https://cloud-images.ubuntu.com/bionic/current/bionic-server-cloudimg-amd64.img"
+  cloudInitConfig:
+    user: "ubuntu"
+    password: "ubuntu"
+    upgradePackages: true
+  virtualMachineConfig:
+    sockets: 1
+    cores: 2
+    memory: 2048
+    network: 
+      model: virtio 
+      bridge: vmbr0 

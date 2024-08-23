@@ -1,0 +1,23 @@
+# permissions for end users to view virtualmachinetemplates.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: kubemox
+    app.kubernetes.io/managed-by: kustomize
+  name: proxmox-virtualmachinetemplate-viewer-role
+rules:
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - virtualmachinetemplates
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - proxmox.alperen.cloud
+  resources:
+  - virtualmachinetemplates/status
+  verbs:
+  - get

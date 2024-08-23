@@ -32,8 +32,9 @@ type StorageDownloadURLSpec struct {
 	Content  string `json:"content"`
 	Filename string `json:"filename"`
 	Node     string `json:"node"`
-	Storage  string `json:"storage"`
-	URL      string `json:"url"`
+	// +kubebuilder:default:=local
+	Storage string `json:"storage,omitempty"`
+	URL     string `json:"url"`
 	// Optional fields
 	Checksum          string `json:"checksum,omitempty"`
 	ChecksumAlgorithm string `json:"checksumAlgorithm,omitempty"`
@@ -46,6 +47,7 @@ type StorageDownloadURLStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"` //nolint:lll // This is required by kubebuilder
+	Status     string             `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
