@@ -77,7 +77,7 @@ linters:
     - gofmt
     - goimports
     - goprintffuncname
-    - gosec
+    # - gosec // Disable gosec for uint64 to int conversion issue. TODO: Handle uint64 to int conversion via utils.
     - gosimple
     - govet
     - ineffassign

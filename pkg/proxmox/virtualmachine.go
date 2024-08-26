@@ -1156,7 +1156,6 @@ func IsVMTemplate(vmName, nodeName string) bool {
 }
 
 func CreateVMTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (*proxmox.Task, error) {
-
 	vmTemplateName := vmTemplate.Spec.Name
 	nodeName := vmTemplate.Spec.NodeName
 	node, err := Client.Node(ctx, nodeName)
@@ -1210,11 +1209,17 @@ func ImportDiskToVM(vmName, nodeName, diskName string) error {
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for importing disk")
 	}
+	// Check if scsi0 is already imported or not
+	scsi0 := VirtualMachine.VirtualMachineConfig.SCSI0
+	if scsi0 != "" {
+		return nil
+	}
 	// TODO: Get disk location from cluster storage
 	diskLocation := "/var/lib/vz/template/iso/" + diskName
 	log.Log.Info(fmt.Sprintf("Disk location: %s", diskLocation))
 
 	// Import disk
+	// TODO: SCSI0 and local-lvm:0 should be retrieved from external resource
 	task, err := VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
 		Name:  "scsi0",
 		Value: "local-lvm:0,import-from=" + diskLocation,
@@ -1241,6 +1246,12 @@ func AddCloudInitDrive(vmName, nodeName string) error {
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for adding cloud-init drive")
 	}
+	// Check if cloud-init drive is already added or not
+	cloudInitDrive := VirtualMachine.VirtualMachineConfig.IDE2
+	if cloudInitDrive != "" {
+		return nil
+	}
+
 	// Add cloud-init drive
 	task, err := VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
 		Name:  "ide2",
@@ -1249,7 +1260,6 @@ func AddCloudInitDrive(vmName, nodeName string) error {
 	if err != nil {
 		panic(err)
 	}
-
 	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 10, 10)
 	switch taskCompleted {
 	case false:
@@ -1262,38 +1272,59 @@ func AddCloudInitDrive(vmName, nodeName string) error {
 	return nil
 }
 
-func SetCloudInitConfig(vmName string, nodeName string, ciConfig *proxmoxv1alpha1.CloudInitConfig) error {
+func SetCloudInitConfig(vmName, nodeName string, ciConfig *proxmoxv1alpha1.CloudInitConfig) error {
 	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for updating cloud-init config")
 	}
-	// Find non-empty fields of CloudInitConfig
+	// Reflection to get the non-empty fields and their corresponding cloud-init options
+	v := reflect.ValueOf(*ciConfig)
+	t := reflect.TypeOf(*ciConfig)
 
-	CloudInitOptions := []proxmox.VirtualMachineOption{
-		{
-			Name:  "ciuser",
-			Value: ciConfig.User,
-		},
-		{
-			Name:  "cipassword",
-			Value: ciConfig.Password,
-		},
-		{
-			Name:  "ciupgrade",
-			Value: ciConfig.UpgradePackages,
-		},
-		// {
-		// Name:  "searchdomain",
-		// Value: ciConfig.DNSDomain,
-		// },
-		// {
-		// Name:  "nameserver",
-		// Value: ciConfig.DNSServers,
-		// },
-		// {
-		// Name:  "sshkeys",
-		// Value: ciConfig.SSHKeys,
-		// },
+	var CloudInitOptions []proxmox.VirtualMachineOption
+
+	// Map of struct field names to their corresponding cloud-init option names
+	fieldToOptionName := map[string]string{
+		"User":            "ciuser",
+		"Password":        "cipassword",
+		"DNSDomain":       "searchdomain",
+		"DNSServers":      "nameserver",
+		"SSHKeys":         "sshkeys",
+		"UpgradePackages": "ciupgrade",
+	}
+
+	for i := 0; i < v.NumField(); i++ {
+		field := v.Field(i)
+		fieldName := t.Field(i).Name
+		optionName, ok := fieldToOptionName[fieldName]
+
+		if !ok {
+			continue
+		}
+
+		switch field.Kind() {
+		case reflect.String:
+			if field.String() != "" {
+				CloudInitOptions = append(CloudInitOptions, proxmox.VirtualMachineOption{
+					Name:  optionName,
+					Value: field.String(),
+				})
+			}
+		case reflect.Slice:
+			if field.Len() > 0 {
+				CloudInitOptions = append(CloudInitOptions, proxmox.VirtualMachineOption{
+					Name:  optionName,
+					Value: field.Interface(),
+				})
+			}
+		case reflect.Bool:
+			if field.Bool() {
+				CloudInitOptions = append(CloudInitOptions, proxmox.VirtualMachineOption{
+					Name:  optionName,
+					Value: field.Bool(),
+				})
+			}
+		}
 	}
 	// Update cloud-init config
 	task, err := VirtualMachine.Config(ctx, CloudInitOptions...)
@@ -1320,7 +1351,8 @@ func SetBootOrder(vmName, nodeName string) error {
 	}
 	// Set boot order
 	task, err := VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
-		Name:  "boot",
+		Name: "boot",
+		// TODO: SCSI0 should be retrieved from external resource
 		Value: "order=scsi0",
 	})
 	if err != nil {
@@ -1356,4 +1388,25 @@ func getVirtualMachine(vmName, nodeName string) (*proxmox.VirtualMachine, error)
 		return nil, err
 	}
 	return VirtualMachine, nil
+}
+
+func ConvertVMToTemplate(vmName, nodeName string) error {
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for converting to template")
+	}
+	// If the VM is not a template, convert it to a template
+	if !VirtualMachine.Template {
+		task, err := VirtualMachine.ConvertToTemplate(ctx)
+		if err != nil {
+			return err
+		}
+		_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 3)
+		if !taskCompleted {
+			log.Log.Error(taskErr, "Can't convert VM to template")
+		} else {
+			log.Log.Info(fmt.Sprintf("VirtualMachine %s has been converted to template", vmName))
+		}
+	}
+	return nil
 }

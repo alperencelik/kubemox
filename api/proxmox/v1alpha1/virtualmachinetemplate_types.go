@@ -73,16 +73,17 @@ type CloudInitConfig struct {
 	// Upgrade Packages
 	// +kubebuilder:default:=true
 	UpgradePackages bool `json:"upgradePackages,omitempty"`
-	// cicustom --> Take a look in this one
-	// ipconfig[n] --> Take a look in this one
+	// TODO: Implement the following
+	// cicustom
+	// ipconfig[n]
 }
 
 // VirtualMachineTemplateStatus defines the observed state of VirtualMachineTemplate
 type VirtualMachineTemplateStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Condition []metav1.Condition `json:"condition,omitempty"`
-	Status    string             `json:"status,omitempty"`
+	Conditions []metav1.Condition `json:"condition,omitempty"`
+	Status     string             `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
