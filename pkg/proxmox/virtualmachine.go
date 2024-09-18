@@ -37,6 +37,7 @@ const (
 	virtualMachineTemplateType = "template"
 	virtualMachineScratchType  = "scratch"
 	virtualMachineCPUOption    = "cores"
+	virtualMachineSocketOption = "sockets"
 	virtualMachineMemoryOption = "memory"
 	// The timeout for qemu-agent to start in seconds
 	AgentTimeoutSeconds = 10
@@ -172,13 +173,7 @@ func CheckVM(vmName, nodeName string) bool {
 }
 
 func GetVMIPAddress(vmName, nodeName string) string {
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	// Get VMID
-	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
@@ -196,13 +191,7 @@ func GetVMIPAddress(vmName, nodeName string) string {
 }
 
 func GetOSInfo(vmName, nodeName string) string {
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	// Get VMID
-	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
@@ -215,13 +204,7 @@ func GetOSInfo(vmName, nodeName string) string {
 }
 
 func GetVMUptime(vmName, nodeName string) string {
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	// Get VMID
-	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
@@ -306,13 +289,7 @@ func StartVM(vmName, nodeName string) (string, error) {
 }
 
 func RestartVM(vmName, nodeName string) *proxmox.Task {
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	// Get VMID
-	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM to restart")
 	}
@@ -402,13 +379,9 @@ func CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine) {
 		},
 	}
 	// Get next VMID
-	cluster, err := Client.Cluster(ctx)
+	vmID, err := getNextVMID(Client)
 	if err != nil {
-		panic(err)
-	}
-	vmID, err := cluster.NextID(ctx)
-	if err != nil {
-		panic(err)
+		log.Log.Error(err, "Error getting next VMID")
 	}
 	// Create VM
 	task, err := node.NewVirtualMachine(ctx, vmID, VMOptions...)
@@ -543,13 +516,7 @@ func UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) bool {
 	vmName := vm.Spec.Name
 	nodeName := vm.Spec.NodeName
 	updateStatus := false
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	// Get VMID
-	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
@@ -732,13 +699,7 @@ func UpdateManagedVM(ctx context.Context, managedVM *proxmoxv1alpha1.ManagedVirt
 
 func CreateVMSnapshot(vmName, snapshotName string) (statusCode int) {
 	nodeName := GetNodeOfVM(vmName)
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	// Get VMID
-	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for snapshot creation")
 	}
@@ -762,13 +723,7 @@ func CreateVMSnapshot(vmName, snapshotName string) (statusCode int) {
 
 func GetVMSnapshots(vmName string) ([]string, error) {
 	nodeName := GetNodeOfVM(vmName)
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	// Get VMID
-	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for snapshot listing")
 	}
@@ -799,13 +754,7 @@ func VMSnapshotExists(vmName, snapshotName string) bool {
 }
 
 func RemoveVirtualMachineTag(vmName, nodeName, tag string) error {
-	node, err := Client.Node(ctx, nodeName)
-	if err != nil {
-		panic(err)
-	}
-	// Get VMID
-	vmID := GetVMID(vmName, nodeName)
-	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for removing tag")
 	}
@@ -1192,4 +1141,29 @@ func CheckManagedVMDelta(managedVM *proxmoxv1alpha1.ManagedVirtualMachine) (
 		return true, nil
 	}
 	return false, nil
+}
+
+func getNextVMID(client *proxmox.Client) (int, error) {
+	cluster, err := client.Cluster(ctx)
+	if err != nil {
+		return 0, err
+	}
+	vmID, err := cluster.NextID(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return vmID, nil
+}
+
+func getVirtualMachine(vmName, nodeName string) (*proxmox.VirtualMachine, error) {
+	node, err := Client.Node(ctx, nodeName)
+	if err != nil {
+		return nil, err
+	}
+	vmID := GetVMID(vmName, nodeName)
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	if err != nil {
+		return nil, err
+	}
+	return VirtualMachine, nil
 }

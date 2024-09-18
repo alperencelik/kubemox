@@ -121,13 +121,11 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				delete(r.Watchers.Watchers, req.Name)
 			}
 			// Perform all operations to delete the VM if the VM is not marked as deleting
-			// TODO: Check if the VM is already deleting
+			// TODO: Evaluate the requirement of check mechanism for VM whether it's already deleting
 			r.DeleteVirtualMachine(ctx, vm)
 
 			// Remove finalizer
 			logger.Info("Removing finalizer from VirtualMachine", "name", vm.Spec.Name)
-
-			// Remove finalizer
 			controllerutil.RemoveFinalizer(vm, virtualMachineFinalizerName)
 			if err = r.Update(ctx, vm); err != nil {
 				return ctrl.Result{}, nil

@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.13.0
-  name: storagedownloadurls.proxmox.alperen.cloud
+  name: virtualmachinetemplates.proxmox.alperen.cloud
 spec:
   group: proxmox.alperen.cloud
   names:
-    kind: StorageDownloadURL
-    listKind: StorageDownloadURLList
-    plural: storagedownloadurls
-    singular: storagedownloadurl
+    kind: VirtualMachineTemplate
+    listKind: VirtualMachineTemplateList
+    plural: virtualmachinetemplates
+    singular: virtualmachinetemplate
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: StorageDownloadURL is the Schema for the storagedownloadurls
+        description: VirtualMachineTemplate is the Schema for the virtualmachinetemplates
           API
         properties:
           apiVersion:
@@ -33,39 +33,125 @@ spec:
           metadata:
             type: object
           spec:
-            description: StorageDownloadURLSpec defines the desired state of StorageDownloadURL
+            description: VirtualMachineTemplateSpec defines the desired state of VirtualMachineTemplate
             properties:
-              checksum:
-                description: Optional fields
-                type: string
-              checksumAlgorithm:
-                type: string
-              compression:
-                type: string
-              content:
-                pattern: \b(iso|vztmpl)\b
-                type: string
-              filename:
+              cloudInitConfig:
+                description: Cloud Init Config
+                properties:
+                  dnsDomain:
+                    description: DNS Domain
+                    type: string
+                  dnsServers:
+                    description: DNS Servers
+                    items:
+                      type: string
+                    type: array
+                  ipConfig:
+                    description: IPConfig is the IP configuration for the VM
+                    properties:
+                      cidr:
+                        description: Subnet Mask
+                        type: string
+                      gateway:
+                        description: Gateway
+                        type: string
+                      gatewayIPv6:
+                        description: GatewayIPv6
+                        type: string
+                      ip:
+                        description: IP Address
+                        type: string
+                      ipv6:
+                        description: IPv6 Address
+                        type: string
+                    type: object
+                  password:
+                    description: Password is the password for the template
+                    type: string
+                  sshKeys:
+                    description: SSH Keys -- suppose to be on openSSH format
+                    items:
+                      type: string
+                    type: array
+                  upgradePackages:
+                    default: true
+                    description: Upgrade Packages
+                    type: boolean
+                  user:
+                    description: User is the user name for the template
+                    type: string
+                type: object
+              imageConfig:
+                description: Image config
+                properties:
+                  checksum:
+                    description: Optional fields
+                    type: string
+                  checksumAlgorithm:
+                    type: string
+                  compression:
+                    type: string
+                  content:
+                    pattern: \b(iso|vztmpl)\b
+                    type: string
+                  filename:
+                    type: string
+                  node:
+                    type: string
+                  storage:
+                    default: local
+                    type: string
+                  url:
+                    type: string
+                  verifyCertificate:
+                    type: boolean
+                required:
+                - content
+                - filename
+                - node
+                - url
+                type: object
+              name:
+                description: Name is the name of the VM
                 type: string
               node:
+                description: NodeName is the node name
                 type: string
-              storage:
-                default: local
-                type: string
-              url:
-                type: string
-              verifyCertificate:
-                type: boolean
+              virtualMachineConfig:
+                description: VirtualMachineConfig is the configuration of the VM
+                properties:
+                  cores:
+                    default: 2
+                    description: Cores
+                    type: integer
+                  memory:
+                    default: 2048
+                    description: Memory as MB
+                    type: integer
+                  network:
+                    properties:
+                      bridge:
+                        default: vmbr0
+                        type: string
+                      model:
+                        default: virtio
+                        type: string
+                    type: object
+                  sockets:
+                    default: 1
+                    description: Sockets
+                    type: integer
+                type: object
             required:
-            - content
-            - filename
+            - imageConfig
+            - name
             - node
-            - url
             type: object
           status:
-            description: StorageDownloadURLStatus defines the observed state of StorageDownloadURL
+            description: VirtualMachineTemplateStatus defines the observed state of
+              VirtualMachineTemplate
             properties:
-              conditions:
+              condition:
                 description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
                   of cluster Important: Run "make" to regenerate code after modifying
                   this file'
