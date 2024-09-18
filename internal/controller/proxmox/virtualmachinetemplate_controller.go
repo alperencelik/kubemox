@@ -278,7 +278,12 @@ func (r *VirtualMachineTemplateReconciler) deleteVirtualMachineTemplate(ctx cont
 	logger := log.FromContext(ctx)
 	logger.Info(fmt.Sprintf("Deleting VirtualMachineTemplate %s", vmTemplate.Name))
 	// Delete the VM
-	proxmox.DeleteVM(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
+	if vmTemplate.Spec.DeletionProtection {
+		logger.Info("Deletion protection is enabled, skipping the deletion of VM")
+		return
+	} else {
+		proxmox.DeleteVM(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
+	}
 }
 
 func (r *VirtualMachineTemplateReconciler) createStorageDownloadURLCR(ctx context.Context,

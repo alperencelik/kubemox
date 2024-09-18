@@ -1,11 +1,11 @@
----
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.13.0
   name: virtualmachinetemplates.proxmox.alperen.cloud
 spec:
+  conversion:
+    strategy: None
   group: proxmox.alperen.cloud
   names:
     kind: VirtualMachineTemplate
@@ -199,7 +199,7 @@ spec:
                     \n type FooStatus struct{ // Represents the observations of a
                     foo's current state. // Known .status.conditions.type are: \"Available\",
                     \"Progressing\", and \"Degraded\" // +patchMergeKey=type // +patchStrategy=merge
-                    // +listType=map // +listMapKey=type Conditions []metav1.Condition
+                    // +listType=map // +listMapKey=type Conditions ]metav1.Condition
                     `json:\"conditions,omitempty\" patchStrategy:\"merge\" patchMergeKey:\"type\"
                     protobuf:\"bytes,1,rep,name=conditions\"` \n // other fields }"
                   properties:

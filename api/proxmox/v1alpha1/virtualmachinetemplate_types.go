@@ -32,6 +32,8 @@ type VirtualMachineTemplateSpec struct {
 	Name string `json:"name"`
 	// NodeName is the node name
 	NodeName string `json:"node"`
+	// +kubebuilder:default:=false
+	DeletionProtection bool `json:"deletionProtection,omitempty"`
 
 	// VirtualMachineConfig is the configuration of the VM
 	VirtualMachineConfig VirtualMachineConfig `json:"virtualMachineConfig,omitempty"`
@@ -108,6 +110,15 @@ type VirtualMachineTemplateStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:resource:shortName="vmt"
+//+kubebuilder:printcolumn:name="Node",type="string",JSONPath=".spec.node",description="The node name"
+//+kubebuilder:printcolumn:name="Cores",type="string",JSONPath=".spec.virtualMachineConfig.cores",description="The number of cores"
+//+kubebuilder:printcolumn:name="Memory",type="string",JSONPath=".spec.virtualMachineConfig.memory",description="The amount of memory"
+//+kubebuilder:printcolumn:name="Image",type="string",JSONPath=".spec.imageConfig.filename",description="The name of the image"
+//+kubebuilder:printcolumn:name="Username",type="string",JSONPath=".spec.cloudInitConfig.user",description="The username"
+//+kubebuilder:printcolumn:name="Password",type="string",JSONPath=".spec.cloudInitConfig.password",description="The password"
+//+kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.condition[0].type",description="The status of the VM"
+//+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // VirtualMachineTemplate is the Schema for the virtualmachinetemplates API
 type VirtualMachineTemplate struct {
