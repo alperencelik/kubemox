@@ -37,9 +37,6 @@ func CheckVirtualMachineTemplateDelta(vmTemplate *proxmoxv1alpha1.VirtualMachine
 	}
 	// Compare the actual VM with the desired VM with spec and cloud-init config
 	if !reflect.DeepEqual(actualMachineSpec, desiredMachineSpec) || cloudInitDiff {
-		fmt.Printf("Desired: %v\n", desiredMachineSpec)
-		fmt.Printf("Actual: %v\n", actualMachineSpec)
-		fmt.Printf("Cloud-init diff: %v\n", cloudInitDiff)
 		return true, nil
 	}
 	return false, nil
@@ -369,6 +366,15 @@ func constructCloudInitOptions(cloudInitConfig *proxmoxv1alpha1.CloudInitConfig)
 				})
 			}
 		}
+		if fieldName == "IPConfig" {
+			gw := cloudInitConfig.IPConfig.Gateway
+			ip := cloudInitConfig.IPConfig.IP
+			cidr := cloudInitConfig.IPConfig.CIDR
+			CloudInitOptions = append(CloudInitOptions, proxmox.VirtualMachineOption{
+				Name:  "ipconfig0",
+				Value: fmt.Sprintf("gw=%s,ip=%s/%s", gw, ip, cidr),
+			})
+		}
 	}
 	return CloudInitOptions
 }
@@ -386,6 +392,7 @@ func GetCloudInitConfig(vmName, nodeName string) (proxmoxv1alpha1.CloudInitConfi
 		DNSServers:      strings.Split(virtualMachineConfig.Nameserver, ""),
 		SSHKeys:         strings.Split(virtualMachineConfig.SSHKeys, ""),
 		UpgradePackages: virtualMachineConfig.CIUpgrade != 0,
+		IPConfig:        IPConfigParser(virtualMachineConfig.IPConfig0),
 	}
 	return *cloudInitConfig, nil
 }
@@ -464,4 +471,43 @@ func cloudInitcompareOptions() []cmp.Option {
 		serversTransformer,
 		cmpopts.IgnoreFields(proxmoxv1alpha1.CloudInitConfig{}, "Password"),
 	}
+}
+
+func IPConfigParser(ipConfigStr string) proxmoxv1alpha1.IPConfig {
+	var ipConfig proxmoxv1alpha1.IPConfig
+
+	keyValuePairs := strings.Split(ipConfigStr, ",")
+	for _, pair := range keyValuePairs {
+		if pair == "" {
+			continue
+		}
+		kv := strings.SplitN(pair, "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		key := kv[0]
+		value := kv[1]
+		switch key {
+		case "ip":
+			if strings.Contains(value, "/") {
+				parts := strings.SplitN(value, "/", 2)
+				ipConfig.IP = parts[0]
+				ipConfig.CIDR = parts[1]
+			} else {
+				ipConfig.IP = value
+			}
+		case "gw":
+			ipConfig.Gateway = value
+		case "ip6":
+			if strings.Contains(value, "/") {
+				parts := strings.SplitN(value, "/", 2)
+				ipConfig.IPv6 = parts[0]
+			} else {
+				ipConfig.IPv6 = value
+			}
+		case "gw6":
+			ipConfig.GatewayIPv6 = value
+		}
+	}
+	return ipConfig
 }
