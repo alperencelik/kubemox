@@ -155,8 +155,9 @@ func main() {
 		os.Exit(1)
 	}
 	if err = (&proxmoxcontroller.VirtualMachineTemplateReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Watchers: proxmox.NewExternalWatchers(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineTemplate")
 		os.Exit(1)

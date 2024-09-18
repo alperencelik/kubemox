@@ -57,6 +57,7 @@ const (
 	typeCreatingStorageDownloadURL  = "Creating"
 	typeDeletingStorageDownloadURL  = "Deleting"
 	typeErrorStorageDownloadURL     = "Error"
+	typeCompletedStorageDownloadURL = "Completed"
 )
 
 //+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=storagedownloadurls,verbs=get;list;watch;create;update;patch;delete
@@ -142,6 +143,20 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 	} else {
 		logger.Info("File exists in the storage")
+		if !meta.IsStatusConditionPresentAndEqual(storageDownloadURL.Status.Conditions, typeAvailableStorageDownloadURL, metav1.ConditionTrue) {
+			meta.SetStatusCondition(&storageDownloadURL.Status.Conditions, metav1.Condition{
+				Type:   typeAvailableStorageDownloadURL,
+				Status: metav1.ConditionTrue,
+				Reason: "Available",
+				Message: fmt.Sprintf("File %s exists in the storage %s",
+					storageDownloadURL.Spec.Filename, storageDownloadURL.Spec.Storage),
+			})
+			storageDownloadURL.Status.Status = typeCompletedStorageDownloadURL
+			if err := r.Status().Update(ctx, storageDownloadURL); err != nil {
+				logger.Error(err, "unable to update StorageDownloadURL status")
+				return ctrl.Result{}, err
+			}
+		}
 	}
 	return ctrl.Result{}, nil
 }
@@ -213,7 +228,7 @@ func (r *StorageDownloadURLReconciler) handleDownloadURL(ctx context.Context,
 			Message: fmt.Sprintf("File %s has been downloaded successfully to %s storage",
 				storageDownloadURL.Spec.Filename, storageDownloadURL.Spec.Storage),
 		})
-		storageDownloadURL.Status.Status = "Completed"
+		storageDownloadURL.Status.Status = typeCompletedStorageDownloadURL
 		if err := r.Status().Update(ctx, storageDownloadURL); err != nil {
 			logger.Error(err, "unable to update StorageDownloadURL status")
 			return err

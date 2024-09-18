@@ -102,7 +102,7 @@ func StartWatcher(ctx context.Context, resource Resource,
 				return ctrl.Result{}, err
 			}
 			if triggerReconcile {
-				logger.Info(fmt.Sprintf("Triggering the reconciliation of resource %s", resourceName))
+				logger.Info(fmt.Sprintf("Triggering the reconciliation of resource due to configuration drift %s", resourceName))
 				_, err = handleReconcile(ctx, resource)
 				if err != nil {
 					logger.Error(err, "Error while triggering the reconciliation of resource")

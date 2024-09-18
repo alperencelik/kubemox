@@ -52,10 +52,15 @@ type VirtualMachineConfig struct {
 	Cores int `json:"cores,omitempty"`
 	// Memory as MB
 	// +kubebuilder:default:=2048
-	Memory int `json:"memory,omitempty"`
-	// Network
-	// +kubebuilder:default:={model:virtio,bridge:vmbr0}
-	Network VirtualMachineSpecTemplateNetwork `json:"network,omitempty"`
+	Memory  int               `json:"memory,omitempty"`
+	Network VMTemplateNetwork `json:"network,omitempty"`
+}
+
+type VMTemplateNetwork struct {
+	// +kubebuilder:default:="virtio"
+	Model string `json:"model,omitempty"`
+	// +kubebuilder:default:="vmbr0"
+	Bridge string `json:"bridge,omitempty"`
 }
 
 type CloudInitConfig struct {
@@ -73,9 +78,24 @@ type CloudInitConfig struct {
 	// Upgrade Packages
 	// +kubebuilder:default:=true
 	UpgradePackages bool `json:"upgradePackages,omitempty"`
+	// IPConfig is the IP configuration for the VM
+	IPConfig IPConfig `json:"ipConfig,omitempty"`
 	// TODO: Implement the following
 	// cicustom
 	// ipconfig[n]
+}
+
+type IPConfig struct {
+	// Gateway
+	Gateway string `json:"gateway,omitempty"`
+	// GatewayIPv6
+	GatewayIPv6 string `json:"gatewayIPv6,omitempty"`
+	// IP Address
+	IP string `json:"ip,omitempty"`
+	// IPv6 Address
+	IPv6 string `json:"ipv6,omitempty"`
+	// Subnet Mask
+	CIDR string `json:"cidr,omitempty"`
 }
 
 // VirtualMachineTemplateStatus defines the observed state of VirtualMachineTemplate

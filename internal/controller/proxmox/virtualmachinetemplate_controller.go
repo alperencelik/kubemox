@@ -58,6 +58,11 @@ const (
 	typeErrorVirtualMachineTemplate     = "Error"
 )
 
+// Perform all operations to create the VirtualMachineTemplate. The logic should have three steps:
+// 1. Check if the image is exist in the Proxmox node
+// 2. If not, create and StorageDownloadURL object to download image and wait for the download to complete
+// 3. Create the VM template with the given configuration
+
 var imageNameFormat string = "%s-image"
 
 //+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinetemplates,verbs=get;list;watch;create;update;patch;delete
@@ -81,6 +86,9 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
 	logger.Info(fmt.Sprintf("Reconciling VirtualMachineTemplate %s", vmTemplate.Name))
+
+	// Handle the external watcher for the VirtualMachineTemplate
+	r.handleWatcher(ctx, req, vmTemplate)
 
 	// Check if the VirtualMachineTemplate is marked for deleted, which is indicated by the deletion timestamp being set.
 	if vmTemplate.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -108,6 +116,11 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 				return ctrl.Result{}, nil
 			}
 			// TODO: Stop the watcher if resource is being deleted
+			// Stop the watcher if resource is being deleted
+			if stopChan, exists := r.Watchers.Watchers[req.Name]; exists {
+				close(stopChan)
+				delete(r.Watchers.Watchers, req.Name)
+			}
 			// Delete the VirtualMachineTemplate
 			r.deleteVirtualMachineTemplate(ctx, vmTemplate)
 			// Remove the finalizer
@@ -121,11 +134,6 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 		// Stop the reconciliation as the object is being deleted
 		return ctrl.Result{}, nil
 	}
-
-	// Perform all operations to delete the VirtualMachineTemplate. The logic should have three steps:
-	// 1. Check if the image is exist in the Proxmox node
-	// 2. If not, create and StorageDownloadURL object to download image and wait for the download to complete
-	// 3. Create the VM template with the given configuration
 
 	// Handle the image operations and make sure the image is available
 	err := r.handleImageOperations(ctx, vmTemplate)
@@ -152,17 +160,9 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 	}
 	// Update the condition for the VirtualMachineTemplate if it's not already ready
-	if !meta.IsStatusConditionPresentAndEqual(vmTemplate.Status.Conditions, typeAvailableVirtualMachineTemplate, metav1.ConditionTrue) {
-		meta.SetStatusCondition(&vmTemplate.Status.Conditions, metav1.Condition{
-			Type:    typeAvailableVirtualMachineTemplate,
-			Status:  metav1.ConditionTrue,
-			Reason:  "Ready",
-			Message: "VirtualMachineTemplate is ready",
-		})
-		if err := r.Status().Update(ctx, vmTemplate); err != nil {
-			logger.Error(err, "Failed to update VirtualMachineTemplate status")
-			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
-		}
+	result, err = r.handleStatus(ctx, vmTemplate)
+	if err != nil {
+		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 	}
 
 	return ctrl.Result{}, nil
@@ -228,8 +228,19 @@ func (r *VirtualMachineTemplateReconciler) handleVMCreation(ctx context.Context,
 
 	// Check if the VM template is already exists
 	if proxmox.CheckVM(templateVMName, nodeName) {
-		logger.Info(fmt.Sprintf("VirtualMachine template %s already exists", templateVMName))
-		return nil
+		// Check if VM template is on desired state
+		if result, err := proxmox.CheckVirtualMachineTemplateDelta(vmTemplate); err == nil && result {
+			// Update VirtualMachineTemplate resource
+			err = proxmox.UpdateVirtualMachineTemplate(vmTemplate)
+			if err != nil {
+				logger.Error(err, "Failed to update VM template")
+				return err
+			}
+		} else {
+			// VM template is already exists and on desired state
+			logger.Info(fmt.Sprintf("VirtualMachine template %s already exists", templateVMName))
+			return nil
+		}
 	} else {
 		// Even if the VM is exists, it may not be a template but we will create a new one no matter what
 		logger.Info(fmt.Sprintf("VirtualMachine template %s does not exists, creating a new one", templateVMName))
@@ -377,4 +388,51 @@ func (r *VirtualMachineTemplateReconciler) handleStorageDownloadURL(ctx context.
 		}
 	}
 	return ctrl.Result{}, nil
+}
+
+func (r *VirtualMachineTemplateReconciler) handleStatus(ctx context.Context,
+	vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	if !meta.IsStatusConditionPresentAndEqual(vmTemplate.Status.Conditions, typeAvailableVirtualMachineTemplate, metav1.ConditionTrue) {
+		meta.SetStatusCondition(&vmTemplate.Status.Conditions, metav1.Condition{
+			Type:    typeAvailableVirtualMachineTemplate,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Ready",
+			Message: "VirtualMachineTemplate is ready",
+		})
+		if err := r.Status().Update(ctx, vmTemplate); err != nil {
+			logger.Error(err, "Failed to update VirtualMachineTemplate status")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		}
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r *VirtualMachineTemplateReconciler) handleWatcher(ctx context.Context, req ctrl.Request,
+	vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) {
+	r.Watchers.HandleWatcher(ctx, req, func(ctx context.Context, stopChan chan struct{}) (ctrl.Result, error) {
+		return proxmox.StartWatcher(ctx, vmTemplate, stopChan, r.fetchResource, r.updateStatus,
+			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher)
+	})
+}
+
+func (r *VirtualMachineTemplateReconciler) fetchResource(ctx context.Context, key client.ObjectKey, obj proxmox.Resource) error {
+	return r.Get(ctx, key, obj.(*proxmoxv1alpha1.VirtualMachineTemplate))
+}
+
+func (r *VirtualMachineTemplateReconciler) updateStatus(ctx context.Context, obj proxmox.Resource) error {
+	return r.Status().Update(ctx, obj.(*proxmoxv1alpha1.VirtualMachineTemplate))
+}
+
+func (r *VirtualMachineTemplateReconciler) checkDelta(obj proxmox.Resource) (bool, error) {
+	return proxmox.CheckVirtualMachineTemplateDelta(obj.(*proxmoxv1alpha1.VirtualMachineTemplate))
+}
+
+// TODO: Try to remove the requirement of handleAutoStartFunc
+func (r *VirtualMachineTemplateReconciler) handleAutoStartFunc(_ context.Context, _ proxmox.Resource) (ctrl.Result, error) {
+	return ctrl.Result{}, nil
+}
+
+func (r *VirtualMachineTemplateReconciler) handleReconcileFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
+	return r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Namespace: obj.GetNamespace(), Name: obj.GetName()}})
 }

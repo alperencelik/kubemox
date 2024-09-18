@@ -18,6 +18,10 @@ spec:
     user: "ubuntu"
     password: "ubuntu"
     upgradePackages: true
+    ipConfig:
+      gateway: "10.153.0.1"
+      ip: "10.153.0.99"
+      cidr: "24"
   virtualMachineConfig:
     sockets: 1
     cores: 2

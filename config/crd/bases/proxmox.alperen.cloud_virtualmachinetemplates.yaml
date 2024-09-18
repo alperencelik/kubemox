@@ -46,6 +46,25 @@ spec:
                     items:
                       type: string
                     type: array
+                  ipConfig:
+                    description: IPConfig is the IP configuration for the VM
+                    properties:
+                      cidr:
+                        description: Subnet Mask
+                        type: string
+                      gateway:
+                        description: Gateway
+                        type: string
+                      gatewayIPv6:
+                        description: GatewayIPv6
+                        type: string
+                      ip:
+                        description: IP Address
+                        type: string
+                      ipv6:
+                        description: IPv6 Address
+                        type: string
+                    type: object
                   password:
                     description: Password is the password for the template
                     type: string
@@ -110,20 +129,13 @@ spec:
                     description: Memory as MB
                     type: integer
                   network:
-                    default:
-                      bridge: vmbr0
-                      model: virtio
-                    description: Network
                     properties:
                       bridge:
-                        description: Bridge is the name of the bridge
+                        default: vmbr0
                         type: string
                       model:
-                        description: Model is the model of the network card
+                        default: virtio
                         type: string
-                    required:
-                    - bridge
-                    - model
                     type: object
                   sockets:
                     default: 1
