@@ -60,13 +60,16 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	opts := zap.Options{
-		Development: true,
-	}
+	// opts := zap.Options{
+	// Development: false,
+	// }
+	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	setupLog.V(1).Info("This is a fucking debug log")
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
@@ -99,6 +102,7 @@ func main() {
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
 		Watchers: proxmox.NewExternalWatchers(),
+		Recorder: mgr.GetEventRecorderFor("VirtualMachine"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachine")
 		os.Exit(1)
@@ -106,6 +110,7 @@ func main() {
 	if err = (&proxmoxcontroller.ManagedVirtualMachineReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("ManagedVirtualMachine"),
 		Watchers: proxmox.NewExternalWatchers(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ManagedVirtualMachine")
@@ -135,6 +140,7 @@ func main() {
 	if err = (&proxmoxcontroller.ContainerReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("Container"),
 		Watchers: proxmox.NewExternalWatchers(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Container")
@@ -158,6 +164,7 @@ func main() {
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
 		Watchers: proxmox.NewExternalWatchers(),
+		Recorder: mgr.GetEventRecorderFor("VirtualMachineTemplate"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineTemplate")
 		os.Exit(1)

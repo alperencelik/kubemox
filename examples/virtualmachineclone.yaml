@@ -10,7 +10,7 @@ spec:
   # Deletion protection is whether to delete VM from Proxmox or not
   deletionProtection: false
   # VM should be started any time found in stopped state
-  enableAutostart: true
+  enableAutoStart: true
   template:
     # Name of the template to be cloned
     name: fedora-template 
