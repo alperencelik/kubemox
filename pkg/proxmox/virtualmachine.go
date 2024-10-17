@@ -888,7 +888,7 @@ func configureVirtualMachineNetwork(vm *proxmoxv1alpha1.VirtualMachine) error {
 		}
 		for i := 0; i < len(virtualMachineNetworksParsed); i++ {
 			// Check if the network configuration is different
-			if !reflect.DeepEqual(networks[i], virtualMachineNetworksParsed[i]) {
+			if len(networks) != 0 && !reflect.DeepEqual(networks[i], virtualMachineNetworksParsed[i]) {
 				// Update the network configuration
 				log.Log.Info(fmt.Sprintf("Updating the network configuration for net%d of VM %s", i, vm.Spec.Name))
 				// Get the network model&bridge name

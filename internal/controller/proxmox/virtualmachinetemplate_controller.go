@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -43,6 +44,7 @@ type VirtualMachineTemplateReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Watchers *proxmox.ExternalWatchers
+	Recorder record.EventRecorder
 }
 
 const (
@@ -256,6 +258,7 @@ func (r *VirtualMachineTemplateReconciler) handleVMCreation(ctx context.Context,
 			logger.Error(err, "Failed to create VM for template")
 			return err
 		}
+		r.Recorder.Event(vmTemplate, "Normal", "VMTemplateCreated", fmt.Sprintf("VirtualMachine template %s is created", templateVMName))
 	}
 	return nil
 }
@@ -278,6 +281,7 @@ func (r *VirtualMachineTemplateReconciler) deleteVirtualMachineTemplate(ctx cont
 	logger := log.FromContext(ctx)
 	logger.Info(fmt.Sprintf("Deleting VirtualMachineTemplate %s", vmTemplate.Name))
 	// Delete the VM
+	r.Recorder.Event(vmTemplate, "Normal", "VMTemplateDeleting", fmt.Sprintf("VirtualMachine template %s is deleting", vmTemplate.Name))
 	if vmTemplate.Spec.DeletionProtection {
 		logger.Info("Deletion protection is enabled, skipping the deletion of VM")
 		return

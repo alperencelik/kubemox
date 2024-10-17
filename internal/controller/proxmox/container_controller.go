@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -42,6 +43,7 @@ import (
 type ContainerReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 	Watchers *proxmox.ExternalWatchers
 }
 
@@ -165,6 +167,7 @@ func (r *ContainerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *ContainerReconciler) CloneContainer(container *proxmoxv1alpha1.Container) error {
 	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
+	r.Recorder.Event(container, "Normal", "Creating", fmt.Sprintf("Creating Container %s", containerName))
 	err := proxmox.CloneContainer(container)
 	if err != nil {
 		return err
@@ -173,11 +176,13 @@ func (r *ContainerReconciler) CloneContainer(container *proxmoxv1alpha1.Containe
 	if err != nil {
 		return err
 	}
+	r.Recorder.Event(container, "Normal", "Created", fmt.Sprintf("Created Container %s", containerName))
 	return nil
 }
 
 func (r *ContainerReconciler) UpdateContainer(ctx context.Context, container *proxmoxv1alpha1.Container) error {
 	proxmox.UpdateContainer(container)
+	r.Recorder.Event(container, "Normal", "Updated", fmt.Sprintf("Updated Container %s", container.Name))
 	err := r.Update(ctx, container)
 	if err != nil {
 		return err
@@ -316,10 +321,12 @@ func (r *ContainerReconciler) handleContainerDeletion(ctx context.Context, conta
 	logger := log.FromContext(ctx)
 	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
+	r.Recorder.Event(container, "Normal", "Deleting", fmt.Sprintf("Deleting Container %s", containerName))
 	if container.Spec.DeletionProtection {
 		logger.Info(fmt.Sprintf("Container %s is protected from deletion", containerName))
 		return
 	} else {
 		proxmox.DeleteContainer(containerName, nodeName)
 	}
+	r.Recorder.Event(container, "Normal", "Deleted", fmt.Sprintf("Deleted Container %s", containerName))
 }

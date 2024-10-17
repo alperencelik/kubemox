@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -34,7 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
-	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/metrics"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 )
@@ -57,6 +57,7 @@ type ManagedVirtualMachineReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Watchers *proxmox.ExternalWatchers
+	Recorder record.EventRecorder
 }
 
 //+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=managedvirtualmachines,verbs=get;list;watch;create;update;patch;delete
@@ -119,20 +120,18 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 			}
 
 			// Delete the VM
+			r.Recorder.Event(managedVM, "Normal", "Deleting", fmt.Sprintf("Deleting ManagedVirtualMachine %s", managedVM.Name))
 			if !managedVM.Spec.DeletionProtection {
-				kubernetes.CreateManagedVMKubernetesEvent(managedVM, Clientset, "Deleting")
 				proxmox.DeleteVM(managedVM.Name, managedVM.Spec.NodeName)
-				metrics.DecManagedVirtualMachineCount()
 			} else {
-				kubernetes.CreateManagedVMKubernetesEvent(managedVM, Clientset, "Deleting")
 				// Remove managedVirtualMachineTag from Managed Virtual Machine to not manage it anymore
 				err = proxmox.RemoveVirtualMachineTag(managedVM.Name, managedVM.Spec.NodeName, proxmox.ManagedVirtualMachineTag)
 				if err != nil {
 					logger.Error(err, "Error removing managedVirtualMachineTag from Managed Virtual Machine")
 					return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 				}
-				metrics.DecManagedVirtualMachineCount()
 			}
+			metrics.DecManagedVirtualMachineCount()
 		}
 		logger.Info("Removing finalizer from ManagedVirtualMachine", "name", managedVM.Name)
 		// Remove finalizer
