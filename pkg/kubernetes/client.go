@@ -42,7 +42,6 @@ func ClientConfig() any {
 		} else {
 			kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
 		}
-		flag.Parse()
 		config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
 		if err != nil {
 			panic(err.Error())

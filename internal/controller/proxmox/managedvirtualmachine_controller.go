@@ -201,14 +201,16 @@ func (r *ManagedVirtualMachineReconciler) handleManagedVMCreation(ctx context.Co
 			logger.Info(fmt.Sprintf("ManagedVM %v does not exist so creating it", managedVM))
 			managedVM := proxmox.CreateManagedVM(managedVM)
 			err := r.Create(context.Background(), managedVM)
+			r.Recorder.Event(managedVM, "Normal", "Creating", fmt.Sprintf("Creating ManagedVirtualMachine %s", managedVM.Name))
 			if err != nil {
 				logger.Info(fmt.Sprintf("ManagedVM %v could not be created", managedVM.Name))
 				return err
 			}
-			// Add metrics
+			// Add metrics and events
 			metrics.SetManagedVirtualMachineCPUCores(managedVM.Name, managedVM.Namespace, float64(managedVM.Spec.Cores))
 			metrics.SetManagedVirtualMachineMemory(managedVM.Name, managedVM.Namespace, float64(managedVM.Spec.Memory))
 			metrics.IncManagedVirtualMachineCount()
+			r.Recorder.Event(managedVM, "Normal", "Created", fmt.Sprintf("ManagedVirtualMachine %s created", managedVM.Name))
 		} else {
 			logger.Info(fmt.Sprintf("ManagedVM %v already exists", managedVM))
 		}

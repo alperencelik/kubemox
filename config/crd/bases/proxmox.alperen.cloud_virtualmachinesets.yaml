@@ -126,6 +126,25 @@ spec:
                       - model
                       type: object
                     type: array
+                  pciDevices:
+                    description: PCI is the list of PCI devices
+                    items:
+                      properties:
+                        deviceID:
+                          description: DeviceID is the ID hex id of the device
+                          type: string
+                        pcie:
+                          default: false
+                          description: PCIE is the flag that indicates whether the
+                            device is a PCIE device ==> pcie=1
+                          type: boolean
+                        primaryGPU:
+                          default: false
+                          description: PrimaryGPU is the flag that indicates whether
+                            the device is the primary GPU ==> x-vga=1
+                          type: boolean
+                      type: object
+                    type: array
                   socket:
                     description: Socket is the number of CPU sockets
                     type: integer

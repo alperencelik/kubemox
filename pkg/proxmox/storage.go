@@ -67,7 +67,6 @@ func DeleteStorageContent(storageName string, spec *proxmoxv1alpha1.StorageDownl
 	}
 	storage, _ := Node.Storage(ctx, storageName)
 	// Delete storage content
-	// local:iso/talos-amd64.iso
 	objectName := fmt.Sprintf("%s:%s/%s", storageName, spec.Content, spec.Filename)
 	task, err := storage.DeleteContent(ctx, objectName)
 	if err != nil {

@@ -89,6 +89,24 @@ type VirtualMachineSpecTemplate struct {
 	Disk []VirtualMachineSpecTemplateDisk `json:"disk,omitempty"`
 	// Networks is the list of networks
 	Network []VirtualMachineSpecTemplateNetwork `json:"network,omitempty"`
+	// PCI is the list of PCI devices
+	PciDevices []PciDevice `json:"pciDevices,omitempty"`
+}
+
+type PciDevice struct {
+	// DeviceID is the ID hex id of the device
+	DeviceID string `json:"deviceID,omitempty"`
+	// PrimaryGPU is the flag that indicates whether the device is the primary GPU ==> x-vga=1
+	// +kubebuilder:default:=false
+	PrimaryGPU bool `json:"primaryGPU,omitempty"`
+	// PCIE is the flag that indicates whether the device is a PCIE device ==> pcie=1
+	// +kubebuilder:default:=false
+	PCIE bool `json:"pcie,omitempty"`
+	// TODO: Add more fields
+	// MappingID is the ID of the mapping ==> mapping
+	// MappingID string `json:"mappingID,omitempty"`
+	// // MDevType is the type of the mapping device ==> mdev
+	// MDevType string `json:"mDevType,omitempty"`
 }
 
 type VirtualMachineSpecTemplateDisk struct {
