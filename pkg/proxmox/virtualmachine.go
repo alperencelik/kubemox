@@ -907,7 +907,7 @@ func configureVirtualMachineDisk(vm *proxmoxv1alpha1.VirtualMachine) error {
 	disksToAdd, disksToUpdate, disksToDelete := classifyDisks(disks, virtualMachineDisksParsed)
 
 	// Apply disk changes
-	if err := applyDiskChanges(vm, disksToAdd, disksToUpdate, disksToDelete); err != nil {
+	if err := applyDiskChanges(ctx, vm, disksToAdd, disksToUpdate, disksToDelete); err != nil {
 		return err
 	}
 	return nil
@@ -915,59 +915,40 @@ func configureVirtualMachineDisk(vm *proxmoxv1alpha1.VirtualMachine) error {
 
 func classifyDisks(desiredDisks, actualDisks []proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) (
 	disksToAdd, disksToUpdate, disksToDelete []proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) {
-	// Create a map of actual disks
-	actualDisksMap := make(map[string]proxmoxv1alpha1.VirtualMachineSpecTemplateDisk)
-	for _, disk := range actualDisks {
-		actualDisksMap[disk.Device] = disk
+	getKey := func(disk proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) string {
+		return disk.Device
 	}
-
-	diskDeviceList := make([]string, len(desiredDisks))
-	for i, disk := range desiredDisks {
-		diskDeviceList[i] = disk.Device
-		if actualDisk, ok := actualDisksMap[disk.Device]; ok {
-			if !reflect.DeepEqual(disk, actualDisk) {
-				disksToUpdate = append(disksToUpdate, disk)
-			}
-		} else {
-			disksToAdd = append(disksToAdd, disk)
-		}
-	}
-
-	for _, disk := range actualDisks {
-		if !utils.StringInSlice(disk.Device, diskDeviceList) {
-			disksToDelete = append(disksToDelete, disk)
-		}
-	}
-	return
+	return classifyItems(desiredDisks, actualDisks, getKey)
 }
 
-func applyDiskChanges(vm *proxmoxv1alpha1.VirtualMachine,
+func classifyPCIs(desiredPcis, actualPcis []proxmoxv1alpha1.PciDevice) (
+	pcisToAdd, pcisToUpdate, pcisToDelete []proxmoxv1alpha1.PciDevice) {
+	getKey := func(pci proxmoxv1alpha1.PciDevice) string {
+		return pci.DeviceID
+	}
+
+	return classifyItems(desiredPcis, actualPcis, getKey)
+}
+
+func applyDiskChanges(
+	ctx context.Context,
+	vm *proxmoxv1alpha1.VirtualMachine,
 	disksToAdd, disksToUpdate, disksToDelete []proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) error {
-	for _, disk := range disksToAdd {
-		log.Log.Info(fmt.Sprintf("Adding disk %s to VirtualMachine %s", disk.Device, vm.Name))
-		if err := updateDiskConfig(ctx, vm, disk); err != nil {
-			return err
-		} else {
-			log.Log.Info(fmt.Sprintf("Disk %s of VirtualMachine %s has been added", disk.Device, vm.Name))
-		}
+	getDeviceID := func(disk proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) string {
+		return disk.Device
 	}
-	for _, disk := range disksToUpdate {
-		// TODO: Implement check for blocking shrink operation
-		if err := updateDiskConfig(ctx, vm, disk); err != nil {
-			return err
-		} else {
-			log.Log.Info(fmt.Sprintf("Disk %s of VirtualMachine %s has been updated", disk.Device, vm.Name))
-		}
-	}
-	for _, disk := range disksToDelete {
-		log.Log.Info(fmt.Sprintf("Deleting disk %s of VirtualMachine %s", disk.Device, vm.Name))
-		if _, err := deleteVirtualMachineOption(vm, disk.Device); err != nil {
-			return err
-		} else {
-			log.Log.Info(fmt.Sprintf("Disk %s of VirtualMachine %s has been deleted", disk.Device, vm.Name))
-		}
-	}
-	return nil
+
+	return applyChanges(
+		ctx,
+		vm,
+		disksToAdd,
+		disksToUpdate,
+		disksToDelete,
+		getDeviceID,
+		addDiskConfig,
+		updateDiskConfig,
+		"Disk",
+	)
 }
 
 func parseDiskConfiguration(disks map[string]string) ([]proxmoxv1alpha1.VirtualMachineSpecTemplateDisk, error) {
@@ -1003,6 +984,19 @@ func parseDiskConfiguration(disks map[string]string) ([]proxmoxv1alpha1.VirtualM
 }
 
 func updateDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
+	disk proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) error {
+	virtualMachine, err := getVirtualMachine(vm.Name, vm.Spec.NodeName)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for updating disk configuration")
+	}
+	err = virtualMachine.ResizeDisk(ctx, disk.Device, strconv.Itoa(disk.Size)+"G")
+	if err != nil {
+		log.Log.Error(err, "Error updating disk configuration for VirtualMachine")
+	}
+	return err
+}
+
+func addDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	disk proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) error {
 	virtualMachine, err := getVirtualMachine(vm.Name, vm.Spec.NodeName)
 	if err != nil {
@@ -1135,7 +1129,7 @@ func configureVirtualMachinePCI(vm *proxmoxv1alpha1.VirtualMachine) error {
 	PcisToadd, PCIsToUpdate, PcisToDelete := classifyPCIs(PCIs, virtualMachinePCIsParsed)
 
 	// Apply PCI changes
-	if err := applyPCIChanges(vm, PcisToadd, PCIsToUpdate, PcisToDelete); err != nil {
+	if err := applyPCIChanges(ctx, vm, PcisToadd, PCIsToUpdate, PcisToDelete); err != nil {
 		return err
 	}
 	return nil
@@ -1150,12 +1144,12 @@ func GetPCIConfiguration(vmName, nodeName string) (map[string]string, error) {
 	return PCIs, nil
 }
 
-func parsePCIConfiguration(PCIs map[string]string) ([]proxmoxv1alpha1.PciDevice, error) {
+func parsePCIConfiguration(pcis map[string]string) ([]proxmoxv1alpha1.PciDevice, error) {
 	var PCIConfigurations []proxmoxv1alpha1.PciDevice
 	var PCIConfiguration proxmoxv1alpha1.PciDevice
 	// Parse PCI devices to use as PCI devices
-	for i, PCI := range PCIs {
-		pciSplit := strings.Split(PCI, ",")
+	for i, pci := range pcis {
+		pciSplit := strings.Split(pci, ",")
 		PCIConfiguration.DeviceID = pciSplit[0]
 		for _, pciSplit := range pciSplit[1:] {
 			kv := strings.SplitN(pciSplit, "=", 2)
@@ -1178,86 +1172,52 @@ func parsePCIConfiguration(PCIs map[string]string) ([]proxmoxv1alpha1.PciDevice,
 	return PCIConfigurations, nil
 }
 
-func classifyPCIs(desiredPcis, actualPcis []proxmoxv1alpha1.PciDevice) (
-	PcisToadd, PCIsToUpdate, PcisToDelete []proxmoxv1alpha1.PciDevice) {
-	// Create a map of actual PCIs
-	actualPcisMap := make(map[string]proxmoxv1alpha1.PciDevice)
-	for _, Pci := range actualPcis {
-		actualPcisMap[Pci.DeviceID] = Pci
+func applyPCIChanges(
+	ctx context.Context,
+	vm *proxmoxv1alpha1.VirtualMachine,
+	pcisToAdd, pcisToUpdate, pcisToDelete []proxmoxv1alpha1.PciDevice,
+) error {
+	getDeviceID := func(pci proxmoxv1alpha1.PciDevice) string {
+		return pci.DeviceID
 	}
 
-	PciDeviceList := make([]string, len(desiredPcis))
-	for i, Pci := range desiredPcis {
-		PciDeviceList[i] = Pci.DeviceID
-		if actualPci, ok := actualPcisMap[Pci.DeviceID]; ok {
-			if !reflect.DeepEqual(Pci, actualPci) {
-				PCIsToUpdate = append(PCIsToUpdate, Pci)
-			}
-		} else {
-			PcisToadd = append(PcisToadd, Pci)
-		}
-	}
-
-	for _, Pci := range actualPcis {
-		if !utils.StringInSlice(Pci.DeviceID, PciDeviceList) {
-			PcisToDelete = append(PcisToDelete, Pci)
-		}
-	}
-	return
-}
-
-func applyPCIChanges(vm *proxmoxv1alpha1.VirtualMachine,
-	PcisToadd, PCIsToUpdate, PcisToDelete []proxmoxv1alpha1.PciDevice) error {
-	for _, Pci := range PcisToadd {
-		log.Log.Info(fmt.Sprintf("Adding PCI device %s to VirtualMachine %s", Pci.DeviceID, vm.Name))
-		if err := updatePCIConfig(ctx, vm, Pci); err != nil {
-			return err
-		} else {
-			log.Log.Info(fmt.Sprintf("PCI device %s of VirtualMachine %s has been added", Pci.DeviceID, vm.Name))
-		}
-	}
-	for _, Pci := range PCIsToUpdate {
-		if err := updatePCIConfig(ctx, vm, Pci); err != nil {
-			return err
-		} else {
-			log.Log.Info(fmt.Sprintf("PCI device %s of VirtualMachine %s has been updated", Pci.DeviceID, vm.Name))
-		}
-	}
-	for _, Pci := range PcisToDelete {
-		log.Log.Info(fmt.Sprintf("Deleting PCI device %s of VirtualMachine %s", Pci.DeviceID, vm.Name))
-		if _, err := deleteVirtualMachineOption(vm, Pci.DeviceID); err != nil {
-			return err
-		} else {
-			log.Log.Info(fmt.Sprintf("PCI device %s of VirtualMachine %s has been deleted", Pci.DeviceID, vm.Name))
-		}
-	}
-	return nil
+	return applyChanges(
+		ctx,
+		vm,
+		pcisToAdd,
+		pcisToUpdate,
+		pcisToDelete,
+		getDeviceID,
+		updatePCIConfig,
+		updatePCIConfig,
+		"PCI device",
+	)
 }
 
 func updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
-	Pci proxmoxv1alpha1.PciDevice) error {
+	pci proxmoxv1alpha1.PciDevice) error {
 	vmName, nodeName := vm.Name, vm.Spec.NodeName
 
 	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
-	index, err := getIndexOfPCIConfig(vmName, nodeName, Pci)
+	index, err := getIndexOfPCIConfig(vmName, nodeName, pci)
 	if err != nil {
 		log.Log.Error(err, "Error getting index of PCI configuration")
 	}
 
 	taskID, err := VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
 		Name: "hostpci" + index,
-		Value: Pci.DeviceID + func() string {
+		Value: pci.DeviceID + func() string {
 			var value string
 			value += ","
 			var pcieSet, xVgaSet bool
-			if Pci.PCIE {
+			if pci.PCIE {
 				value += "pcie=1"
 				pcieSet = true
 			}
-			if Pci.PrimaryGPU {
+			if pci.PrimaryGPU {
 				if pcieSet {
 					value += ","
 				}
@@ -1296,7 +1256,7 @@ func updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	_, _, err = task.WaitForCompleteStatus(ctx, 5, 3)
 	// Check the task status and return the error if it's not completed
 	if task.IsFailed {
-		log.Log.Error(err, fmt.Sprintf("Error starting VirtualMachine %s while attaching %s PCI device", vmName, Pci.DeviceID))
+		log.Log.Error(err, fmt.Sprintf("Error starting VirtualMachine %s while attaching %s PCI device", vmName, pci.DeviceID))
 		// Try to revert the changes
 		err = revertVirtualMachineOption(vmName, nodeName, "hostpci"+index)
 		if err != nil {
@@ -1308,7 +1268,7 @@ func updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	return err
 }
 
-func getIndexOfPCIConfig(vmName, nodeName string, PciDevice proxmoxv1alpha1.PciDevice) (string, error) {
+func getIndexOfPCIConfig(vmName, nodeName string, pciDevice proxmoxv1alpha1.PciDevice) (string, error) {
 	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
@@ -1316,12 +1276,12 @@ func getIndexOfPCIConfig(vmName, nodeName string, PciDevice proxmoxv1alpha1.PciD
 	hostPCIs := VirtualMachine.VirtualMachineConfig.MergeHostPCIs()
 
 	for i, hostPCI := range hostPCIs {
-		if strings.Split(hostPCI, ",")[0] == PciDevice.DeviceID {
+		if strings.Split(hostPCI, ",")[0] == pciDevice.DeviceID {
 			return i, nil
 		}
 	}
 	// If device ID is not found, return the 0th index to create it
-	return "0", nil
+	return "0", err
 }
 
 func revertVirtualMachineOption(vmName, nodeName, value string) error {

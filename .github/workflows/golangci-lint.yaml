@@ -3,6 +3,9 @@ name: GolangCI-Lint
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
+  push:
+    branches:
+      - '**'
 
 jobs:
   lint:
