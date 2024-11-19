@@ -46,6 +46,7 @@ func applyChanges[I any](
 	vm *proxmoxv1alpha1.VirtualMachine,
 	itemsToAdd, itemsToUpdate, itemsToDelete []I,
 	getDeviceID func(I) string,
+	addConfig func(context.Context, *proxmoxv1alpha1.VirtualMachine, I) error,
 	updateConfig func(context.Context, *proxmoxv1alpha1.VirtualMachine, I) error,
 	operationName string,
 	// preUpdate func(I) error, // Pre-conditions before updating the item
@@ -53,7 +54,7 @@ func applyChanges[I any](
 	for _, item := range itemsToAdd {
 		deviceID := getDeviceID(item)
 		log.Log.Info(fmt.Sprintf("Adding %s %s to VirtualMachine %s", operationName, deviceID, vm.Name))
-		if err := updateConfig(ctx, vm, item); err != nil {
+		if err := addConfig(ctx, vm, item); err != nil {
 			return err
 		} else {
 			log.Log.Info(fmt.Sprintf("%s %s of VirtualMachine %s has been added", operationName, deviceID, vm.Name))

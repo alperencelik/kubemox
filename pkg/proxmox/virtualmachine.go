@@ -945,6 +945,7 @@ func applyDiskChanges(
 		disksToUpdate,
 		disksToDelete,
 		getDeviceID,
+		addDiskConfig,
 		updateDiskConfig,
 		"Disk",
 	)
@@ -983,6 +984,19 @@ func parseDiskConfiguration(disks map[string]string) ([]proxmoxv1alpha1.VirtualM
 }
 
 func updateDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
+	disk proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) error {
+	virtualMachine, err := getVirtualMachine(vm.Name, vm.Spec.NodeName)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for updating disk configuration")
+	}
+	err = virtualMachine.ResizeDisk(ctx, disk.Device, strconv.Itoa(disk.Size)+"G")
+	if err != nil {
+		log.Log.Error(err, "Error updating disk configuration for VirtualMachine")
+	}
+	return err
+}
+
+func addDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	disk proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) error {
 	virtualMachine, err := getVirtualMachine(vm.Name, vm.Spec.NodeName)
 	if err != nil {
@@ -1174,6 +1188,7 @@ func applyPCIChanges(
 		pcisToUpdate,
 		pcisToDelete,
 		getDeviceID,
+		updatePCIConfig,
 		updatePCIConfig,
 		"PCI device",
 	)
