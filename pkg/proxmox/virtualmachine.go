@@ -1206,10 +1206,17 @@ func updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	if err != nil {
 		log.Log.Error(err, "Error getting index of PCI configuration")
 	}
+	// If the type is "mapped" then the value should be "mapped=deviceID"
+	var pciID string
+	if pci.Type == "mapped" {
+		pciID = "mapped=" + pci.DeviceID
+	} else {
+		pciID = pci.DeviceID
+	}
 
 	taskID, err := VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
 		Name: "hostpci" + index,
-		Value: pci.DeviceID + func() string {
+		Value: pciID + func() string {
 			var value string
 			value += ","
 			var pcieSet, xVgaSet bool

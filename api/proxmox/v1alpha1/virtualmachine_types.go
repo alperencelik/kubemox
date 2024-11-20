@@ -94,6 +94,11 @@ type VirtualMachineSpecTemplate struct {
 }
 
 type PciDevice struct {
+	// Type is the type of the PCI device either raw or mapped
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=raw;mapped
+	// TODO: Add validation for that one to immutable and make sure that you can't set PCIE to true if the type is mapped
+	Type string `json:"type"`
 	// DeviceID is the ID hex id of the device
 	DeviceID string `json:"deviceID,omitempty"`
 	// PrimaryGPU is the flag that indicates whether the device is the primary GPU ==> x-vga=1
@@ -102,11 +107,6 @@ type PciDevice struct {
 	// PCIE is the flag that indicates whether the device is a PCIE device ==> pcie=1
 	// +kubebuilder:default:=false
 	PCIE bool `json:"pcie,omitempty"`
-	// TODO: Add more fields
-	// MappingID is the ID of the mapping ==> mapping
-	// MappingID string `json:"mappingID,omitempty"`
-	// // MDevType is the type of the mapping device ==> mdev
-	// MDevType string `json:"mDevType,omitempty"`
 }
 
 type VirtualMachineSpecTemplateDisk struct {

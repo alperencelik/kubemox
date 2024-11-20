@@ -185,6 +185,17 @@ spec:
                           description: PrimaryGPU is the flag that indicates whether
                             the device is the primary GPU ==> x-vga=1
                           type: boolean
+                        type:
+                          description: 'Type is the type of the PCI device either
+                            raw or mapped TODO: Add validation for that one to immutable
+                            and make sure that you can''t set PCIE to true if the
+                            type is mapped'
+                          enum:
+                          - raw
+                          - mapped
+                          type: string
+                      required:
+                      - type
                       type: object
                     type: array
                   socket:
