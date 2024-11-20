@@ -241,6 +241,12 @@ func (r *VirtualMachineTemplateReconciler) handleVMCreation(ctx context.Context,
 		} else {
 			// VM template is already exists and on desired state
 			logger.Info(fmt.Sprintf("VirtualMachine template %s already exists", templateVMName))
+			meta.SetStatusCondition(&vmTemplate.Status.Conditions, metav1.Condition{
+				Type:    typeAvailableVirtualMachineTemplate,
+				Status:  metav1.ConditionTrue,
+				Reason:  "Available",
+				Message: "Ready",
+			})
 			return nil
 		}
 	} else {
@@ -421,7 +427,7 @@ func (r *VirtualMachineTemplateReconciler) handleWatcher(ctx context.Context, re
 	vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) {
 	r.Watchers.HandleWatcher(ctx, req, func(ctx context.Context, stopChan chan struct{}) (ctrl.Result, error) {
 		return proxmox.StartWatcher(ctx, vmTemplate, stopChan, r.fetchResource, r.updateStatus,
-			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher)
+			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher, r.isResourceAvailableFunc)
 	})
 }
 
@@ -444,4 +450,13 @@ func (r *VirtualMachineTemplateReconciler) handleAutoStartFunc(_ context.Context
 
 func (r *VirtualMachineTemplateReconciler) handleReconcileFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
 	return r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Namespace: obj.GetNamespace(), Name: obj.GetName()}})
+}
+
+func (r *VirtualMachineTemplateReconciler) isResourceAvailableFunc(obj proxmox.Resource) bool {
+	for _, condition := range obj.(*proxmoxv1alpha1.VirtualMachineTemplate).Status.Conditions {
+		if condition.Type == typeAvailableVirtualMachineTemplate && condition.Status == metav1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }

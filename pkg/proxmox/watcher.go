@@ -17,7 +17,8 @@ type ExternalWatchers struct {
 }
 
 var (
-	ObserveInterval = 20 * time.Second
+	ObserveInterval         = 20 * time.Second
+	AvailablityWaitInterval = 5 * time.Second
 )
 
 type Resource interface {
@@ -30,6 +31,7 @@ type CheckDeltaFunc func(obj Resource) (bool, error)
 type HandleAutoStartFunc func(ctx context.Context, obj Resource) (ctrl.Result, error)
 type HandleReconcileFunc func(ctx context.Context, obj Resource) (ctrl.Result, error)
 type DeleteWatcherFunc func(name string)
+type IsResourceAvailableFunc func(obj Resource) bool
 
 func NewExternalWatchers() *ExternalWatchers {
 	return &ExternalWatchers{
@@ -61,14 +63,46 @@ func (e *ExternalWatchers) HandleWatcher(ctx context.Context, req ctrl.Request,
 	}
 }
 
+func waitForResource(ctx context.Context, resource Resource, fetchResource FetchResourceFunc, isResourceAvailable IsResourceAvailableFunc, waitInterval time.Duration, stopChan chan struct{}) error {
+	logger := log.FromContext(ctx)
+	resourceName := resource.GetName()
+
+	logger.Info("Waiting for resource to be available", "resource", resourceName)
+
+	for {
+		select {
+		case <-stopChan:
+			logger.Info("Watcher for resource is stopped", "resource", resourceName)
+			return nil
+		default:
+			err := fetchResource(ctx, client.ObjectKey{Namespace: resource.GetNamespace(), Name: resourceName}, resource)
+			if err != nil {
+				logger.Error(err, "Error getting resource")
+				return err
+			}
+			if isResourceAvailable(resource) {
+				return nil
+			}
+			// Wait before trying again
+			time.Sleep(waitInterval)
+		}
+	}
+}
+
 func StartWatcher(ctx context.Context, resource Resource,
 	stopChan chan struct{}, fetchResource FetchResourceFunc, updateStatus UpdateStatusFunc,
 	checkDelta CheckDeltaFunc, handleAutoStart HandleAutoStartFunc, handleReconcile HandleReconcileFunc,
-	deleteWatcher DeleteWatcherFunc) (ctrl.Result, error) {
+	deleteWatcher DeleteWatcherFunc, isResourceAvailable IsResourceAvailableFunc) (ctrl.Result, error) {
 	ticker := time.NewTicker(ObserveInterval)
 	defer ticker.Stop()
 	logger := log.FromContext(ctx)
 	resourceName := resource.GetName()
+
+	err := waitForResource(ctx, resource, fetchResource, isResourceAvailable, AvailablityWaitInterval, stopChan)
+	if err != nil {
+		logger.Error(err, "Error waiting for resource to be available")
+		return ctrl.Result{}, err
+	}
 
 	for {
 		select {

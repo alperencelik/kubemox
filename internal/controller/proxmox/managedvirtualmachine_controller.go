@@ -147,6 +147,12 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 		logger.Error(err, "Error handling auto start")
 		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 	}
+	meta.SetStatusCondition(&managedVM.Status.Conditions, metav1.Condition{
+		Type:    typeAvailableManagedVirtualMachine,
+		Status:  metav1.ConditionTrue,
+		Reason:  "Available",
+		Message: "Ready",
+	})
 	// Update ManagedVM
 	proxmox.UpdateManagedVM(ctx, managedVM)
 	err = r.Update(context.Background(), managedVM)
@@ -244,7 +250,7 @@ func (r *ManagedVirtualMachineReconciler) handleWatcher(ctx context.Context, req
 	managedVM *proxmoxv1alpha1.ManagedVirtualMachine) {
 	r.Watchers.HandleWatcher(ctx, req, func(ctx context.Context, stopChan chan struct{}) (ctrl.Result, error) {
 		return proxmox.StartWatcher(ctx, managedVM, stopChan, r.fetchResource, r.updateStatus,
-			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher)
+			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher, r.isResourceAvailableFunc)
 	})
 }
 
@@ -272,7 +278,7 @@ func (r *ManagedVirtualMachineReconciler) UpdateManagedVirtualMachineStatus(ctx 
 	managedVM *proxmoxv1alpha1.ManagedVirtualMachine) error {
 	// Update ManagedVMStatus
 	meta.SetStatusCondition(&managedVM.Status.Conditions, metav1.Condition{
-		Type:    typeAvailableVirtualMachine,
+		Type:    typeAvailableManagedVirtualMachine,
 		Status:  metav1.ConditionTrue,
 		Reason:  "Available",
 		Message: "VirtualMachine status is updated",
@@ -289,4 +295,13 @@ func (r *ManagedVirtualMachineReconciler) UpdateManagedVirtualMachineStatus(ctx 
 		return err
 	}
 	return nil
+}
+
+func (r *ManagedVirtualMachineReconciler) isResourceAvailableFunc(obj proxmox.Resource) bool {
+	for _, condition := range obj.(*proxmoxv1alpha1.ManagedVirtualMachine).Status.Conditions {
+		if condition.Type == typeAvailableManagedVirtualMachine && condition.Status == metav1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }

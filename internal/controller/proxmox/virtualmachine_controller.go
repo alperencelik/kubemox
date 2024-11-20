@@ -148,7 +148,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			logger.Error(err, "Error creating VirtualMachine")
 			meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
 				Type:    typeErrorVirtualMachine,
-				Status:  metav1.ConditionTrue,
+				Status:  metav1.ConditionUnknown,
 				Reason:  "Error",
 				Message: fmt.Sprintf("Error creating VirtualMachine: %s", err),
 			})
@@ -174,6 +174,12 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	}
 	logger.Info(fmt.Sprintf("VirtualMachine %s already exists", vmName))
+	meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
+		Type:    typeAvailableVirtualMachine,
+		Status:  metav1.ConditionTrue,
+		Reason:  "Available",
+		Message: "Ready",
+	})
 
 	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
@@ -335,7 +341,7 @@ func (r *VirtualMachineReconciler) handleFinalizer(ctx context.Context, vm *prox
 func (r *VirtualMachineReconciler) handleWatcher(ctx context.Context, req ctrl.Request, vm *proxmoxv1alpha1.VirtualMachine) {
 	r.Watchers.HandleWatcher(ctx, req, func(ctx context.Context, stopChan chan struct{}) (ctrl.Result, error) {
 		return proxmox.StartWatcher(ctx, vm, stopChan, r.fetchResource, r.updateStatus,
-			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher)
+			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher, r.isResourceAvailableFunc)
 	})
 }
 
@@ -357,4 +363,13 @@ func (r *VirtualMachineReconciler) handleAutoStartFunc(ctx context.Context, obj 
 
 func (r *VirtualMachineReconciler) handleReconcileFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
 	return r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Namespace: obj.GetNamespace(), Name: obj.GetName()}})
+}
+
+func (r *VirtualMachineReconciler) isResourceAvailableFunc(obj proxmox.Resource) bool {
+	for _, condition := range obj.(*proxmoxv1alpha1.VirtualMachine).Status.Conditions {
+		if condition.Type == typeAvailableVirtualMachine && condition.Status == metav1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }
