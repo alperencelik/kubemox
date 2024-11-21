@@ -2,10 +2,12 @@ package proxmox
 
 import (
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
+	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/luthermonson/go-proxmox"
@@ -130,8 +132,11 @@ func ImportDiskToVM(vmName, nodeName, diskName string) error {
 	if scsi0 != "" {
 		return nil
 	}
-	// TODO: Get disk location from cluster storage
-	diskLocation := "/var/lib/vz/template/iso/" + diskName
+	localStorage, err := GetStorage("local")
+	if err != nil {
+		log.Log.Error(err, "Error getting local storage")
+	}
+	diskLocation := localStorage.Path + "/template/iso/" + diskName
 	log.Log.Info(fmt.Sprintf("Disk location: %s", diskLocation))
 
 	// Import disk
@@ -327,7 +332,6 @@ func constructCloudInitOptions(cloudInitConfig *proxmoxv1alpha1.CloudInitConfig)
 	// Map of struct field names to their corresponding cloud-init option names
 	fieldToOptionName := map[string]string{
 		"User":            "ciuser",
-		"Password":        "cipassword",
 		"DNSDomain":       "searchdomain",
 		"DNSServers":      "nameserver",
 		"SSHKeys":         "sshkeys",
@@ -376,6 +380,27 @@ func constructCloudInitOptions(cloudInitConfig *proxmoxv1alpha1.CloudInitConfig)
 			})
 		}
 	}
+	// Handle password separately
+	Password, err := GetPasswordValue(cloudInitConfig)
+	if err != nil {
+		log.Log.Error(err, "Error getting password value")
+	}
+	if Password != "" {
+		CloudInitOptions = append(CloudInitOptions, proxmox.VirtualMachineOption{
+			Name:  "cipassword",
+			Value: Password,
+		})
+	}
+	// Handle custom cloud-init config
+	customConfig := customCloudInitConfig(cloudInitConfig.Custom)
+	if customConfig.Value != "" {
+		CloudInitOptions = append(CloudInitOptions, customConfig)
+	}
+	// DEBUG
+	for _, option := range CloudInitOptions {
+		log.Log.Info(fmt.Sprintf("Option: %s, Value: %v", option.Name, option.Value))
+	}
+
 	return CloudInitOptions
 }
 
@@ -386,8 +411,8 @@ func GetCloudInitConfig(vmName, nodeName string) (proxmoxv1alpha1.CloudInitConfi
 	}
 	virtualMachineConfig := VirtualMachine.VirtualMachineConfig
 	cloudInitConfig := &proxmoxv1alpha1.CloudInitConfig{
-		User:            virtualMachineConfig.CIUser,
-		Password:        "", // Password is not returned as plain text
+		User: virtualMachineConfig.CIUser,
+		// Password is not returned as plain text
 		DNSDomain:       virtualMachineConfig.Searchdomain,
 		DNSServers:      strings.Split(virtualMachineConfig.Nameserver, ""),
 		SSHKeys:         strings.Split(virtualMachineConfig.SSHKeys, ""),
@@ -432,6 +457,10 @@ func EmptyCloudInitConfig(vmName, nodeName string) error {
 			Name:  "ipconfig0",
 			Value: "",
 		},
+		{
+			Name:  "cicustom",
+			Value: "",
+		},
 	}
 	task, err := VirtualMachine.Config(ctx, EmptyCloudInitOptions...)
 	if err != nil {
@@ -470,6 +499,9 @@ func cloudInitcompareOptions() []cmp.Option {
 		domainTransformer,
 		serversTransformer,
 		cmpopts.IgnoreFields(proxmoxv1alpha1.CloudInitConfig{}, "Password"),
+		cmpopts.IgnoreFields(proxmoxv1alpha1.CloudInitConfig{}, "PasswordFrom"),
+		// TODO: Implement custom cloud-init config comparison as well
+		cmpopts.IgnoreFields(proxmoxv1alpha1.CloudInitConfig{}, "Custom"),
 	}
 }
 
@@ -510,4 +542,52 @@ func IPConfigParser(ipConfigStr string) proxmoxv1alpha1.IPConfig {
 		}
 	}
 	return ipConfig
+}
+
+func GetPasswordValue(config *proxmoxv1alpha1.CloudInitConfig) (string, error) {
+	switch {
+	case config.Password != nil && config.PasswordFrom != nil:
+		return "", fmt.Errorf("both password and passwordFrom are set")
+	case config.Password != nil:
+		// Use the password directly
+		return *config.Password, nil
+	case config.PasswordFrom != nil:
+		// Fetch the password from the Secret
+		secretData, err := kubernetes.GetSecretData(os.Getenv("POD_NAMESPACE"), config.PasswordFrom)
+		if err != nil {
+			return "", err
+		}
+		return secretData, nil
+	default:
+		return "", nil
+	}
+}
+
+func customCloudInitConfig(cicustom *proxmoxv1alpha1.CiCustom) proxmox.VirtualMachineOption {
+	// Return an empty option if cicustom is nil
+	if cicustom == nil {
+		return proxmox.VirtualMachineOption{}
+	}
+	var parts []string
+
+	if cicustom.UserData != "" {
+		parts = append(parts, fmt.Sprintf("user=local:snippets/%s", cicustom.UserData))
+	}
+	if cicustom.MetaData != "" {
+		parts = append(parts, fmt.Sprintf("meta=local:snippets/%s", cicustom.MetaData))
+	}
+	if cicustom.NetworkData != "" {
+		parts = append(parts, fmt.Sprintf("network=local:snippets/%s", cicustom.NetworkData))
+	}
+	if cicustom.VendorData != "" {
+		parts = append(parts, fmt.Sprintf("vendor=local:snippets/%s", cicustom.VendorData))
+	}
+	customConfig := strings.Join(parts, ",")
+	// Remove \n characters
+	customConfig = strings.ReplaceAll(customConfig, "\n", "")
+
+	return proxmox.VirtualMachineOption{
+		Name:  "cicustom",
+		Value: customConfig,
+	}
 }

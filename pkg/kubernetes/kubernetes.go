@@ -2,7 +2,9 @@ package kubernetes
 
 import (
 	"context"
+	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -47,4 +49,21 @@ func GetManagedVMCRD() v1.CustomResourceDefinition {
 		log.Log.Error(err, "Failed to get CRD")
 	}
 	return *crd
+}
+
+func GetSecretData(namespace string, selector *corev1.SecretKeySelector) (string, error) {
+	// Get the Secret object
+	secret, err := Clientset.CoreV1().Secrets(namespace).Get(context.TODO(), selector.Name, metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("failed to get secret %s: %w", selector.Name, err)
+	}
+	value, exists := secret.Data[selector.Key]
+	if !exists {
+		return "", fmt.Errorf("key %s not found in secret %s", selector.Key, selector.Name)
+	}
+	// If the optional field is set to true and the key doesn't exist, return an empty string
+	if selector.Optional != nil && *selector.Optional && !exists {
+		return "", nil
+	}
+	return string(value), nil
 }

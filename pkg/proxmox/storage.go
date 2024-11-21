@@ -82,3 +82,11 @@ func DeleteStorageContent(storageName string, spec *proxmoxv1alpha1.StorageDownl
 	}
 	return err
 }
+
+func GetStorage(storageName string) (*proxmox.ClusterStorage, error) {
+	storage, err := Client.ClusterStorage(ctx, storageName)
+	if err != nil {
+		log.Log.Error(err, "unable to get storage")
+	}
+	return storage, err
+}

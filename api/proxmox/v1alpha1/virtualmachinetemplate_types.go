@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -65,12 +66,20 @@ type VMTemplateNetwork struct {
 	Bridge string `json:"bridge,omitempty"`
 }
 
+// +kubebuilder:validation:XValidation:rule="!(has(self.password) && has(self.passwordFrom))",
+//
+//	message="Specify either password or passwordFrom, but not both"
 type CloudInitConfig struct {
-
 	// User is the user name for the template
 	User string `json:"user,omitempty"`
-	// Password is the password for the template
-	Password string `json:"password,omitempty"`
+	// Password is the password for the template.
+	// Use this field to specify the password directly.
+	// +optional
+	Password *string `json:"password,omitempty"`
+	// PasswordFrom is a reference to a key in a Secret that contains the password.
+	// Use this field to specify the password via a Secret.
+	// +optional
+	PasswordFrom *corev1.SecretKeySelector `json:"passwordFrom,omitempty"`
 	// DNS Domain
 	DNSDomain string `json:"dnsDomain,omitempty"`
 	// DNS Servers
@@ -83,9 +92,34 @@ type CloudInitConfig struct {
 	// IPConfig is the IP configuration for the VM
 	IPConfig IPConfig `json:"ipConfig,omitempty"`
 	// TODO: Implement the following
-	// cicustom
+	Custom *CiCustom `json:"custom,omitempty"`
 	// ipconfig[n]
 }
+
+type CiCustom struct {
+	UserData    string `json:"userData,omitempty"`
+	MetaData    string `json:"metaData,omitempty"`
+	NetworkData string `json:"networkData,omitempty"`
+	VendorData  string `json:"vendorData,omitempty"`
+}
+
+// TODO: Revisit that one later with options to upload cloud init files via API (referencing from any configMap or any other source)
+// type CiCustom struct {
+// 	UserData    *CiData `json:"userData,omitempty"`
+// 	MetaData    *CiData `json:"metaData,omitempty"`
+// 	NetworkData *CiData `json:"networkData,omitempty"`
+// 	VendorData  *CiData `json:"vendorData,omitempty"`
+// }
+
+// type CiData struct {
+// 	Path         string        `json:"path,omitempty"`
+// 	ConfigMapRef *ConfigMapRef `json:"configMapRef,omitempty"`
+// }
+
+// type ConfigMapRef struct {
+// 	Name string `json:"name,omitempty"`
+// 	Data string `json:"data,omitempty"`
+// }
 
 type IPConfig struct {
 	// Gateway
