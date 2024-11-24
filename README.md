@@ -226,3 +226,7 @@ Thank you for considering contributing to this project! To get started, please f
 - If you'd like to contribute code, please fork the repository and create a pull request.
 - Please follow our [developing.md](developing.md) in all your interactions with the project. 
 - Before submitting a pull request, make sure to run the tests and ensure your code adheres to our coding standards.
+
+## Disclaimer
+
+Kubemox is under active development and doesn't follow the Custom Resource Definition (CRD) versioning principles. This means that Kubemox doesn't guarantee version updates on breaking changes and also there is no guarantee for the backward compatibility of the CRDs. Please be aware of this before using Kubemox in production environments.

@@ -77,7 +77,7 @@ func SetCloudInitConfig(vmName, nodeName string, ciConfig *proxmoxv1alpha1.Cloud
 	}
 
 	// Compare with the desired VM
-	if !cmp.Equal(*ciConfig, actualCloudInitConfig, cloudInitcompareOptions()...) {
+	if !cmp.Equal(*ciConfig, actualCloudInitConfig, cloudInitcompareOptions(ciConfig)...) {
 		log.Log.Info(fmt.Sprintf("Cloud-init config is updating with new values for VM %s", vmName))
 		CloudInitOptions := constructCloudInitOptions(ciConfig)
 		// Empty the current cloud-init config
@@ -137,7 +137,6 @@ func ImportDiskToVM(vmName, nodeName, diskName string) error {
 		log.Log.Error(err, "Error getting local storage")
 	}
 	diskLocation := localStorage.Path + "/template/iso/" + diskName
-	log.Log.Info(fmt.Sprintf("Disk location: %s", diskLocation))
 
 	// Import disk
 	// TODO: SCSI0 and local-lvm:0 should be retrieved from external resource
@@ -275,6 +274,19 @@ func CreateVMTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (*prox
 	return task, err
 }
 
+func AddTagToVMTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (*proxmox.Task, error) {
+	virtualMachine, err := getVirtualMachine(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for adding tag")
+	}
+	// Add tag to VM
+	task, err := virtualMachine.AddTag(ctx, virtualMachineTemplateTag)
+	if err != nil {
+		panic(err)
+	}
+	return task, err
+}
+
 func UpdateVirtualMachineTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) error {
 	VirtualMachine, err := getVirtualMachine(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
 	if err != nil {
@@ -316,7 +328,7 @@ func CheckVirtualMachineTemplateCIConfig(vmTemplate *proxmoxv1alpha1.VirtualMach
 		log.Log.Error(err, "Error getting cloud-init config")
 	}
 	// Compare with the desired cloud-init config
-	if !cmp.Equal(desiredCloudInitConfig, actualCloudInitConfig, cloudInitcompareOptions()...) {
+	if !cmp.Equal(desiredCloudInitConfig, actualCloudInitConfig, cloudInitcompareOptions(&vmTemplate.Spec.CloudInitConfig)...) {
 		return true, nil
 	}
 	return false, nil
@@ -336,7 +348,6 @@ func constructCloudInitOptions(cloudInitConfig *proxmoxv1alpha1.CloudInitConfig)
 		"DNSServers":      "nameserver",
 		"SSHKeys":         "sshkeys",
 		"UpgradePackages": "ciupgrade",
-		"IPConfig":        "ipconfig0",
 	}
 
 	for i := 0; i < v.NumField(); i++ {
@@ -370,16 +381,19 @@ func constructCloudInitOptions(cloudInitConfig *proxmoxv1alpha1.CloudInitConfig)
 				})
 			}
 		}
-		if fieldName == "IPConfig" {
-			gw := cloudInitConfig.IPConfig.Gateway
-			ip := cloudInitConfig.IPConfig.IP
-			cidr := cloudInitConfig.IPConfig.CIDR
-			CloudInitOptions = append(CloudInitOptions, proxmox.VirtualMachineOption{
-				Name:  "ipconfig0",
-				Value: fmt.Sprintf("gw=%s,ip=%s/%s", gw, ip, cidr),
-			})
-		}
 	}
+
+	if cloudInitConfig.IPConfig != nil {
+		ipConfig := cloudInitConfig.IPConfig
+		gw := ipConfig.Gateway
+		ip := ipConfig.IP
+		cidr := ipConfig.CIDR
+		CloudInitOptions = append(CloudInitOptions, proxmox.VirtualMachineOption{
+			Name:  "ipconfig0",
+			Value: fmt.Sprintf("gw=%s,ip=%s/%s", gw, ip, cidr),
+		})
+	}
+
 	// Handle password separately
 	Password, err := GetPasswordValue(cloudInitConfig)
 	if err != nil {
@@ -392,13 +406,11 @@ func constructCloudInitOptions(cloudInitConfig *proxmoxv1alpha1.CloudInitConfig)
 		})
 	}
 	// Handle custom cloud-init config
-	customConfig := customCloudInitConfig(cloudInitConfig.Custom)
-	if customConfig.Value != "" {
-		CloudInitOptions = append(CloudInitOptions, customConfig)
-	}
-	// DEBUG
-	for _, option := range CloudInitOptions {
-		log.Log.Info(fmt.Sprintf("Option: %s, Value: %v", option.Name, option.Value))
+	if cloudInitConfig.Custom != nil {
+		customConfig := customCloudInitConfig(cloudInitConfig.Custom)
+		if customConfig.Value != "" {
+			CloudInitOptions = append(CloudInitOptions, customConfig)
+		}
 	}
 
 	return CloudInitOptions
@@ -479,7 +491,7 @@ func EmptyCloudInitConfig(vmName, nodeName string) error {
 	return nil
 }
 
-func cloudInitcompareOptions() []cmp.Option {
+func cloudInitcompareOptions(cloudInitconfig *proxmoxv1alpha1.CloudInitConfig) []cmp.Option {
 	domainTransformer := cmp.Transformer("TrimSpace", strings.TrimSpace)
 
 	serversTransformer := cmp.Transformer("NormalizeDNSServers", func(s []string) []string {
@@ -495,17 +507,22 @@ func cloudInitcompareOptions() []cmp.Option {
 		}
 		return normalized
 	})
-	return []cmp.Option{
-		domainTransformer,
-		serversTransformer,
+	var cmpOptions []cmp.Option
+
+	cmpOptions = append(cmpOptions, domainTransformer, serversTransformer,
 		cmpopts.IgnoreFields(proxmoxv1alpha1.CloudInitConfig{}, "Password"),
 		cmpopts.IgnoreFields(proxmoxv1alpha1.CloudInitConfig{}, "PasswordFrom"),
 		// TODO: Implement custom cloud-init config comparison as well
 		cmpopts.IgnoreFields(proxmoxv1alpha1.CloudInitConfig{}, "Custom"),
+	)
+
+	if cloudInitconfig.IPConfig == nil {
+		cmpOptions = append(cmpOptions, cmpopts.IgnoreFields(proxmoxv1alpha1.CloudInitConfig{}, "IPConfig"))
 	}
+	return cmpOptions
 }
 
-func IPConfigParser(ipConfigStr string) proxmoxv1alpha1.IPConfig {
+func IPConfigParser(ipConfigStr string) *proxmoxv1alpha1.IPConfig {
 	var ipConfig proxmoxv1alpha1.IPConfig
 
 	keyValuePairs := strings.Split(ipConfigStr, ",")
@@ -541,7 +558,7 @@ func IPConfigParser(ipConfigStr string) proxmoxv1alpha1.IPConfig {
 			ipConfig.GatewayIPv6 = value
 		}
 	}
-	return ipConfig
+	return &ipConfig
 }
 
 func GetPasswordValue(config *proxmoxv1alpha1.CloudInitConfig) (string, error) {

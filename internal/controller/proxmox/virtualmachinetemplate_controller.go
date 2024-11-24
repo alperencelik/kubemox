@@ -258,6 +258,17 @@ func (r *VirtualMachineTemplateReconciler) handleVMCreation(ctx context.Context,
 			logger.Error(err, "Failed to create VM for template")
 			return err
 		}
+		// Add tag to the VM
+		task, err = proxmox.AddTagToVMTemplate(vmTemplate)
+		if err != nil {
+			logger.Error(err, "Failed to add tag to VM template")
+		}
+		// Wait for the task to complete
+		_, taskCompleted, err = task.WaitForCompleteStatus(ctx, 3, 7)
+		if !taskCompleted {
+			logger.Error(err, "Failed to add tag to VM template")
+			return err
+		}
 		r.Recorder.Event(vmTemplate, "Normal", "VMTemplateCreated", fmt.Sprintf("VirtualMachine template %s is created", templateVMName))
 	}
 	return nil

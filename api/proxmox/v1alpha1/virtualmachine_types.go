@@ -23,6 +23,9 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// +kubebuilder:validation:XValidation:rule="( (has(self.template) ? 1 : 0) + (has(self.newVMSpec) ? 1 : 0) ) == 1",message="Exactly one of 'template' or 'newVMSpec' must be specified"
+//nolint:lll // This is required by kubebuilder
+
 // VirtualMachineSpec defines the desired state of VirtualMachine
 type VirtualMachineSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -33,9 +36,9 @@ type VirtualMachineSpec struct {
 	// NodeName is the name of the target node of Proxmox
 	NodeName string `json:"nodeName"`
 	// TemplateSpec of the source VM
-	Template VirtualMachineSpecTemplate `json:"template,omitempty"`
+	Template *VirtualMachineSpecTemplate `json:"template,omitempty"`
 	// This field should be modified further
-	VMSpec NewVMSpec `json:"vmSpec,omitempty"`
+	VMSpec *NewVMSpec `json:"vmSpec,omitempty"`
 	// DeletionProtection is a flag that indicates whether the VM should be protected from deletion.
 	// If true, the VM will not be deleted when the Kubernetes resource is deleted.
 	// If not set, it defaults to false.
@@ -88,7 +91,7 @@ type VirtualMachineSpecTemplate struct {
 	// Disks is the list of disks
 	Disk []VirtualMachineSpecTemplateDisk `json:"disk,omitempty"`
 	// Networks is the list of networks
-	Network []VirtualMachineSpecTemplateNetwork `json:"network,omitempty"`
+	Network *[]VirtualMachineSpecTemplateNetwork `json:"network,omitempty"`
 	// PCI is the list of PCI devices
 	PciDevices []PciDevice `json:"pciDevices,omitempty"`
 }

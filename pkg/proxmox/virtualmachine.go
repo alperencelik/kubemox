@@ -60,8 +60,9 @@ const (
 )
 
 var (
-	virtualMachineTag        string
-	ManagedVirtualMachineTag string
+	virtualMachineTag         string
+	ManagedVirtualMachineTag  string
+	virtualMachineTemplateTag string
 )
 
 func init() {
@@ -72,6 +73,10 @@ func init() {
 	ManagedVirtualMachineTag = os.Getenv("MANAGED_VIRTUAL_MACHINE_TAG")
 	if ManagedVirtualMachineTag == "" {
 		ManagedVirtualMachineTag = "kubemox-managed-vm"
+	}
+	virtualMachineTemplateTag = os.Getenv("VIRTUAL_MACHINE_TEMPLATE_TAG")
+	if virtualMachineTemplateTag == "" {
+		virtualMachineTemplateTag = "kubemox-template"
 	}
 }
 
@@ -748,8 +753,8 @@ func RemoveVirtualMachineTag(vmName, nodeName, tag string) error {
 	return err
 }
 
-func GetNetworkConfiguration(vmName, nodeName string) (map[string]string, error) {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func GetNetworkConfiguration(vm *proxmoxv1alpha1.VirtualMachine) (map[string]string, error) {
+	VirtualMachine, err := getVirtualMachine(vm.Name, vm.Spec.NodeName)
 	if err != nil {
 		return make(map[string]string), err
 	}
@@ -826,10 +831,78 @@ func updateNetworkConfig(ctx context.Context,
 	return err
 }
 
+// func configureVirtualMachineNetwork(vm *proxmoxv1alpha1.VirtualMachine) error {
+// // Get desired network configuration
+// networks := vm.Spec.Template.Network
+// // Get actual network configuration
+// virtualMachineNetworks, err := GetNetworkConfiguration(vm)
+// if err != nil {
+// return err
+// }
+// log.Log.Info(fmt.Sprintf("Actual network configuration before parser: %v", virtualMachineNetworks))
+
+// // Parse actual network configuration
+// virtualMachineNetworksParsed, err := parseNetworkConfiguration(virtualMachineNetworks)
+// if err != nil {
+// return err
+// }
+// // DEBUG
+// log.Log.Info(fmt.Sprintf("Configuring network for VirtualMachine %s", vm.Name))
+
+// log.Log.Info(fmt.Sprintf("Desired network configuration: %v", *networks))
+
+// log.Log.Info(fmt.Sprintf("Actual network configuration: %v", virtualMachineNetworksParsed))
+
+// // Classify network configurations
+// networksToAdd, networksToUpdate, networksToDelete := classifyNetworks(*networks, virtualMachineNetworksParsed)
+
+// // DEBUG
+// log.Log.Info(fmt.Sprintf("Networks to add: %v", networksToAdd))
+// log.Log.Info(fmt.Sprintf("Networks to update: %v", networksToUpdate))
+// log.Log.Info(fmt.Sprintf("Networks to delete: %v", networksToDelete))
+
+// // Apply network changes
+// if err := applyNetworkChanges(ctx, vm, networksToAdd, networksToUpdate, networksToDelete); err != nil {
+// return err
+// }
+// return nil
+// }
+
+// func classifyNetworks(desiredNetworks, actualNetworks []proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork) (
+// networksToAdd, networksToUpdate, networksToDelete []proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork) {
+// getKey := func(network proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork) string {
+// return "net" + getNetworkIndex(desiredNetworks, &network)
+// }
+// return classifyItems(desiredNetworks, actualNetworks, getKey)
+// }
+
+// func applyNetworkChanges(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
+// networksToAdd, networksToUpdate, networksToDelete []proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork) error {
+// getModel := func(network proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork) string {
+// return "net" + getNetworkIndex(*vm.Spec.Template.Network, &network)
+// }
+// return applyChanges(ctx, vm, networksToAdd, networksToUpdate,
+// networksToDelete, getModel, addNetworkConfig, updateNetworkConfig, "Network")
+// }
+
+// func addNetworkConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
+// network proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork) error {
+// // Add the network configuration
+// virtualMachine, err := getVirtualMachine(vm.Name, vm.Spec.NodeName)
+// if err != nil {
+// log.Log.Error(err, "Error getting VM for adding network configuration")
+// }
+// _, err = virtualMachine.Config(ctx, proxmox.VirtualMachineOption{
+// Name:  "net" + getNetworkIndex(*vm.Spec.Template.Network, &network),
+// Value: network.Model + "," + "bridge=" + network.Bridge,
+// })
+// return err
+// }
+
 func configureVirtualMachineNetwork(vm *proxmoxv1alpha1.VirtualMachine) error {
 	networks := vm.Spec.Template.Network
 	// Get actual network configuration
-	virtualMachineNetworks, err := GetNetworkConfiguration(vm.Name, vm.Spec.NodeName)
+	virtualMachineNetworks, err := GetNetworkConfiguration(vm)
 	if err != nil {
 		return err
 	}
@@ -842,7 +915,7 @@ func configureVirtualMachineNetwork(vm *proxmoxv1alpha1.VirtualMachine) error {
 		// The desired network configuration is different than the actual one
 		log.Log.Info(fmt.Sprintf("Updating network configuration for VirtualMachine %s", vm.Name))
 		// Update the network configuration
-		for i := len(networks); i < len(virtualMachineNetworksParsed); i++ {
+		for i := len(*networks); i < len(virtualMachineNetworksParsed); i++ {
 			// Remove the network configuration
 			log.Log.Info(fmt.Sprintf("Removing the network configuration for net%d of VM %s", i, vm.Spec.Name))
 			taskID, _ := deleteVirtualMachineOption(vm, "net"+strconv.Itoa(i))
@@ -851,21 +924,21 @@ func configureVirtualMachineNetwork(vm *proxmoxv1alpha1.VirtualMachine) error {
 				log.Log.Error(taskErr, "Error removing network configuration from VirtualMachine")
 			}
 		}
-		for i := len(virtualMachineNetworksParsed); i < len(networks); i++ {
+		for i := len(virtualMachineNetworksParsed); i < len(*networks); i++ {
 			// Add the network configuration
 			log.Log.Info(fmt.Sprintf("Adding the network configuration for net%d of VM %s", i, vm.Spec.Name))
-			err = updateNetworkConfig(ctx, vm, i, networks)
+			err = updateNetworkConfig(ctx, vm, i, *networks)
 			if err != nil {
 				return err
 			}
 		}
 		for i := 0; i < len(virtualMachineNetworksParsed); i++ {
 			// Check if the network configuration is different
-			if len(networks) != 0 && !reflect.DeepEqual(networks[i], virtualMachineNetworksParsed[i]) {
+			if len(*networks) != 0 && !reflect.DeepEqual((*networks)[i], virtualMachineNetworksParsed[i]) {
 				// Update the network configuration
 				log.Log.Info(fmt.Sprintf("Updating the network configuration for net%d of VM %s", i, vm.Spec.Name))
 				// Get the network model&bridge name
-				err = updateNetworkConfig(ctx, vm, i, networks)
+				err = updateNetworkConfig(ctx, vm, i, *networks)
 				if err != nil {
 					return err
 				}
@@ -1021,7 +1094,7 @@ func CheckVirtualMachineDelta(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) 
 		log.Log.Error(err, "Error getting VM for watching")
 	}
 	// Get actual VM's network configuration
-	virtualMachineNetworks, err := GetNetworkConfiguration(vm.Name, vm.Spec.NodeName)
+	virtualMachineNetworks, err := GetNetworkConfiguration(vm)
 	if err != nil {
 		return false, err
 	}
@@ -1051,7 +1124,7 @@ func CheckVirtualMachineDelta(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) 
 		Cores:    vm.Spec.Template.Cores,
 		Sockets:  vm.Spec.Template.Socket,
 		Memory:   vm.Spec.Template.Memory,
-		Networks: vm.Spec.Template.Network,
+		Networks: *vm.Spec.Template.Network,
 		Disks:    sortDisks(vm.Spec.Template.Disk),
 	}
 	// Compare the actual VM with the desired VM

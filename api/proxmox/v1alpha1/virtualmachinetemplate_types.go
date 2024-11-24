@@ -66,9 +66,9 @@ type VMTemplateNetwork struct {
 	Bridge string `json:"bridge,omitempty"`
 }
 
-// +kubebuilder:validation:XValidation:rule="!(has(self.password) && has(self.passwordFrom))",
+// +kubebuilder:validation:XValidation:rule="(has(self.password) && !has(self.passwordFrom)) || (!has(self.password) && has(self.passwordFrom)) || (!has(self.password) && !has(self.passwordFrom))",message="Specify either password or passwordFrom, but not both"
 //
-//	message="Specify either password or passwordFrom, but not both"
+//nolint:lll // This is required by kubebuilder
 type CloudInitConfig struct {
 	// User is the user name for the template
 	User string `json:"user,omitempty"`
@@ -90,7 +90,7 @@ type CloudInitConfig struct {
 	// +kubebuilder:default:=true
 	UpgradePackages bool `json:"upgradePackages,omitempty"`
 	// IPConfig is the IP configuration for the VM
-	IPConfig IPConfig `json:"ipConfig,omitempty"`
+	IPConfig *IPConfig `json:"ipConfig,omitempty"`
 	// TODO: Implement the following
 	Custom *CiCustom `json:"custom,omitempty"`
 	// ipconfig[n]
