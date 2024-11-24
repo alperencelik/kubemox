@@ -284,7 +284,7 @@ func (r *ManagedVirtualMachineReconciler) UpdateManagedVirtualMachineStatus(ctx 
 	if err != nil {
 		return err
 	}
-	managedVM.Status.Status = *ManagedVMStatus
+	managedVM.Status.Status = ManagedVMStatus
 	if err := r.Status().Update(ctx, managedVM); err != nil {
 		return err
 	}

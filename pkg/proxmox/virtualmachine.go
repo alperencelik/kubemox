@@ -24,8 +24,8 @@ type VirtualMachineComparison struct {
 	Sockets  int `json:"sockets"`
 	Cores    int `json:"cores"`
 	Memory   int `json:"memory"`
-	Networks []proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork
-	Disks    []proxmoxv1alpha1.VirtualMachineSpecTemplateDisk
+	Networks []proxmoxv1alpha1.VirtualMachineNetwork
+	Disks    []proxmoxv1alpha1.VirtualMachineDisk
 }
 
 var mutex = &sync.Mutex{}
@@ -345,32 +345,24 @@ func CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine) {
 	if err != nil {
 		panic(err)
 	}
-	cores := vm.Spec.VMSpec.Cores
-	memory := vm.Spec.VMSpec.Memory
-	diskName := vm.Spec.VMSpec.Disk.Name
-	diskSize := vm.Spec.VMSpec.Disk.Value
-	networkName := vm.Spec.VMSpec.Network.Name
-	networkValue := vm.Spec.VMSpec.Network.Value
+	virtualMachineSpec := vm.Spec.VMSpec
+
 	osName := vm.Spec.VMSpec.OSImage.Name
 	osValue := vm.Spec.VMSpec.OSImage.Value
 
 	// Create VM from scratch
 	VMOptions := []proxmox.VirtualMachineOption{
 		{
+			Name:  virtualMachineSocketOption,
+			Value: virtualMachineSpec.Socket,
+		},
+		{
 			Name:  virtualMachineCPUOption,
-			Value: cores,
+			Value: virtualMachineSpec.Cores,
 		},
 		{
 			Name:  virtualMachineMemoryOption,
-			Value: memory,
-		},
-		{
-			Name:  diskName,
-			Value: diskSize,
-		},
-		{
-			Name:  networkName,
-			Value: networkValue,
+			Value: virtualMachineSpec.Memory,
 		},
 		{
 			Name:  osName,
@@ -381,6 +373,25 @@ func CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine) {
 			Value: vm.Spec.Name,
 		},
 	}
+	// handle the disks and networks
+	// for each disk and network, add the disk and network to the VMOptions
+	if len(virtualMachineSpec.Disk) != 0 {
+		for _, disk := range virtualMachineSpec.Disk {
+			VMOptions = append(VMOptions, proxmox.VirtualMachineOption{
+				Name:  disk.Device,
+				Value: disk.Storage + ":" + strconv.Itoa(disk.Size),
+			})
+		}
+	}
+	if len(*virtualMachineSpec.Network) != 0 {
+		for i, network := range *virtualMachineSpec.Network {
+			VMOptions = append(VMOptions, proxmox.VirtualMachineOption{
+				Name:  "net" + strconv.Itoa(i),
+				Value: network.Model + ",bridge=" + network.Bridge,
+			})
+		}
+	}
+
 	// Get next VMID
 	vmID, err := getNextVMID(Client)
 	if err != nil {
@@ -546,7 +557,7 @@ func UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) bool {
 		case false:
 			log.Log.Error(taskErr, "Can't update VM")
 		case true:
-			log.Log.Info(fmt.Sprintf("VM %s updating", vmName))
+			log.Log.Info(fmt.Sprintf("Virtual machine %s is updating", vmName))
 		default:
 			log.Log.Info("VM is already updated")
 		}
@@ -762,8 +773,8 @@ func GetNetworkConfiguration(vm *proxmoxv1alpha1.VirtualMachine) (map[string]str
 	return VirtualMachine.VirtualMachineConfig.MergeNets(), nil
 }
 
-func parseNetworkConfiguration(networks map[string]string) ([]proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork, error) {
-	var networkConfiguration []proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork
+func parseNetworkConfiguration(networks map[string]string) ([]proxmoxv1alpha1.VirtualMachineNetwork, error) {
+	var networkConfiguration []proxmoxv1alpha1.VirtualMachineNetwork
 
 	// Parse networks to use as VirtualMachineSpecTemplateNetwork
 	for _, network := range networks {
@@ -775,7 +786,7 @@ func parseNetworkConfiguration(networks map[string]string) ([]proxmoxv1alpha1.Vi
 		networkModel := strings.Split(networkSplit[0], "=")[0] // The key of first value
 		// Get the network bridge name
 		networkBridge := strings.Split(networkSplit[1], "=")[1] // The value of second value
-		networkConfiguration = append(networkConfiguration, proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork{
+		networkConfiguration = append(networkConfiguration, proxmoxv1alpha1.VirtualMachineNetwork{
 			Model:  networkModel,
 			Bridge: networkBridge,
 		})
@@ -815,7 +826,7 @@ func deleteVirtualMachineOption(vm *proxmoxv1alpha1.VirtualMachine, option strin
 }
 
 func updateNetworkConfig(ctx context.Context,
-	vm *proxmoxv1alpha1.VirtualMachine, i int, networks []proxmoxv1alpha1.VirtualMachineSpecTemplateNetwork) error {
+	vm *proxmoxv1alpha1.VirtualMachine, i int, networks []proxmoxv1alpha1.VirtualMachineNetwork) error {
 	// Get the network model&bridge name
 	networkModel := networks[i].Model
 	networkBridge := networks[i].Bridge
@@ -900,7 +911,8 @@ func updateNetworkConfig(ctx context.Context,
 // }
 
 func configureVirtualMachineNetwork(vm *proxmoxv1alpha1.VirtualMachine) error {
-	networks := vm.Spec.Template.Network
+	// Get desired network configuration
+	networks := getNetworks(vm)
 	// Get actual network configuration
 	virtualMachineNetworks, err := GetNetworkConfiguration(vm)
 	if err != nil {
@@ -966,7 +978,7 @@ func GetDiskConfiguration(vm *proxmoxv1alpha1.VirtualMachine) (map[string]string
 
 func configureVirtualMachineDisk(vm *proxmoxv1alpha1.VirtualMachine) error {
 	// Get VM disk spec and actual disk configuration
-	disks := vm.Spec.Template.Disk
+	disks := getDisks(vm)
 	virtualMachineDisks, err := GetDiskConfiguration(vm)
 	if err != nil {
 		return err
@@ -986,9 +998,9 @@ func configureVirtualMachineDisk(vm *proxmoxv1alpha1.VirtualMachine) error {
 	return nil
 }
 
-func classifyDisks(desiredDisks, actualDisks []proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) (
-	disksToAdd, disksToUpdate, disksToDelete []proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) {
-	getKey := func(disk proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) string {
+func classifyDisks(desiredDisks, actualDisks []proxmoxv1alpha1.VirtualMachineDisk) (
+	disksToAdd, disksToUpdate, disksToDelete []proxmoxv1alpha1.VirtualMachineDisk) {
+	getKey := func(disk proxmoxv1alpha1.VirtualMachineDisk) string {
 		return disk.Device
 	}
 	return classifyItems(desiredDisks, actualDisks, getKey)
@@ -1006,8 +1018,8 @@ func classifyPCIs(desiredPcis, actualPcis []proxmoxv1alpha1.PciDevice) (
 func applyDiskChanges(
 	ctx context.Context,
 	vm *proxmoxv1alpha1.VirtualMachine,
-	disksToAdd, disksToUpdate, disksToDelete []proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) error {
-	getDeviceID := func(disk proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) string {
+	disksToAdd, disksToUpdate, disksToDelete []proxmoxv1alpha1.VirtualMachineDisk) error {
+	getDeviceID := func(disk proxmoxv1alpha1.VirtualMachineDisk) string {
 		return disk.Device
 	}
 
@@ -1024,10 +1036,10 @@ func applyDiskChanges(
 	)
 }
 
-func parseDiskConfiguration(disks map[string]string) ([]proxmoxv1alpha1.VirtualMachineSpecTemplateDisk, error) {
-	var diskConfiguration []proxmoxv1alpha1.VirtualMachineSpecTemplateDisk
+func parseDiskConfiguration(disks map[string]string) ([]proxmoxv1alpha1.VirtualMachineDisk, error) {
+	var diskConfiguration []proxmoxv1alpha1.VirtualMachineDisk
 
-	// Parse disks to use as VirtualMachineSpecTemplateDisk
+	// Parse disks to use as VirtualMachineDisk
 	for device, disk := range disks {
 		diskSplit := strings.Split(disk, ",")
 		if len(diskSplit) < 2 {
@@ -1047,7 +1059,7 @@ func parseDiskConfiguration(disks map[string]string) ([]proxmoxv1alpha1.VirtualM
 				break
 			}
 		}
-		diskConfiguration = append(diskConfiguration, proxmoxv1alpha1.VirtualMachineSpecTemplateDisk{
+		diskConfiguration = append(diskConfiguration, proxmoxv1alpha1.VirtualMachineDisk{
 			Storage: diskStorage,
 			Size:    diskSize,
 			Device:  device,
@@ -1057,7 +1069,7 @@ func parseDiskConfiguration(disks map[string]string) ([]proxmoxv1alpha1.VirtualM
 }
 
 func updateDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
-	disk proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) error {
+	disk proxmoxv1alpha1.VirtualMachineDisk) error {
 	virtualMachine, err := getVirtualMachine(vm.Name, vm.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for updating disk configuration")
@@ -1070,7 +1082,7 @@ func updateDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 }
 
 func addDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
-	disk proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) error {
+	disk proxmoxv1alpha1.VirtualMachineDisk) error {
 	virtualMachine, err := getVirtualMachine(vm.Name, vm.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for updating disk configuration")
@@ -1121,11 +1133,11 @@ func CheckVirtualMachineDelta(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) 
 	}
 	// Desired VM
 	desiredVM := VirtualMachineComparison{
-		Cores:    vm.Spec.Template.Cores,
-		Sockets:  vm.Spec.Template.Socket,
-		Memory:   vm.Spec.Template.Memory,
-		Networks: *vm.Spec.Template.Network,
-		Disks:    sortDisks(vm.Spec.Template.Disk),
+		Cores:    getCores(vm),
+		Sockets:  getSockets(vm),
+		Memory:   getMemory(vm),
+		Networks: *getNetworks(vm),
+		Disks:    sortDisks(getDisks(vm)),
 	}
 	// Compare the actual VM with the desired VM
 	if !reflect.DeepEqual(actualVM, desiredVM) {
@@ -1134,7 +1146,7 @@ func CheckVirtualMachineDelta(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) 
 	return false, nil
 }
 
-func sortDisks(disks []proxmoxv1alpha1.VirtualMachineSpecTemplateDisk) []proxmoxv1alpha1.VirtualMachineSpecTemplateDisk {
+func sortDisks(disks []proxmoxv1alpha1.VirtualMachineDisk) []proxmoxv1alpha1.VirtualMachineDisk {
 	sort.Slice(disks, func(i, j int) bool {
 		if disks[i].Storage == disks[j].Storage {
 			return disks[i].Device < disks[j].Device
@@ -1188,7 +1200,14 @@ func getVirtualMachine(vmName, nodeName string) (*proxmox.VirtualMachine, error)
 
 func configureVirtualMachinePCI(vm *proxmoxv1alpha1.VirtualMachine) error {
 	// Get VM PCI spec and actual PCI configuration
-	PCIs := vm.Spec.Template.PciDevices
+	vmType := CheckVMType(vm)
+	var PCIs []proxmoxv1alpha1.PciDevice
+	if vmType == virtualMachineTemplateType {
+		PCIs = vm.Spec.Template.PciDevices
+	}
+	if vmType == virtualMachineScratchType {
+		PCIs = vm.Spec.VMSpec.PciDevices
+	}
 	virtualMachinePCIs, err := GetPCIConfiguration(vm.Name, vm.Spec.NodeName)
 	if err != nil {
 		return err
@@ -1381,4 +1400,41 @@ func revertVirtualMachineOption(vmName, nodeName, value string) error {
 		log.Log.Error(taskErr, "Error occurred while reverting VirtualMachine")
 	}
 	return taskErr
+}
+
+// Helper functions
+
+func getCores(vm *proxmoxv1alpha1.VirtualMachine) int {
+	if CheckVMType(vm) == virtualMachineTemplateType {
+		return vm.Spec.Template.Cores
+	}
+	return vm.Spec.VMSpec.Cores
+}
+
+func getMemory(vm *proxmoxv1alpha1.VirtualMachine) int {
+	if CheckVMType(vm) == virtualMachineTemplateType {
+		return vm.Spec.Template.Memory
+	}
+	return vm.Spec.VMSpec.Memory
+}
+
+func getSockets(vm *proxmoxv1alpha1.VirtualMachine) int {
+	if CheckVMType(vm) == virtualMachineTemplateType {
+		return vm.Spec.Template.Socket
+	}
+	return vm.Spec.VMSpec.Socket
+}
+
+func getDisks(vm *proxmoxv1alpha1.VirtualMachine) []proxmoxv1alpha1.VirtualMachineDisk {
+	if CheckVMType(vm) == virtualMachineTemplateType {
+		return vm.Spec.Template.Disk
+	}
+	return vm.Spec.VMSpec.Disk
+}
+
+func getNetworks(vm *proxmoxv1alpha1.VirtualMachine) *[]proxmoxv1alpha1.VirtualMachineNetwork {
+	if CheckVMType(vm) == virtualMachineTemplateType {
+		return vm.Spec.Template.Network
+	}
+	return vm.Spec.VMSpec.Network
 }

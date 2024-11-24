@@ -264,7 +264,7 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(ctx context.Contex
 	if err != nil {
 		return err
 	}
-	vm.Status.Status = *qemuStatus
+	vm.Status.Status = qemuStatus
 	if err := r.Status().Update(ctx, vm); err != nil {
 		return err
 	}

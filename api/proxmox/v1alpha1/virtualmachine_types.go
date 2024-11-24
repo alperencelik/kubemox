@@ -23,9 +23,6 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// +kubebuilder:validation:XValidation:rule="( (has(self.template) ? 1 : 0) + (has(self.newVMSpec) ? 1 : 0) ) == 1",message="Exactly one of 'template' or 'newVMSpec' must be specified"
-//nolint:lll // This is required by kubebuilder
-
 // VirtualMachineSpec defines the desired state of VirtualMachine
 type VirtualMachineSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -54,14 +51,20 @@ type VirtualMachineSpec struct {
 type NewVMSpec struct {
 	// Cores is the number of CPU cores
 	Cores int `json:"cores,omitempty"`
+	// Socket is the number of CPU sockets
+	Socket int `json:"socket,omitempty"`
 	// Memory is the amount of memory in MB
 	Memory int `json:"memory,omitempty"`
 	// Disks is the list of disks
-	Disk NewVMSpecDisk `json:"disk,omitempty"`
+	Disk []VirtualMachineDisk `json:"disk,omitempty"`
 	// Networks is the list of networks
-	Network NewVMSpecNetwork `json:"network,omitempty"`
+	Network *[]VirtualMachineNetwork `json:"network,omitempty"`
 	// OS Image
 	OSImage NewVMSpecOSImage `json:"osImage,omitempty"`
+	// PCI is the list of PCI devices
+	PciDevices []PciDevice `json:"pciDevices,omitempty"`
+	// Cloud Init Config
+	CloudInitConfig *CloudInitConfig `json:"cloudInitConfig,omitempty"`
 }
 
 type NewVMSpecDisk struct {
@@ -89,9 +92,9 @@ type VirtualMachineSpecTemplate struct {
 	// Memory is the amount of memory in MB
 	Memory int `json:"memory,omitempty"`
 	// Disks is the list of disks
-	Disk []VirtualMachineSpecTemplateDisk `json:"disk,omitempty"`
+	Disk []VirtualMachineDisk `json:"disk,omitempty"`
 	// Networks is the list of networks
-	Network *[]VirtualMachineSpecTemplateNetwork `json:"network,omitempty"`
+	Network *[]VirtualMachineNetwork `json:"network,omitempty"`
 	// PCI is the list of PCI devices
 	PciDevices []PciDevice `json:"pciDevices,omitempty"`
 }
@@ -112,7 +115,7 @@ type PciDevice struct {
 	PCIE bool `json:"pcie,omitempty"`
 }
 
-type VirtualMachineSpecTemplateDisk struct {
+type VirtualMachineDisk struct {
 	// Storage is the name of the storage
 	Storage string `json:"storage"`
 	// Size is the size of the disk in GB
@@ -121,7 +124,7 @@ type VirtualMachineSpecTemplateDisk struct {
 	Device string `json:"device"`
 }
 
-type VirtualMachineSpecTemplateNetwork struct {
+type VirtualMachineNetwork struct {
 	// Model is the model of the network card
 	Model string `json:"model"`
 	// Bridge is the name of the bridge
@@ -148,7 +151,7 @@ type VirtualMachineStatus struct {
 	// Conditions is the metav1.Condition of the Virtual Machine
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"` //nolint:lll // This is required by kubebuilder
 	// Status is the QEMU status of the Virtual Machine (state, node, uptime, id, IP address, os info)
-	Status QEMUStatus `json:"status,omitempty"`
+	Status *QEMUStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
