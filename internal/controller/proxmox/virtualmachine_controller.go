@@ -172,6 +172,11 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			logger.Error(err, "Error updating VirtualMachine")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}
+		err = r.handleCloudInitOperations(ctx, vm)
+		if err != nil {
+			logger.Error(err, "Error handling cloud-init operations")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		}
 	}
 	logger.Info(fmt.Sprintf("VirtualMachine %s already exists", vmName))
 
@@ -225,6 +230,12 @@ func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, vm 
 	case "scratch":
 		r.Recorder.Event(vm, "Normal", "Creating", fmt.Sprintf("VirtualMachine %s is being created", vmName))
 		proxmox.CreateVMFromScratch(vm)
+		r.Recorder.Event(vm, "Normal", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
+		err := r.handleCloudInitOperations(ctx, vm)
+		if err != nil {
+			return err
+		}
+
 		startResult, err := proxmox.StartVM(vmName, nodeName)
 		if err != nil {
 			return err
@@ -331,6 +342,49 @@ func (r *VirtualMachineReconciler) handleFinalizer(ctx context.Context, vm *prox
 	}
 	return nil
 }
+
+func (r *VirtualMachineReconciler) handleCloudInitOperations(ctx context.Context,
+	vm *proxmoxv1alpha1.VirtualMachine) error {
+	if proxmox.CheckVMType(vm) == proxmox.VirtualMachineTemplateType {
+		return nil
+	}
+	logger := log.FromContext(ctx)
+
+	if vm.Spec.VMSpec.CloudInitConfig == nil {
+		return nil
+	}
+
+	vmName := vm.Spec.Name
+	nodeName := vm.Spec.NodeName
+
+	// 1. Add cloud Init CD-ROM drive
+	err := proxmox.AddCloudInitDrive(vmName, nodeName)
+	if err != nil {
+		logger.Error(err, "Failed to add cloud-init drive to VM")
+		return err
+	}
+	// 2. Set cloud-init configuration
+	err = proxmox.SetCloudInitConfig(vmName, nodeName, vm.Spec.VMSpec.CloudInitConfig)
+	if err != nil {
+		logger.Error(err, "Failed to set cloud-init configuration")
+		return err
+	}
+	// If the machine is running, reboot it to apply the cloud-init configuration
+	vmState := proxmox.GetVMState(vmName, nodeName)
+	if vmState == proxmox.VirtualMachineRunningState {
+		err = proxmox.RebootVM(vmName, nodeName)
+		if err != nil {
+			logger.Error(err, "Failed to reboot VM")
+		}
+	}
+
+	return nil
+}
+
+// func (r *VirtualMachineReconciler) handleAdditionalConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) error {
+// // TODO: Implement additional configuration handling
+// return nil
+// }
 
 func (r *VirtualMachineReconciler) handleWatcher(ctx context.Context, req ctrl.Request, vm *proxmoxv1alpha1.VirtualMachine) {
 	r.Watchers.HandleWatcher(ctx, req, func(ctx context.Context, stopChan chan struct{}) (ctrl.Result, error) {

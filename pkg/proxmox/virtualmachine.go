@@ -34,8 +34,8 @@ const (
 	// The tag that will be added to VMs in Proxmox cluster
 	VirtualMachineRunningState = "running"
 	VirtualMachineStoppedState = "stopped"
-	virtualMachineTemplateType = "template"
-	virtualMachineScratchType  = "scratch"
+	VirtualMachineTemplateType = "template"
+	VirtualMachineScratchType  = "scratch"
 	virtualMachineCPUOption    = "cores"
 	virtualMachineSocketOption = "sockets"
 	virtualMachineMemoryOption = "memory"
@@ -383,7 +383,7 @@ func CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine) {
 			})
 		}
 	}
-	if len(*virtualMachineSpec.Network) != 0 {
+	if virtualMachineSpec.Network != nil {
 		for i, network := range *virtualMachineSpec.Network {
 			VMOptions = append(VMOptions, proxmox.VirtualMachineOption{
 				Name:  "net" + strconv.Itoa(i),
@@ -391,7 +391,8 @@ func CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine) {
 			})
 		}
 	}
-
+	// Make sure that not two VMs are created at the exact time
+	mutex.Lock()
 	// Get next VMID
 	vmID, err := getNextVMID(Client)
 	if err != nil {
@@ -402,6 +403,7 @@ func CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine) {
 	if err != nil {
 		panic(err)
 	}
+	mutex.Unlock()
 	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 10, 10)
 	switch taskCompleted {
 	case false:
@@ -416,7 +418,7 @@ func CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine) {
 		panic(err)
 	}
 	addTagTask, err := VirtualMachine.AddTag(ctx, virtualMachineTag)
-	_, taskCompleted, taskErr = addTagTask.WaitForCompleteStatus(ctx, 1, 10)
+	_, taskCompleted, taskErr = addTagTask.WaitForCompleteStatus(ctx, 3, 10)
 	if !taskCompleted {
 		log.Log.Error(taskErr, "Can't add tag to VM")
 	}
@@ -429,9 +431,9 @@ func CheckVMType(vm *proxmoxv1alpha1.VirtualMachine) string {
 	var VMType string
 	switch {
 	case !reflect.ValueOf(vm.Spec.Template).IsZero():
-		VMType = virtualMachineTemplateType
+		VMType = VirtualMachineTemplateType
 	case !reflect.ValueOf(vm.Spec.VMSpec).IsZero():
-		VMType = virtualMachineScratchType
+		VMType = VirtualMachineScratchType
 	case !reflect.ValueOf(vm.Spec.Template).IsZero() && !reflect.ValueOf(vm.Spec.VMSpec).IsZero():
 		VMType = "faulty"
 	default:
@@ -530,12 +532,12 @@ func UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) bool {
 	cpuOption.Name = virtualMachineCPUOption
 	memoryOption.Name = virtualMachineMemoryOption
 	switch CheckVMType(vm) {
-	case virtualMachineTemplateType:
+	case VirtualMachineTemplateType:
 		cpuOption.Value = vm.Spec.Template.Cores
 		memoryOption.Value = uint64(vm.Spec.Template.Memory)
 		metrics.SetVirtualMachineCPUCores(vmName, vm.Namespace, float64(vm.Spec.Template.Cores))
 		metrics.SetVirtualMachineMemory(vmName, vm.Namespace, float64(vm.Spec.Template.Memory))
-	case virtualMachineScratchType:
+	case VirtualMachineScratchType:
 		cpuOption.Value = vm.Spec.VMSpec.Cores
 		memoryOption.Value = uint64(vm.Spec.VMSpec.Memory)
 		metrics.SetVirtualMachineCPUCores(vmName, vm.Namespace, float64(vm.Spec.VMSpec.Cores))
@@ -1200,14 +1202,7 @@ func getVirtualMachine(vmName, nodeName string) (*proxmox.VirtualMachine, error)
 
 func configureVirtualMachinePCI(vm *proxmoxv1alpha1.VirtualMachine) error {
 	// Get VM PCI spec and actual PCI configuration
-	vmType := CheckVMType(vm)
-	var PCIs []proxmoxv1alpha1.PciDevice
-	if vmType == virtualMachineTemplateType {
-		PCIs = vm.Spec.Template.PciDevices
-	}
-	if vmType == virtualMachineScratchType {
-		PCIs = vm.Spec.VMSpec.PciDevices
-	}
+	PCIs := getPciDevices(vm)
 	virtualMachinePCIs, err := GetPCIConfiguration(vm.Name, vm.Spec.NodeName)
 	if err != nil {
 		return err
@@ -1301,7 +1296,7 @@ func updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	// If the type is "mapped" then the value should be "mapped=deviceID"
 	var pciID string
 	if pci.Type == "mapped" {
-		pciID = "mapped=" + pci.DeviceID
+		pciID = "mapping=" + pci.DeviceID
 	} else {
 		pciID = pci.DeviceID
 	}
@@ -1332,6 +1327,7 @@ func updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	})
 	if err != nil {
 		log.Log.Error(err, "Error updating PCI configuration for VirtualMachine")
+		return err
 	}
 	_, taskCompleted, taskErr := taskID.WaitForCompleteStatus(ctx, 5, 3)
 	if !taskCompleted {
@@ -1402,39 +1398,87 @@ func revertVirtualMachineOption(vmName, nodeName, value string) error {
 	return taskErr
 }
 
+func RebootVM(vmName, nodeName string) error {
+	virtualMachine, err := getVirtualMachine(vmName, nodeName)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for rebooting")
+	}
+	// Reboot VM
+	task, err := virtualMachine.Reboot(ctx)
+	if err != nil {
+		log.Log.Error(err, "Error rebooting VirtualMachine %s", vmName)
+	}
+	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 3)
+	if !taskCompleted {
+		log.Log.Error(taskErr, "Error rebooting VirtualMachine %s", vmName)
+	}
+	return err
+}
+
+// TODO: Implement the function
+// func ApplyAdditionalConfiguration(vm *proxmoxv1alpha1.VirtualMachine) error {
+// 	// Get VirtualMachine
+// 	VirtualMachine, err := getVirtualMachine(vm.Name, vm.Spec.NodeName)
+// 	if err != nil {
+// 		log.Log.Error(err, "Error getting VM for applying additional configuration")
+// 	}
+// 	// Apply additional configuration
+// 	for key, value := range vm.Spec.AdditionalConfig {
+// 		task, err := VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
+// 			Name:  key,
+// 			Value: value,
+// 		})
+// 		if err != nil {
+// 			log.Log.Error(err, "Error applying additional configuration")
+// 		}
+// 		_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 3)
+// 		if !taskCompleted {
+// 			log.Log.Error(taskErr, "Error applying additional configuration")
+// 		}
+// 	}
+// 	return nil
+// }
+
 // Helper functions
 
 func getCores(vm *proxmoxv1alpha1.VirtualMachine) int {
-	if CheckVMType(vm) == virtualMachineTemplateType {
+	if CheckVMType(vm) == VirtualMachineTemplateType {
 		return vm.Spec.Template.Cores
 	}
 	return vm.Spec.VMSpec.Cores
 }
 
 func getMemory(vm *proxmoxv1alpha1.VirtualMachine) int {
-	if CheckVMType(vm) == virtualMachineTemplateType {
+	if CheckVMType(vm) == VirtualMachineTemplateType {
 		return vm.Spec.Template.Memory
 	}
 	return vm.Spec.VMSpec.Memory
 }
 
 func getSockets(vm *proxmoxv1alpha1.VirtualMachine) int {
-	if CheckVMType(vm) == virtualMachineTemplateType {
+	if CheckVMType(vm) == VirtualMachineTemplateType {
 		return vm.Spec.Template.Socket
 	}
 	return vm.Spec.VMSpec.Socket
 }
 
 func getDisks(vm *proxmoxv1alpha1.VirtualMachine) []proxmoxv1alpha1.VirtualMachineDisk {
-	if CheckVMType(vm) == virtualMachineTemplateType {
+	if CheckVMType(vm) == VirtualMachineTemplateType {
 		return vm.Spec.Template.Disk
 	}
 	return vm.Spec.VMSpec.Disk
 }
 
 func getNetworks(vm *proxmoxv1alpha1.VirtualMachine) *[]proxmoxv1alpha1.VirtualMachineNetwork {
-	if CheckVMType(vm) == virtualMachineTemplateType {
+	if CheckVMType(vm) == VirtualMachineTemplateType {
 		return vm.Spec.Template.Network
 	}
 	return vm.Spec.VMSpec.Network
+}
+
+func getPciDevices(vm *proxmoxv1alpha1.VirtualMachine) []proxmoxv1alpha1.PciDevice {
+	if CheckVMType(vm) == VirtualMachineTemplateType {
+		return vm.Spec.Template.PciDevices
+	}
+	return vm.Spec.VMSpec.PciDevices
 }
