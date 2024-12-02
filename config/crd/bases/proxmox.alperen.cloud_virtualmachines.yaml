@@ -102,6 +102,12 @@ spec:
           spec:
             description: VirtualMachineSpec defines the desired state of VirtualMachine
             properties:
+              additionalConfig:
+                additionalProperties:
+                  type: string
+                description: AdditionalConfig is the additional configuration of the
+                  VM
+                type: object
               deletionProtection:
                 default: false
                 description: DeletionProtection is a flag that indicates whether the
@@ -205,28 +211,130 @@ spec:
               vmSpec:
                 description: This field should be modified further
                 properties:
+                  cloudInitConfig:
+                    description: Cloud Init Config
+                    properties:
+                      custom:
+                        description: Custom fields for cloud-init
+                        properties:
+                          metaData:
+                            type: string
+                          networkData:
+                            type: string
+                          userData:
+                            type: string
+                          vendorData:
+                            type: string
+                        type: object
+                      dnsDomain:
+                        description: DNS Domain
+                        type: string
+                      dnsServers:
+                        description: DNS Servers
+                        items:
+                          type: string
+                        type: array
+                      ipConfig:
+                        description: IPConfig is the IP configuration for the VM
+                        properties:
+                          cidr:
+                            description: Subnet Mask
+                            type: string
+                          gateway:
+                            description: Gateway
+                            type: string
+                          gatewayIPv6:
+                            description: GatewayIPv6
+                            type: string
+                          ip:
+                            description: IP Address
+                            type: string
+                          ipv6:
+                            description: IPv6 Address
+                            type: string
+                        type: object
+                      password:
+                        description: Password is the password for the template. Use
+                          this field to specify the password directly.
+                        type: string
+                      passwordFrom:
+                        description: PasswordFrom is a reference to a key in a Secret
+                          that contains the password. Use this field to specify the
+                          password via a Secret.
+                        properties:
+                          key:
+                            description: The key of the secret to select from.  Must
+                              be a valid secret key.
+                            type: string
+                          name:
+                            description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              TODO: Add other useful fields. apiVersion, kind, uid?'
+                            type: string
+                          optional:
+                            description: Specify whether the Secret or its key must
+                              be defined
+                            type: boolean
+                        required:
+                        - key
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      sshKeys:
+                        description: SSH Keys -- suppose to be on openSSH format
+                        items:
+                          type: string
+                        type: array
+                      upgradePackages:
+                        default: true
+                        description: Upgrade Packages
+                        type: boolean
+                      user:
+                        description: User is the user name for the template
+                        type: string
+                    type: object
+                    x-kubernetes-validations:
+                    - message: Specify either password or passwordFrom, but not both
+                      rule: (has(self.password) && !has(self.passwordFrom)) || (!has(self.password)
+                        && has(self.passwordFrom)) || (!has(self.password) && !has(self.passwordFrom))
                   cores:
                     description: Cores is the number of CPU cores
                     type: integer
                   disk:
                     description: Disks is the list of disks
-                    properties:
-                      name:
-                        type: string
-                      value:
-                        type: string
-                    type: object
+                    items:
+                      properties:
+                        device:
+                          description: Device is the name of the device
+                          type: string
+                        size:
+                          description: Size is the size of the disk in GB
+                          type: integer
+                        storage:
+                          description: Storage is the name of the storage
+                          type: string
+                      required:
+                      - device
+                      - size
+                      - storage
+                      type: object
+                    type: array
                   memory:
                     description: Memory is the amount of memory in MB
                     type: integer
                   network:
                     description: Networks is the list of networks
-                    properties:
-                      name:
-                        type: string
-                      value:
-                        type: string
-                    type: object
+                    items:
+                      properties:
+                        bridge:
+                          description: Bridge is the name of the bridge
+                          type: string
+                        model:
+                          description: Model is the model of the network card
+                          type: string
+                      required:
+                      - bridge
+                      - model
+                      type: object
+                    type: array
                   osImage:
                     description: OS Image
                     properties:
@@ -235,15 +343,44 @@ spec:
                       value:
                         type: string
                     type: object
+                  pciDevices:
+                    description: PCI is the list of PCI devices
+                    items:
+                      properties:
+                        deviceID:
+                          description: DeviceID is the ID hex id of the device
+                          type: string
+                        pcie:
+                          default: false
+                          description: PCIE is the flag that indicates whether the
+                            device is a PCIE device ==> pcie=1
+                          type: boolean
+                        primaryGPU:
+                          default: false
+                          description: PrimaryGPU is the flag that indicates whether
+                            the device is the primary GPU ==> x-vga=1
+                          type: boolean
+                        type:
+                          description: 'Type is the type of the PCI device either
+                            raw or mapped TODO: Add validation for that one to immutable
+                            and make sure that you can''t set PCIE to true if the
+                            type is mapped'
+                          enum:
+                          - raw
+                          - mapped
+                          type: string
+                      required:
+                      - type
+                      type: object
+                    type: array
+                  socket:
+                    description: Socket is the number of CPU sockets
+                    type: integer
                 type: object
             required:
             - name
             - nodeName
             type: object
-            x-kubernetes-validations:
-            - message: Exactly one of 'template' or 'newVMSpec' must be specified
-              rule: '( (has(self.template) ? 1 : 0) + (has(self.newVMSpec) ? 1 : 0)
-                ) == 1'
           status:
             description: VirtualMachineStatus defines the observed state of VirtualMachine
             properties:

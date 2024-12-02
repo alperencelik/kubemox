@@ -73,3 +73,94 @@ spec:
       value: local:iso/ubuntu-23.04-live-server-amd64.iso
 EOF
 ```
+
+## Advanced Configuration
+
+You can also configure advanced settings for the virtual machine object. You can set the following fields in the `VirtualMachine` object.
+
+- Create a new virtual machine from a template
+
+```yaml
+# This manifest is used to create a Virtual Machine from an existing template with advanced configuration.
+cat <<EOF | kubectl apply -f -
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachine
+metadata:
+  name: virtualmachine-sample-clone-new
+  namespace: default
+spec:
+  name: virtualmachine-sample-clone-new
+  nodeName: lowtower
+  deletionProtection: false
+  enableAutoStart: true
+  template:
+    socket: 1
+    cores: 2
+    disk:
+    - device: scsi0
+      size: 60
+      storage: local-lvm
+    - device: scsi1
+      size: 20
+      storage: local-lvm
+    memory: 4096
+    name: fedora-template
+    network:
+    - bridge: vmbr0
+      model: virtio
+    pciDevices:
+      - device: "c0-p0-o0-if0"
+        type: "mapped"
+      - device: "0000:03:00.2"
+        type: "raw"
+        primaryGPU: true
+        pcie: true
+  additionalConfig:
+    balloon: "0"
+    cpu: host
+    vga: type=virtio,memory=16
+EOF
+```
+
+- Create a new virtual machine from scratch
+
+```yaml
+# This manifest is used to create a VirtualMachine from scratch with advanced configuration.
+cat <<EOF | kubectl apply -f -
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachine
+metadata:
+  labels:
+  name: virtualmachine-sample-scratch
+spec:
+  name: virtualmachine-sample-scratch
+  # Name of the node where the VM will be created
+  nodeName: lowtower 
+  # Spec for the VM
+  vmSpec: 
+    socket: 1
+    cores: 2
+    memory: 4096
+    disk: 
+      - storage: local-lvm
+        size: 60
+        device: scsi0
+    network:
+      - model: virtio
+        bridge: vmbr0
+    pciDevices:
+      - device: "c0-p0-o0-if1"
+        type: "mapped"
+    osImage:
+      name: ide0
+      value: local:iso/ubuntu-cloud-21.04-amd64.iso
+  cloudInitConfig:
+    user: "ubuntu"
+    passwordFrom: 
+        name: cloudinit-secret
+        key: password
+    upgradePackages: true
+    custom:
+      userData: "ubuntu-cloud-config-workers.yaml" # That should be inside snippets folder in Proxmox node
+EOF
+```

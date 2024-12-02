@@ -72,6 +72,18 @@ spec:
               cloudInitConfig:
                 description: Cloud Init Config
                 properties:
+                  custom:
+                    description: Custom fields for cloud-init
+                    properties:
+                      metaData:
+                        type: string
+                      networkData:
+                        type: string
+                      userData:
+                        type: string
+                      vendorData:
+                        type: string
+                    type: object
                   dnsDomain:
                     description: DNS Domain
                     type: string
@@ -100,8 +112,30 @@ spec:
                         type: string
                     type: object
                   password:
-                    description: Password is the password for the template
+                    description: Password is the password for the template. Use this
+                      field to specify the password directly.
                     type: string
+                  passwordFrom:
+                    description: PasswordFrom is a reference to a key in a Secret
+                      that contains the password. Use this field to specify the password
+                      via a Secret.
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                          TODO: Add other useful fields. apiVersion, kind, uid?'
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
                   sshKeys:
                     description: SSH Keys -- suppose to be on openSSH format
                     items:
@@ -115,6 +149,10 @@ spec:
                     description: User is the user name for the template
                     type: string
                 type: object
+                x-kubernetes-validations:
+                - message: Specify either password or passwordFrom, but not both
+                  rule: (has(self.password) && !has(self.passwordFrom)) || (!has(self.password)
+                    && has(self.passwordFrom)) || (!has(self.password) && !has(self.passwordFrom))
               deletionProtection:
                 default: false
                 type: boolean

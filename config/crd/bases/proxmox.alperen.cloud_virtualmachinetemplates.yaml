@@ -73,7 +73,7 @@ spec:
                 description: Cloud Init Config
                 properties:
                   custom:
-                    description: 'TODO: Implement the following'
+                    description: Custom fields for cloud-init
                     properties:
                       metaData:
                         type: string

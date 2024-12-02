@@ -91,9 +91,8 @@ type CloudInitConfig struct {
 	UpgradePackages bool `json:"upgradePackages,omitempty"`
 	// IPConfig is the IP configuration for the VM
 	IPConfig *IPConfig `json:"ipConfig,omitempty"`
-	// TODO: Implement the following
+	// Custom fields for cloud-init
 	Custom *CiCustom `json:"custom,omitempty"`
-	// ipconfig[n]
 }
 
 type CiCustom struct {
