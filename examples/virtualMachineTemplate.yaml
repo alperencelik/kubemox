@@ -16,12 +16,12 @@ spec:
     url: "https://cloud-images.ubuntu.com/bionic/current/bionic-server-cloudimg-amd64.img"
   cloudInitConfig:
     user: "ubuntu"
-    password: "ubuntu"
+    passwordFrom: 
+        name: cloudinit-secret
+        key: password
     upgradePackages: true
-    ipConfig:
-      gateway: "10.153.0.1"
-      ip: "10.153.0.99"
-      cidr: "24"
+    custom:
+      userData: "ubuntu-cloud-config-workers.yaml" # That should be inside snippets folder in Proxmox node
   virtualMachineConfig:
     sockets: 1
     cores: 2

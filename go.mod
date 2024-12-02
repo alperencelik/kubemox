@@ -18,7 +18,8 @@ require (
 	sigs.k8s.io/controller-runtime v0.15.0
 	sigs.k8s.io/release-utils v0.7.7
 )
-// TODO: Revert that replace once the PR is merged 
+
+// TODO: Revert that replace once the PR is merged
 replace github.com/luthermonson/go-proxmox v0.1.2-0.20240903152432-1719c8ae0ad6 => github.com/alperencelik/go-proxmox v0.0.1
 
 require (

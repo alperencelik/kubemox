@@ -23,7 +23,7 @@ spec:
     # Disk used by the VM
     disk: 
       - storage: local-lvm 
-        size: 50 # As GB
+        size: 60 # As GB
         device: scsi0
       - storage: local-lvm 
         size: 20 # As GB
@@ -32,3 +32,15 @@ spec:
     network:
       - model: virtio
         bridge: vmbr0
+    pciDevices:
+      - device: "c0-p0-o0-if0"
+        type: "mapped"
+      - device: "0000:03:00.2"
+        type: "raw"
+        primaryGPU: true
+        pcie: true
+  # Optional field to add additional features to the VM that doesn't included in the spec
+  additionalConfig:                                         
+    balloon: "0"                                            
+    cpu: host                                               
+    vga: type=virtio,memory=16   

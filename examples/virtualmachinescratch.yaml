@@ -10,14 +10,24 @@ spec:
   nodeName: lowtower
   # Spec for the VM
   vmSpec: 
+    socket: 1
     cores: 2
     memory: 4096
     disk: 
-      name: scsi0 
-      value: "local-lvm:40"
+      - storage: local-lvm
+        size: 60
+        device: scsi0
     network:
-      name: net0
-      value: virtio,bridge=vmbr0
+      - model: virtio
+        bridge: vmbr0
     osImage:
       name: ide2 
       value: local:iso/ubuntu-23.04-live-server-amd64.iso 
+  cloudInitConfig:
+    user: "ubuntu"
+    passwordFrom: 
+        name: cloudinit-secret
+        key: password
+    upgradePackages: true
+    custom:
+      userData: "ubuntu-cloud-config-workers.yaml" # That should be inside snippets folder in Proxmox node
