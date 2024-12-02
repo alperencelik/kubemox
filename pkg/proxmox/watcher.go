@@ -17,8 +17,8 @@ type ExternalWatchers struct {
 }
 
 var (
-	ObserveInterval         = 20 * time.Second
-	AvailablityWaitInterval = 5 * time.Second
+	ObserveInterval         = 5 * time.Second
+	AvailablityWaitInterval = 3 * time.Second
 )
 
 type Resource interface {
@@ -81,6 +81,7 @@ func waitForResource(ctx context.Context, resource Resource, fetchResource Fetch
 				return err
 			}
 			if isResourceAvailable(resource) {
+				logger.Info("Resource is available", "resource", resourceName)
 				return nil
 			}
 			// Wait before trying again

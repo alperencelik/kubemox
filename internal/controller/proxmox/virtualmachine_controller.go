@@ -366,8 +366,16 @@ func (r *VirtualMachineReconciler) handleReconcileFunc(ctx context.Context, obj 
 }
 
 func (r *VirtualMachineReconciler) isResourceAvailableFunc(obj proxmox.Resource) bool {
-	for _, condition := range obj.(*proxmoxv1alpha1.VirtualMachine).Status.Conditions {
-		if condition.Type == typeAvailableVirtualMachine && condition.Status == metav1.ConditionTrue {
+	// 	for _, condition := range obj.(*proxmoxv1alpha1.VirtualMachine).Status.Conditions {
+	// if condition.Type == typeAvailableVirtualMachine && condition.Status == metav1.ConditionTrue {
+	// return true
+	// }
+	// }
+	// Get the latest condition
+	conditions := obj.(*proxmoxv1alpha1.VirtualMachine).Status.Conditions
+	if len(conditions) > 0 {
+		latestCondition := conditions[len(conditions)-1]
+		if latestCondition.Type == typeAvailableVirtualMachine && latestCondition.Status == metav1.ConditionTrue {
 			return true
 		}
 	}
