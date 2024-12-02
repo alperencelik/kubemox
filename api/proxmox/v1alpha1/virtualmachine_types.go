@@ -46,9 +46,9 @@ type VirtualMachineSpec struct {
 	// If not set, it defaults to true.
 	// +kubebuilder:default:=true
 	EnableAutoStart bool `json:"enableAutoStart,omitempty"`
-	// // AdditionalConfig is the additional configuration of the VM
-	// // +kubebuilder:validation:Optional
-	// AdditionalConfig map[string]string `json:"additionalConfig,omitempty"`
+	// AdditionalConfig is the additional configuration of the VM
+	// +kubebuilder:validation:Optional
+	AdditionalConfig map[string]string `json:"additionalConfig,omitempty"`
 }
 
 type NewVMSpec struct {

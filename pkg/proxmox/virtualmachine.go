@@ -1415,29 +1415,49 @@ func RebootVM(vmName, nodeName string) error {
 	return err
 }
 
-// TODO: Implement the function
-// func ApplyAdditionalConfiguration(vm *proxmoxv1alpha1.VirtualMachine) error {
-// 	// Get VirtualMachine
-// 	VirtualMachine, err := getVirtualMachine(vm.Name, vm.Spec.NodeName)
-// 	if err != nil {
-// 		log.Log.Error(err, "Error getting VM for applying additional configuration")
-// 	}
-// 	// Apply additional configuration
-// 	for key, value := range vm.Spec.AdditionalConfig {
-// 		task, err := VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
-// 			Name:  key,
-// 			Value: value,
-// 		})
-// 		if err != nil {
-// 			log.Log.Error(err, "Error applying additional configuration")
-// 		}
-// 		_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 3)
-// 		if !taskCompleted {
-// 			log.Log.Error(taskErr, "Error applying additional configuration")
-// 		}
-// 	}
-// 	return nil
-// }
+func ApplyAdditionalConfiguration(vm *proxmoxv1alpha1.VirtualMachine) error {
+	// Get VirtualMachine
+	VirtualMachine, err := getVirtualMachine(vm.Name, vm.Spec.NodeName)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for applying additional configuration")
+	}
+	// Apply additional configuration
+	for key, value := range vm.Spec.AdditionalConfig {
+		var task *proxmox.Task
+		task, err = VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
+			Name:  key,
+			Value: value,
+		})
+		if err != nil {
+			log.Log.Error(err, "Error applying additional configuration")
+		}
+		_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 3)
+		if !taskCompleted {
+			log.Log.Error(taskErr, "Error applying additional configuration")
+		}
+	}
+	// Check if there is a need to reboot the VM
+	pendingConfig, err := VirtualMachine.Pending(ctx)
+	if err != nil {
+		log.Log.Error(err, "Error getting pending configuration")
+	}
+	var reboot bool
+	// TODO: Re-think about the watching pendingConfig
+	for _, config := range *pendingConfig {
+		if config.Pending != nil {
+			reboot = true
+			break
+		}
+	}
+	if reboot {
+		// Reboot the VM
+		err = RebootVM(vm.Name, vm.Spec.NodeName)
+		if err != nil {
+			log.Log.Error(err, "Error rebooting VirtualMachine")
+		}
+	}
+	return nil
+}
 
 // Helper functions
 

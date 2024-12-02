@@ -135,10 +135,49 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, nil
 	}
 
-	// Check if this VirtualMachine already exists
+	// Handle the VirtualMachine operations, such as create, update
+	result, err := r.handleVirtualMachineOperations(ctx, vm)
+	if err != nil {
+		logger.Error(err, "Error handling VirtualMachine operations")
+		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+	}
+	if result.Requeue {
+		return result, nil
+	}
+
+	logger.Info(fmt.Sprintf("VirtualMachine %s already exists", vm.Spec.Name))
+
+	return ctrl.Result{}, client.IgnoreNotFound(err)
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *VirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	logger := log.FromContext(context.Background())
+	version, err := proxmox.GetProxmoxVersion()
+	if err != nil {
+		logger.Error(err, "Error getting Proxmox version")
+	}
+	logger.Info(fmt.Sprintf("Connected to the Proxmox, version is: %s", version))
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&proxmoxv1alpha1.VirtualMachine{}).
+		WithEventFilter(predicate.Funcs{
+			UpdateFunc: func(e event.UpdateEvent) bool {
+				oldVM := e.ObjectOld.(*proxmoxv1alpha1.VirtualMachine)
+				newVM := e.ObjectNew.(*proxmoxv1alpha1.VirtualMachine)
+				condition1 := !reflect.DeepEqual(oldVM.Spec, newVM.Spec)
+				condition2 := newVM.ObjectMeta.GetDeletionTimestamp().IsZero()
+				return condition1 || !condition2
+			},
+		}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: VMmaxConcurrentReconciles}).
+		Complete(r)
+}
+
+func (r *VirtualMachineReconciler) handleVirtualMachineOperations(ctx context.Context,
+	vm *proxmoxv1alpha1.VirtualMachine) (result ctrl.Result, err error) {
 	vmName := vm.Spec.Name
 	nodeName := vm.Spec.NodeName
-
+	logger := log.FromContext(ctx)
 	vmExists := proxmox.CheckVM(vmName, nodeName)
 	if !vmExists {
 		// If not exists, create the VM
@@ -177,33 +216,13 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			logger.Error(err, "Error handling cloud-init operations")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}
+		err = r.handleAdditionalConfig(ctx, vm)
+		if err != nil {
+			logger.Error(err, "Error handling additional configuration")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		}
 	}
-	logger.Info(fmt.Sprintf("VirtualMachine %s already exists", vmName))
-
 	return ctrl.Result{}, client.IgnoreNotFound(err)
-}
-
-// SetupWithManager sets up the controller with the Manager.
-func (r *VirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	logger := log.FromContext(context.Background())
-	version, err := proxmox.GetProxmoxVersion()
-	if err != nil {
-		logger.Error(err, "Error getting Proxmox version")
-	}
-	logger.Info(fmt.Sprintf("Connected to the Proxmox, version is: %s", version))
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&proxmoxv1alpha1.VirtualMachine{}).
-		WithEventFilter(predicate.Funcs{
-			UpdateFunc: func(e event.UpdateEvent) bool {
-				oldVM := e.ObjectOld.(*proxmoxv1alpha1.VirtualMachine)
-				newVM := e.ObjectNew.(*proxmoxv1alpha1.VirtualMachine)
-				condition1 := !reflect.DeepEqual(oldVM.Spec, newVM.Spec)
-				condition2 := newVM.ObjectMeta.GetDeletionTimestamp().IsZero()
-				return condition1 || !condition2
-			},
-		}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: VMmaxConcurrentReconciles}).
-		Complete(r)
 }
 
 func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) error {
@@ -381,10 +400,15 @@ func (r *VirtualMachineReconciler) handleCloudInitOperations(ctx context.Context
 	return nil
 }
 
-// func (r *VirtualMachineReconciler) handleAdditionalConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) error {
-// // TODO: Implement additional configuration handling
-// return nil
-// }
+func (r *VirtualMachineReconciler) handleAdditionalConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) error {
+	logger := log.FromContext(ctx)
+	err := proxmox.ApplyAdditionalConfiguration(vm)
+	if err != nil {
+		logger.Error(err, "Failed to apply additional configuration")
+		return err
+	}
+	return nil
+}
 
 func (r *VirtualMachineReconciler) handleWatcher(ctx context.Context, req ctrl.Request, vm *proxmoxv1alpha1.VirtualMachine) {
 	r.Watchers.HandleWatcher(ctx, req, func(ctx context.Context, stopChan chan struct{}) (ctrl.Result, error) {
