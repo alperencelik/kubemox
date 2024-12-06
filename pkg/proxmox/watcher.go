@@ -17,7 +17,9 @@ type ExternalWatchers struct {
 }
 
 var (
-	ObserveInterval = 20 * time.Second
+	ObserveInterval    = 20 * time.Second
+	WaitForReady       = 5 * time.Second
+	MaxRetriesForReady = 5
 )
 
 type Resource interface {
@@ -30,6 +32,7 @@ type CheckDeltaFunc func(obj Resource) (bool, error)
 type HandleAutoStartFunc func(ctx context.Context, obj Resource) (ctrl.Result, error)
 type HandleReconcileFunc func(ctx context.Context, obj Resource) (ctrl.Result, error)
 type DeleteWatcherFunc func(name string)
+type IsResourceReadyFunc func(obj Resource) (bool, error)
 
 func NewExternalWatchers() *ExternalWatchers {
 	return &ExternalWatchers{
@@ -64,11 +67,23 @@ func (e *ExternalWatchers) HandleWatcher(ctx context.Context, req ctrl.Request,
 func StartWatcher(ctx context.Context, resource Resource,
 	stopChan chan struct{}, fetchResource FetchResourceFunc, updateStatus UpdateStatusFunc,
 	checkDelta CheckDeltaFunc, handleAutoStart HandleAutoStartFunc, handleReconcile HandleReconcileFunc,
-	deleteWatcher DeleteWatcherFunc) (ctrl.Result, error) {
-	ticker := time.NewTicker(ObserveInterval)
-	defer ticker.Stop()
+	deleteWatcher DeleteWatcherFunc, isResourceReady IsResourceReadyFunc) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	resourceName := resource.GetName()
+
+	ready, err := waitForResourceReady(ctx, resource, isResourceReady)
+	if err != nil {
+		logger.Error(err, "Error waiting for resource to be ready")
+		return ctrl.Result{}, err
+	}
+	if !ready {
+		logger.Info(fmt.Sprintf("Resource %s is not ready to watch", resourceName))
+		deleteWatcher(resourceName)
+		return ctrl.Result{Requeue: true, RequeueAfter: 3 * time.Second}, nil
+	}
+
+	ticker := time.NewTicker(ObserveInterval)
+	defer ticker.Stop()
 
 	for {
 		select {
@@ -115,6 +130,24 @@ func StartWatcher(ctx context.Context, resource Resource,
 			return ctrl.Result{}, nil
 		}
 	}
+}
+
+func waitForResourceReady(ctx context.Context, resource Resource, isResourceReady IsResourceReadyFunc) (bool, error) {
+	logger := log.FromContext(ctx)
+	for retry := 0; retry < MaxRetriesForReady; retry++ {
+		ready, err := isResourceReady(resource)
+		if err != nil {
+			logger.Error(err, "Error checking if the resource is ready")
+			return false, err
+		}
+		if ready {
+			return true, nil
+		}
+		if retry < MaxRetriesForReady-1 {
+			time.Sleep(WaitForReady)
+		}
+	}
+	return false, nil
 }
 
 func (e *ExternalWatchers) DeleteWatcher(name string) {
