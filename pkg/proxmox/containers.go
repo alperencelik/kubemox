@@ -237,3 +237,14 @@ func CheckContainerDelta(container *proxmoxv1alpha1.Container) (bool, error) {
 	}
 	return false, nil
 }
+
+func IsContainerReady(container *proxmoxv1alpha1.Container) (bool, error) {
+	containerName := container.Spec.Name
+	nodeName := container.Spec.NodeName
+	ProxmoxContainer := GetContainer(containerName, nodeName)
+
+	if ProxmoxContainer.VMID == 0 {
+		return false, nil
+	}
+	return true, nil
+}

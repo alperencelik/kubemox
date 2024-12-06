@@ -309,20 +309,20 @@ func StopVM(vmName, nodeName string) error {
 	return err
 }
 
-func GetVMState(vmName, nodeName string) string {
+func GetVMState(vmName, nodeName string) (state string, err error) {
 	// Gets the VMstate from Proxmox API
 	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	VirtualMachineState := VirtualMachine.Status
 	if err != nil {
-		panic(err)
+		return "unknown", err
 	}
 	switch VirtualMachineState {
 	case VirtualMachineRunningState:
-		return VirtualMachineRunningState
+		return VirtualMachineRunningState, nil
 	case VirtualMachineStoppedState:
-		return VirtualMachineStoppedState
+		return VirtualMachineStoppedState, nil
 	default:
-		return "unknown"
+		return "unknown", err
 	}
 }
 
@@ -633,7 +633,11 @@ func UpdateManagedVM(ctx context.Context, managedVM *proxmoxv1alpha1.ManagedVirt
 	managedVMName := managedVM.Spec.Name
 	nodeName := GetNodeOfVM(managedVMName)
 	logger := log.FromContext(ctx)
-	if GetVMState(managedVMName, nodeName) != VirtualMachineRunningState {
+	vmState, err := GetVMState(managedVMName, nodeName)
+	if err != nil {
+		logger.Error(err, "Error getting VM state")
+	}
+	if vmState != VirtualMachineRunningState {
 		// Break if VM is not running
 		logger.Info(fmt.Sprintf("Managed virtual machine %s is not running, update can't be applied", managedVMName))
 		return
@@ -1457,6 +1461,39 @@ func ApplyAdditionalConfiguration(vm *proxmoxv1alpha1.VirtualMachine) error {
 		}
 	}
 	return nil
+}
+
+func IsVirtualMachineReady(obj Resource) (bool, error) {
+	var vmName, nodeName string
+	objectKind := obj.GetObjectKind()
+	switch objectKind.GroupVersionKind().Kind {
+	case "VirtualMachine":
+		vmName = obj.(*proxmoxv1alpha1.VirtualMachine).Spec.Name
+		nodeName = obj.(*proxmoxv1alpha1.VirtualMachine).Spec.NodeName
+	case "ManagedVirtualMachine":
+		vmName = obj.(*proxmoxv1alpha1.ManagedVirtualMachine).Spec.Name
+		nodeName = obj.(*proxmoxv1alpha1.ManagedVirtualMachine).Spec.NodeName
+	case "VirtualMachineTemplate":
+		vmName = obj.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.Name
+		nodeName = obj.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.NodeName
+	}
+	// Get VM ID
+	vmID := GetVMID(vmName, nodeName)
+	if vmID == 0 {
+		return false, nil
+	}
+
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for checking readiness")
+		return false, err
+	}
+
+	lock := VirtualMachine.Lock
+	if lock != "" {
+		return false, nil
+	}
+	return true, nil
 }
 
 // Helper functions

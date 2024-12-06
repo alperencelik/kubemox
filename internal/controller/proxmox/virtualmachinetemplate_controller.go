@@ -432,7 +432,7 @@ func (r *VirtualMachineTemplateReconciler) handleWatcher(ctx context.Context, re
 	vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) {
 	r.Watchers.HandleWatcher(ctx, req, func(ctx context.Context, stopChan chan struct{}) (ctrl.Result, error) {
 		return proxmox.StartWatcher(ctx, vmTemplate, stopChan, r.fetchResource, r.updateStatus,
-			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher)
+			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher, r.IsResourceReady)
 	})
 }
 
@@ -455,4 +455,8 @@ func (r *VirtualMachineTemplateReconciler) handleAutoStartFunc(_ context.Context
 
 func (r *VirtualMachineTemplateReconciler) handleReconcileFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
 	return r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Namespace: obj.GetNamespace(), Name: obj.GetName()}})
+}
+
+func (r *VirtualMachineTemplateReconciler) IsResourceReady(obj proxmox.Resource) (bool, error) {
+	return proxmox.IsVirtualMachineReady(obj.(*proxmoxv1alpha1.VirtualMachineTemplate))
 }

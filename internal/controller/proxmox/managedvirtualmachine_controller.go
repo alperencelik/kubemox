@@ -224,7 +224,11 @@ func (r *ManagedVirtualMachineReconciler) handleAutoStart(ctx context.Context,
 	if managedVM.Spec.EnableAutoStart {
 		vmName := managedVM.Name
 		nodeName := managedVM.Spec.NodeName
-		vmState := proxmox.GetVMState(vmName, nodeName)
+		vmState, err := proxmox.GetVMState(vmName, nodeName)
+		if err != nil {
+			logger.Info(fmt.Sprintf("Couldn't get the state of the managed Virtual Machine %s", vmName))
+			return ctrl.Result{Requeue: true}, err
+		}
 		if vmState == proxmox.VirtualMachineStoppedState {
 			startResult, err := proxmox.StartVM(vmName, nodeName)
 			if err != nil {
@@ -244,7 +248,7 @@ func (r *ManagedVirtualMachineReconciler) handleWatcher(ctx context.Context, req
 	managedVM *proxmoxv1alpha1.ManagedVirtualMachine) {
 	r.Watchers.HandleWatcher(ctx, req, func(ctx context.Context, stopChan chan struct{}) (ctrl.Result, error) {
 		return proxmox.StartWatcher(ctx, managedVM, stopChan, r.fetchResource, r.updateStatus,
-			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher)
+			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher, r.IsResourceReady)
 	})
 }
 
@@ -289,4 +293,8 @@ func (r *ManagedVirtualMachineReconciler) UpdateManagedVirtualMachineStatus(ctx 
 		return err
 	}
 	return nil
+}
+
+func (r *ManagedVirtualMachineReconciler) IsResourceReady(obj proxmox.Resource) (bool, error) {
+	return proxmox.IsVirtualMachineReady(obj.(*proxmoxv1alpha1.ManagedVirtualMachine))
 }

@@ -317,7 +317,10 @@ func (r *VirtualMachineReconciler) handleAutoStart(ctx context.Context,
 	if vm.Spec.EnableAutoStart {
 		vmName := vm.Spec.Name
 		nodeName := vm.Spec.NodeName
-		vmState := proxmox.GetVMState(vmName, nodeName)
+		vmState, err := proxmox.GetVMState(vmName, nodeName)
+		if err != nil {
+			return ctrl.Result{Requeue: true}, err
+		}
 		if vmState == "stopped" {
 			startResult, err := proxmox.StartVM(vmName, nodeName)
 			if err != nil {
@@ -389,7 +392,10 @@ func (r *VirtualMachineReconciler) handleCloudInitOperations(ctx context.Context
 		return err
 	}
 	// If the machine is running, reboot it to apply the cloud-init configuration
-	vmState := proxmox.GetVMState(vmName, nodeName)
+	vmState, err := proxmox.GetVMState(vmName, nodeName)
+	if err != nil {
+		return err
+	}
 	if vmState == proxmox.VirtualMachineRunningState {
 		err = proxmox.RebootVM(vmName, nodeName)
 		if err != nil {
@@ -413,7 +419,7 @@ func (r *VirtualMachineReconciler) handleAdditionalConfig(ctx context.Context, v
 func (r *VirtualMachineReconciler) handleWatcher(ctx context.Context, req ctrl.Request, vm *proxmoxv1alpha1.VirtualMachine) {
 	r.Watchers.HandleWatcher(ctx, req, func(ctx context.Context, stopChan chan struct{}) (ctrl.Result, error) {
 		return proxmox.StartWatcher(ctx, vm, stopChan, r.fetchResource, r.updateStatus,
-			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher)
+			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher, r.IsResourceReady)
 	})
 }
 
@@ -435,4 +441,8 @@ func (r *VirtualMachineReconciler) handleAutoStartFunc(ctx context.Context, obj 
 
 func (r *VirtualMachineReconciler) handleReconcileFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
 	return r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Namespace: obj.GetNamespace(), Name: obj.GetName()}})
+}
+
+func (r *VirtualMachineReconciler) IsResourceReady(obj proxmox.Resource) (bool, error) {
+	return proxmox.IsVirtualMachineReady(obj.(*proxmoxv1alpha1.VirtualMachine))
 }

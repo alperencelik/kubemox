@@ -70,16 +70,6 @@ type NewVMSpec struct {
 	CloudInitConfig *CloudInitConfig `json:"cloudInitConfig,omitempty"`
 }
 
-type NewVMSpecDisk struct {
-	Name  string `json:"name,omitempty"`
-	Value string `json:"value,omitempty"`
-}
-
-type NewVMSpecNetwork struct {
-	Name  string `json:"name,omitempty"`
-	Value string `json:"value,omitempty"`
-}
-
 type NewVMSpecOSImage struct {
 	Name  string `json:"name,omitempty"`
 	Value string `json:"value,omitempty"`

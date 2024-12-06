@@ -293,7 +293,7 @@ func (r *ContainerReconciler) handleAutoStart(ctx context.Context,
 func (r *ContainerReconciler) handleWatcher(ctx context.Context, req ctrl.Request, container *proxmoxv1alpha1.Container) {
 	r.Watchers.HandleWatcher(ctx, req, func(ctx context.Context, stopChan chan struct{}) (ctrl.Result, error) {
 		return proxmox.StartWatcher(ctx, container, stopChan, r.fetchResource, r.updateStatus,
-			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher)
+			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher, r.IsResourceReady)
 	})
 }
 
@@ -329,4 +329,8 @@ func (r *ContainerReconciler) handleContainerDeletion(ctx context.Context, conta
 		proxmox.DeleteContainer(containerName, nodeName)
 	}
 	r.Recorder.Event(container, "Normal", "Deleted", fmt.Sprintf("Deleted Container %s", containerName))
+}
+
+func (r *ContainerReconciler) IsResourceReady(obj proxmox.Resource) (bool, error) {
+	return proxmox.IsContainerReady(obj.(*proxmoxv1alpha1.Container))
 }
