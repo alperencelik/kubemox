@@ -17,12 +17,15 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -34,6 +37,7 @@ import (
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	proxmoxcontroller "github.com/alperencelik/kubemox/internal/controller/proxmox"
 	_ "github.com/alperencelik/kubemox/pkg/kubernetes"
+	"github.com/alperencelik/kubemox/pkg/metrics"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 	"github.com/alperencelik/kubemox/pkg/utils"
 	//+kubebuilder:scaffold:imports
@@ -180,9 +184,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	startMetricsUpdater(context.Background(), mgr.GetClient())
+
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func startMetricsUpdater(ctx context.Context, kubeClient client.Client) {
+	go func() {
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			// Update metrics here
+			metrics.UpdateProxmoxMetrics(ctx, kubeClient)
+		}
+	}()
 }

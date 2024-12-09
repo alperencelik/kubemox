@@ -36,7 +36,6 @@ import (
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
-	"github.com/alperencelik/kubemox/pkg/metrics"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 )
 
@@ -81,6 +80,33 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
+	reconcileMode := r.getReconcileMode(vm)
+
+	switch reconcileMode {
+	case proxmoxv1alpha1.ReconcileModeWatchOnly:
+		logger.Info(fmt.Sprintf("Reconciliation is watch only for VirtualMachine %s", vm.Name))
+		r.handleWatcher(ctx, req, vm)
+		return ctrl.Result{}, nil
+	case proxmoxv1alpha1.ReconcileModeEnsureExists:
+		logger.Info(fmt.Sprintf("Reconciliation is ensure exists for VirtualMachine %s", vm.Name))
+		vmExists := proxmox.CheckVM(vm.Spec.Name, vm.Spec.NodeName)
+		if !vmExists {
+			// If not exists, create the VM
+			logger.Info("Creating VirtualMachine", "name", vm.Spec.Name)
+			err = r.CreateVirtualMachine(ctx, vm)
+			if err != nil {
+				logger.Error(err, "Error creating VirtualMachine")
+			}
+		}
+		return ctrl.Result{}, nil
+	case proxmoxv1alpha1.ReconcileModeDisable:
+		// Disable the reconciliation
+		logger.Info(fmt.Sprintf("Reconciliation is disabled for VirtualMachine %s", vm.Name))
+		return ctrl.Result{}, nil
+	default:
+		// Normal mode
+		break
+	}
 
 	logger.Info(fmt.Sprintf("Reconciling VirtualMachine %s", vm.Name))
 
@@ -98,37 +124,10 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// The object is being deleted
 		if controllerutil.ContainsFinalizer(vm, virtualMachineFinalizerName) {
 			// Delete the VM
-			logger.Info(fmt.Sprintf("Deleting VirtualMachine %s", vm.Spec.Name))
-
-			// Update the condition for the VirtualMachine if it is not already deleting
-			if !meta.IsStatusConditionPresentAndEqual(vm.Status.Conditions, typeDeletingVirtualMachine, metav1.ConditionUnknown) {
-				meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
-					Type:    typeDeletingVirtualMachine,
-					Status:  metav1.ConditionUnknown,
-					Reason:  "Deleting",
-					Message: "Deleting VirtualMachine",
-				})
-				if err = r.Status().Update(ctx, vm); err != nil {
-					logger.Error(err, "Error updating VirtualMachine status")
-					return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
-				}
-			} else {
-				return ctrl.Result{}, nil
-			}
-			// Stop the watcher if resource is being deleted
-			if stopChan, exists := r.Watchers.Watchers[req.Name]; exists {
-				close(stopChan)
-				delete(r.Watchers.Watchers, req.Name)
-			}
-			// Perform all operations to delete the VM if the VM is not marked as deleting
-			// TODO: Evaluate the requirement of check mechanism for VM whether it's already deleting
-			r.DeleteVirtualMachine(ctx, vm)
-
-			// Remove finalizer
-			logger.Info("Removing finalizer from VirtualMachine", "name", vm.Spec.Name)
-			controllerutil.RemoveFinalizer(vm, virtualMachineFinalizerName)
-			if err = r.Update(ctx, vm); err != nil {
-				return ctrl.Result{}, nil
+			res, delErr := r.handleDelete(ctx, req, vm)
+			if delErr != nil {
+				logger.Error(err, "Error handling VirtualMachine deletion")
+				return res, client.IgnoreNotFound(delErr)
 			}
 		}
 		// Stop reconciliation as the item is being deleted
@@ -166,7 +165,8 @@ func (r *VirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				newVM := e.ObjectNew.(*proxmoxv1alpha1.VirtualMachine)
 				condition1 := !reflect.DeepEqual(oldVM.Spec, newVM.Spec)
 				condition2 := newVM.ObjectMeta.GetDeletionTimestamp().IsZero()
-				return condition1 || !condition2
+				condition3 := !reflect.DeepEqual(oldVM.GetAnnotations(), newVM.GetAnnotations())
+				return condition1 || !condition2 || condition3
 			},
 		}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: VMmaxConcurrentReconciles}).
@@ -197,7 +197,6 @@ func (r *VirtualMachineReconciler) handleVirtualMachineOperations(ctx context.Co
 			}
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}
-		metrics.IncVirtualMachineCount()
 	} else {
 		// Check if auto start is enabled
 		_, err = r.handleAutoStart(ctx, vm)
@@ -273,12 +272,10 @@ func (r *VirtualMachineReconciler) DeleteVirtualMachine(ctx context.Context, vm 
 	// Delete the VM
 	r.Recorder.Event(vm, "Normal", "Deleting", fmt.Sprintf("VirtualMachine %s is being deleted", vm.Spec.Name))
 	if vm.Spec.DeletionProtection {
-		metrics.DecVirtualMachineCount()
 		logger.Info(fmt.Sprintf("VirtualMachine %s is protected from deletion", vm.Spec.Name))
 		return
 	} else {
 		proxmox.DeleteVM(vm.Spec.Name, vm.Spec.NodeName)
-		metrics.DecVirtualMachineCount()
 	}
 }
 
@@ -365,6 +362,45 @@ func (r *VirtualMachineReconciler) handleFinalizer(ctx context.Context, vm *prox
 	return nil
 }
 
+func (r *VirtualMachineReconciler) handleDelete(ctx context.Context, req ctrl.Request,
+	vm *proxmoxv1alpha1.VirtualMachine) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	// Delete the VM
+	logger.Info(fmt.Sprintf("Deleting VirtualMachine %s", vm.Spec.Name))
+
+	// Update the condition for the VirtualMachine if it is not already deleting
+	if !meta.IsStatusConditionPresentAndEqual(vm.Status.Conditions, typeDeletingVirtualMachine, metav1.ConditionUnknown) {
+		meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
+			Type:    typeDeletingVirtualMachine,
+			Status:  metav1.ConditionUnknown,
+			Reason:  "Deleting",
+			Message: "Deleting VirtualMachine",
+		})
+		if err := r.Status().Update(ctx, vm); err != nil {
+			logger.Error(err, "Error updating VirtualMachine status")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		}
+	} else {
+		return ctrl.Result{}, nil
+	}
+	// Stop the watcher if resource is being deleted
+	if stopChan, exists := r.Watchers.Watchers[req.Name]; exists {
+		close(stopChan)
+		delete(r.Watchers.Watchers, req.Name)
+	}
+	// Perform all operations to delete the VM if the VM is not marked as deleting
+	// TODO: Evaluate the requirement of check mechanism for VM whether it's already deleting
+	r.DeleteVirtualMachine(ctx, vm)
+
+	// Remove finalizer
+	logger.Info("Removing finalizer from VirtualMachine", "name", vm.Spec.Name)
+	controllerutil.RemoveFinalizer(vm, virtualMachineFinalizerName)
+	if err := r.Update(ctx, vm); err != nil {
+		return ctrl.Result{}, nil
+	}
+	return ctrl.Result{}, nil
+}
+
 func (r *VirtualMachineReconciler) handleCloudInitOperations(ctx context.Context,
 	vm *proxmoxv1alpha1.VirtualMachine) error {
 	if proxmox.CheckVMType(vm) == proxmox.VirtualMachineTemplateType {
@@ -414,6 +450,18 @@ func (r *VirtualMachineReconciler) handleAdditionalConfig(ctx context.Context, v
 		return err
 	}
 	return nil
+}
+
+func (r *VirtualMachineReconciler) getReconcileMode(vm *proxmoxv1alpha1.VirtualMachine) string {
+	// Get the annotations and find out the reconcile mode
+	annotations := vm.GetAnnotations()
+	if annotations == nil {
+		return "Normal"
+	}
+	if mode, ok := annotations[proxmoxv1alpha1.ReconcileModeAnnotation]; ok {
+		return mode
+	}
+	return "Normal"
 }
 
 func (r *VirtualMachineReconciler) handleWatcher(ctx context.Context, req ctrl.Request, vm *proxmoxv1alpha1.VirtualMachine) {

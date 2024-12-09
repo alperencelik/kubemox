@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -110,7 +111,11 @@ func StartWatcher(ctx context.Context, resource Resource,
 				logger.Error(err, "Error updating resource status")
 				return ctrl.Result{}, err
 			}
-
+			// If the reconcileMode is WatchOnly then we don't need to check for configuration drift
+			val := resource.GetAnnotations()[proxmoxv1alpha1.ReconcileModeAnnotation]
+			if val == proxmoxv1alpha1.ReconcileModeWatchOnly || val == proxmoxv1alpha1.ReconcileModeEnsureExists {
+				continue
+			}
 			triggerReconcile, err := checkDelta(resource)
 			if err != nil {
 				logger.Error(err, "Error comparing resource state")
