@@ -35,7 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
-	"github.com/alperencelik/kubemox/pkg/metrics"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 )
 
@@ -131,7 +130,6 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 					return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 				}
 			}
-			metrics.DecManagedVirtualMachineCount()
 		}
 		logger.Info("Removing finalizer from ManagedVirtualMachine", "name", managedVM.Name)
 		// Remove finalizer
@@ -207,9 +205,6 @@ func (r *ManagedVirtualMachineReconciler) handleManagedVMCreation(ctx context.Co
 				return err
 			}
 			// Add metrics and events
-			metrics.SetManagedVirtualMachineCPUCores(managedVM.Name, managedVM.Namespace, float64(managedVM.Spec.Cores))
-			metrics.SetManagedVirtualMachineMemory(managedVM.Name, managedVM.Namespace, float64(managedVM.Spec.Memory))
-			metrics.IncManagedVirtualMachineCount()
 			r.Recorder.Event(managedVM, "Normal", "Created", fmt.Sprintf("ManagedVirtualMachine %s created", managedVM.Name))
 		} else {
 			logger.Info(fmt.Sprintf("ManagedVM %v already exists", managedVM))

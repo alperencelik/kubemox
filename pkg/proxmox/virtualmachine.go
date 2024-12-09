@@ -12,7 +12,6 @@ import (
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
-	"github.com/alperencelik/kubemox/pkg/metrics"
 	"github.com/alperencelik/kubemox/pkg/utils"
 	proxmox "github.com/luthermonson/go-proxmox"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -535,13 +534,9 @@ func UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) bool {
 	case VirtualMachineTemplateType:
 		cpuOption.Value = vm.Spec.Template.Cores
 		memoryOption.Value = uint64(vm.Spec.Template.Memory)
-		metrics.SetVirtualMachineCPUCores(vmName, vm.Namespace, float64(vm.Spec.Template.Cores))
-		metrics.SetVirtualMachineMemory(vmName, vm.Namespace, float64(vm.Spec.Template.Memory))
 	case VirtualMachineScratchType:
 		cpuOption.Value = vm.Spec.VMSpec.Cores
 		memoryOption.Value = uint64(vm.Spec.VMSpec.Memory)
-		metrics.SetVirtualMachineCPUCores(vmName, vm.Namespace, float64(vm.Spec.VMSpec.Cores))
-		metrics.SetVirtualMachineMemory(vmName, vm.Namespace, float64(vm.Spec.VMSpec.Memory))
 	default:
 		log.Log.Info(fmt.Sprintf("VM %s doesn't have any template or vmSpec defined", vmName))
 	}
@@ -671,9 +666,6 @@ func UpdateManagedVM(ctx context.Context, managedVM *proxmoxv1alpha1.ManagedVirt
 			// Revert the update since it's not possible to shrink disk
 			managedVM.Spec.Disk = int(VirtualMachineMaxDisk)
 		}
-		// Add metrics
-		metrics.SetManagedVirtualMachineCPUCores(managedVMName, managedVM.Namespace, float64(managedVM.Spec.Cores))
-		metrics.SetManagedVirtualMachineMemory(managedVMName, managedVM.Namespace, float64(managedVM.Spec.Memory))
 
 		if VirtualMachine.CPUs != managedVM.Spec.Cores || VirtualMachineMem != uint64(managedVM.Spec.Memory) {
 			// Update VM
@@ -1139,9 +1131,9 @@ func CheckVirtualMachineDelta(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) 
 	}
 	// Desired VM
 	desiredVM := VirtualMachineComparison{
-		Cores:    getCores(vm),
+		Cores:    GetCores(vm),
 		Sockets:  getSockets(vm),
-		Memory:   getMemory(vm),
+		Memory:   GetMemory(vm),
 		Networks: *getNetworks(vm),
 		Disks:    sortDisks(getDisks(vm)),
 	}
@@ -1498,14 +1490,14 @@ func IsVirtualMachineReady(obj Resource) (bool, error) {
 
 // Helper functions
 
-func getCores(vm *proxmoxv1alpha1.VirtualMachine) int {
+func GetCores(vm *proxmoxv1alpha1.VirtualMachine) int {
 	if CheckVMType(vm) == VirtualMachineTemplateType {
 		return vm.Spec.Template.Cores
 	}
 	return vm.Spec.VMSpec.Cores
 }
 
-func getMemory(vm *proxmoxv1alpha1.VirtualMachine) int {
+func GetMemory(vm *proxmoxv1alpha1.VirtualMachine) int {
 	if CheckVMType(vm) == VirtualMachineTemplateType {
 		return vm.Spec.Template.Memory
 	}
