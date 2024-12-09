@@ -24,6 +24,62 @@ customMetrics:
     type: gauge
     unit: megabytes
     expr: sum by (name, namespace) (kubemox_managed_virtual_machine_memory)
+  - name: container_count
+    type: gauge
+    unit: none
+    expr: sum by (name, namespace) (kubemox_container_count)
+  - name: container_cpu_cores
+    type: gauge
+    unit: none
+    expr: sum by (name, namespace) (kubemox_container_cpu_cores)
+  - name: container_memory
+    type: gauge
+    unit: megabytes
+    expr: sum by (name, namespace) (kubemox_container_memory)
+  - name: virtualmachinetemplate_count
+    type: gauge
+    unit: none
+    expr: sum by (name, namespace) (kubemox_virtual_machine_template_count)
+  - name: virtualmachinetemplate_cpu_cores
+    type: gauge
+    unit: none
+    expr: sum by (name, namespace) (kubemox_virtual_machine_template_cpu_cores)
+  - name: virtualmachinetemplate_memory
+    type: gauge
+    unit: megabytes
+    expr: sum by (name, namespace) (kubemox_virtual_machine_template_memory)
+  - name: virtualmachineset_count
+    type: gauge
+    unit: none
+    expr: sum by (name, namespace) (kubemox_virtual_machine_set_count)
+  - name: virtualmachineset_cpu_cores
+    type: gauge
+    unit: none
+    expr: sum by (name, namespace) (kubemox_virtual_machine_set_cpu_cores)
+  - name: virtualmachineset_memory
+    type: gauge
+    unit: megabytes
+    expr: sum by (name, namespace) (kubemox_virtual_machine_set_memory)
+  - name: virtualmachineset_replicas
+    type: gauge
+    unit: none
+    expr: sum by (name, namespace) (kubemox_virtual_machine_set_replicas)
+  - name: virtualmachinesnapshot_count
+    type: gauge
+    unit: none
+    expr: sum by (name, namespace) (kubemox_virtual_machine_snapshot_count)
+  - name: virtualmachinesnapshotpolicy_count
+    type: gauge
+    unit: none
+    expr: sum by (name, namespace) (kubemox_virtual_machine_snapshot_policy_count)
+  - name: storagedownloadurl_count
+    type: gauge
+    unit: none
+    expr: sum by (name, namespace) (kubemox_storage_download_url_count)
+  - name: customcertificate_count
+    type: gauge
+    unit: none
+    expr: sum by (name, namespace) (kubemox_custom_certificate_count)
 
 #  - metric: # Raw custom metric (required)
 #    type:   # Metric type: counter/gauge/histogram (required)

@@ -196,7 +196,7 @@ func main() {
 
 func startMetricsUpdater(ctx context.Context, kubeClient client.Client) {
 	go func() {
-		ticker := time.NewTicker(metricsUpdateInterval * time.Second)
+		ticker := time.NewTicker(metricsUpdateInterval)
 		defer ticker.Stop()
 		for range ticker.C {
 			// Update metrics here
