@@ -44,8 +44,9 @@ import (
 )
 
 var (
-	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
+	scheme                = runtime.NewScheme()
+	setupLog              = ctrl.Log.WithName("setup")
+	metricsUpdateInterval = 30 * time.Second
 )
 
 func init() { //nolint:gochecknoinits // This is required by kubebuilder
@@ -195,7 +196,7 @@ func main() {
 
 func startMetricsUpdater(ctx context.Context, kubeClient client.Client) {
 	go func() {
-		ticker := time.NewTicker(15 * time.Second)
+		ticker := time.NewTicker(metricsUpdateInterval * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
 			// Update metrics here
