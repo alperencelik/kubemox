@@ -9,6 +9,7 @@ import (
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -66,4 +67,15 @@ func GetSecretData(namespace string, selector *corev1.SecretKeySelector) (string
 		return "", nil
 	}
 	return string(value), nil
+}
+
+func GetReconcileMode(resource client.Object) string {
+	annotations := resource.GetAnnotations()
+	if annotations == nil {
+		return ReconcileModeNormal
+	}
+	if mode, ok := annotations[ReconcileModeAnnotation]; ok {
+		return mode
+	}
+	return ReconcileModeNormal
 }

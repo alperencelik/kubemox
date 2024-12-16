@@ -32,13 +32,13 @@ spec:
     network:
       - model: virtio
         bridge: vmbr0
-    pciDevices:
-      - device: "c0-p0-o0-if0"
-        type: "mapped"
-      - device: "0000:03:00.2"
-        type: "raw"
-        primaryGPU: true
-        pcie: true
+#    pciDevices:
+#      - deviceID: "c0-p0-o0-if0"
+#        type: "mapped"
+#      - deviceID: "0000:03:00.2"
+#        type: "raw"
+#        primaryGPU: true
+#        pcie: true
   # Optional field to add additional features to the VM that doesn't included in the spec
   additionalConfig:                                         
     balloon: "0"                                            

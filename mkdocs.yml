@@ -20,6 +20,7 @@ nav:
   - Certificates:
     - CustomCertificate: crds/customcertificate.md
 - metrics.md
+- reconciliation-modes.md
 - contributing.md
 - roadmap.md
 - Releases ⧉: https://github.com/alperencelik/kubemox/releases

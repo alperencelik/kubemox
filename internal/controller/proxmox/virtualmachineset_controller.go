@@ -35,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
+	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 )
 
@@ -80,6 +81,18 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
 
+	reconcileMode := kubernetes.GetReconcileMode(vmSet)
+
+	switch reconcileMode {
+	case kubernetes.ReconcileModeDisable:
+		// Disable the reconciliation
+		logger.Info(fmt.Sprintf("Reconciliation is disabled for VirtualMachineSet %s", vmSet.Name))
+		return ctrl.Result{}, nil
+	default:
+		// Normal mode
+		break
+	}
+
 	logger.Info(fmt.Sprintf("Reconciling VirtualMachineSet %s", vmSet.Name))
 
 	vmList := &proxmoxv1alpha1.VirtualMachineList{}
@@ -105,37 +118,13 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		if controllerutil.ContainsFinalizer(vmSet, virtualMachineSetFinalizerName) {
 			// Ensure that the pre-delete logic is idempotent.
 			logger.Info(fmt.Sprintf("Deleting VirtualMachineSet %s", vmSet.Name))
-
-			if !meta.IsStatusConditionPresentAndEqual(vmSet.Status.Conditions, typeDeletingVirtualMachineSet, metav1.ConditionUnknown) {
-				meta.SetStatusCondition(&vmSet.Status.Conditions, metav1.Condition{
-					Type:    "Deleting",
-					Status:  metav1.ConditionUnknown,
-					Reason:  "Deleting",
-					Message: "Deleting VirtualMachineSet",
-				})
-				if err = r.Status().Update(ctx, vmSet); err != nil {
-					logger.Info("Error updating VirtualMachineSet status")
-					return ctrl.Result{}, client.IgnoreNotFound(err)
-				}
+			res, delErr := r.handleDelete(ctx, vmSet, vmList)
+			if delErr != nil {
+				logger.Error(delErr, "unable to delete VirtualMachineSet")
+				return res, delErr
 			}
-			// Get VM list and delete them
-			for i := range vmList.Items {
-				vm := &vmList.Items[i]
-				if err = r.Delete(ctx, vm); err != nil {
-					logger.Error(err, "unable to delete VirtualMachine")
-					return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
-				}
-			}
-
-			if len(vmList.Items) == 0 {
-				// Remove finalizer
-				if ok := controllerutil.RemoveFinalizer(vmSet, virtualMachineSetFinalizerName); !ok {
-					logger.Error(err, "Error removing finalizer from VirtualMachineSet")
-				}
-				if err = r.Update(ctx, vmSet); err != nil {
-					logger.Error(err, "Error updating VirtualMachineSet")
-				}
-				return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			if res.Requeue {
+				return res, nil
 			}
 		}
 		// Requeue the request until the vmSet has no VirtualMachines
@@ -341,4 +330,43 @@ func (r *VirtualMachineSetReconciler) handleFinalizer(ctx context.Context, vmSet
 		}
 	}
 	return nil
+}
+
+func (r *VirtualMachineSetReconciler) handleDelete(ctx context.Context, vmSet *proxmoxv1alpha1.VirtualMachineSet,
+	vmList *proxmoxv1alpha1.VirtualMachineList) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	var err error
+
+	if !meta.IsStatusConditionPresentAndEqual(vmSet.Status.Conditions, typeDeletingVirtualMachineSet, metav1.ConditionUnknown) {
+		meta.SetStatusCondition(&vmSet.Status.Conditions, metav1.Condition{
+			Type:    "Deleting",
+			Status:  metav1.ConditionUnknown,
+			Reason:  "Deleting",
+			Message: "Deleting VirtualMachineSet",
+		})
+		if err = r.Status().Update(ctx, vmSet); err != nil {
+			logger.Info("Error updating VirtualMachineSet status")
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
+	}
+	// Get VM list and delete them
+	for i := range vmList.Items {
+		vm := &vmList.Items[i]
+		if err = r.Delete(ctx, vm); err != nil {
+			logger.Error(err, "unable to delete VirtualMachine")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		}
+	}
+
+	if len(vmList.Items) == 0 {
+		// Remove finalizer
+		if ok := controllerutil.RemoveFinalizer(vmSet, virtualMachineSetFinalizerName); !ok {
+			logger.Error(err, "Error removing finalizer from VirtualMachineSet")
+		}
+		if err = r.Update(ctx, vmSet); err != nil {
+			logger.Error(err, "Error updating VirtualMachineSet")
+		}
+		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+	}
+	return ctrl.Result{}, nil
 }

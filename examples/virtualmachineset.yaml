@@ -25,9 +25,9 @@ spec:
     memory: 4096 # As MB
     # Disk used by the VM
     disk: 
-      - storage: nvme 
+      - storage: local-lvm
         size: 50 # As GB
-        device: scsi
+        device: scsi0
     # Network interfaces used by the VM
     network:
       - model: virtio

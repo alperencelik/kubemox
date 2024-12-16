@@ -3,8 +3,7 @@ kind: ServiceMonitor
 metadata:
   name: kubemox-monitor
   labels:
-    prometheus: kube-prom-stack
-    release: kube-prom-stack
+    release: kube-prometheus-stack
 spec:
   selector:
     matchLabels:

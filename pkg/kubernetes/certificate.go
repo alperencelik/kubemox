@@ -34,6 +34,11 @@ func CreateCertificate(customCert *proxmoxv1alpha1.CustomCertificate) (*unstruct
 	secretName := certManagerSpec.SecretName
 	usages := certManagerSpec.Usages
 
+	// Check if secret ref exists
+	if !CheckSecretExists(secretName, customCert.ObjectMeta.Namespace) {
+		return nil, fmt.Errorf("secret %s does not exist in namespace %s", secretName, customCert.ObjectMeta.Namespace)
+	}
+
 	certManagerCertificate := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cert-manager.io/v1",
@@ -175,4 +180,17 @@ func findCertManagerNamespace() string {
 		}
 	}
 	return ""
+}
+
+func CheckSecretExists(secretName, namespace string) bool {
+	// Check if secret exists
+	_, err := Clientset.CoreV1().Secrets(namespace).Get(context.Background(), secretName, metav1.GetOptions{})
+	switch {
+	case errors.IsNotFound(err):
+		return false
+	case err != nil:
+		panic(err)
+	default:
+		return true
+	}
 }

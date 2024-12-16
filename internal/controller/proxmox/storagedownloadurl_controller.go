@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
+	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 )
 
@@ -82,6 +83,15 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err != nil {
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
+	reconcileMode := kubernetes.GetReconcileMode(storageDownloadURL)
+
+	switch reconcileMode {
+	case kubernetes.ReconcileModeDisable:
+		logger.Info("Reconciliation is disabled for the StorageDownloadURL")
+		return ctrl.Result{}, nil
+	default:
+		break
+	}
 
 	logger.Info(fmt.Sprintf("Reconciling StorageDownloadURL %s", storageDownloadURL.Name))
 
@@ -99,29 +109,15 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 	} else {
 		if controllerutil.ContainsFinalizer(storageDownloadURL, storageDownloadURLFinalizerName) {
-			if !meta.IsStatusConditionPresentAndEqual(storageDownloadURL.Status.Conditions, typeDeletingStorageDownloadURL, metav1.ConditionTrue) {
-				meta.SetStatusCondition(&storageDownloadURL.Status.Conditions, metav1.Condition{
-					Type:    typeDeletingStorageDownloadURL,
-					Status:  metav1.ConditionTrue,
-					Reason:  "Deleting",
-					Message: "Deleting StorageDownloadURL",
-				})
-				if err = r.Status().Update(ctx, storageDownloadURL); err != nil {
-					logger.Error(err, "unable to update StorageDownloadURL status")
-					return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
-				}
+			// Delete the storage download URL
+			res, delErr := r.handleDelete(ctx, storageDownloadURL)
+			if delErr != nil {
+				logger.Error(delErr, "unable to delete StorageDownloadURL")
+				return res, delErr
 			}
-		}
-		// Delete the file from the storage
-		err = proxmox.DeleteStorageContent(storage, &storageDownloadURL.Spec)
-		if err != nil {
-			logger.Error(err, "unable to delete the file")
-			return ctrl.Result{}, client.IgnoreNotFound(err)
-		}
-		controllerutil.RemoveFinalizer(storageDownloadURL, storageDownloadURLFinalizerName)
-		if err = r.Update(ctx, storageDownloadURL); err != nil {
-			logger.Error(err, "unable to update StorageDownloadURL")
-			return ctrl.Result{}, client.IgnoreNotFound(err)
+			if res.Requeue {
+				return res, nil
+			}
 		}
 		// Stop reconciliation as the object is being deleted
 		return ctrl.Result{}, nil
@@ -237,4 +233,34 @@ func (r *StorageDownloadURLReconciler) handleDownloadURL(ctx context.Context,
 		logger.Info("Download task did not complete yet")
 	}
 	return nil
+}
+
+func (r *StorageDownloadURLReconciler) handleDelete(ctx context.Context,
+	storageDownloadURL *proxmoxv1alpha1.StorageDownloadURL) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	var err error
+	if !meta.IsStatusConditionPresentAndEqual(storageDownloadURL.Status.Conditions, typeDeletingStorageDownloadURL, metav1.ConditionTrue) {
+		meta.SetStatusCondition(&storageDownloadURL.Status.Conditions, metav1.Condition{
+			Type:    typeDeletingStorageDownloadURL,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Deleting",
+			Message: "Deleting StorageDownloadURL",
+		})
+		if err = r.Status().Update(ctx, storageDownloadURL); err != nil {
+			logger.Error(err, "unable to update StorageDownloadURL status")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		}
+	}
+	// Delete the file from the storage
+	err = proxmox.DeleteStorageContent(storageDownloadURL.Spec.Storage, &storageDownloadURL.Spec)
+	if err != nil {
+		logger.Error(err, "unable to delete the file")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	controllerutil.RemoveFinalizer(storageDownloadURL, storageDownloadURLFinalizerName)
+	if err = r.Update(ctx, storageDownloadURL); err != nil {
+		logger.Error(err, "unable to update StorageDownloadURL")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	return ctrl.Result{}, nil
 }
