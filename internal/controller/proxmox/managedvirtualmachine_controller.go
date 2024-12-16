@@ -35,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
+	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 )
 
@@ -82,6 +83,23 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 	if err != nil {
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
+
+	reconcileMode := kubernetes.GetReconcileMode(managedVM)
+
+	switch reconcileMode {
+	case kubernetes.ReconcileModeWatchOnly:
+		logger.Info(fmt.Sprintf("Reconciling ManagedVirtualMachine %s in WatchOnly mode", managedVM.Name))
+		r.handleWatcher(ctx, req, managedVM)
+		return ctrl.Result{}, nil
+	case kubernetes.ReconcileModeDisable:
+		// Disable the reconciliation
+		logger.Info(fmt.Sprintf("Reconciliation is disabled for VirtualMachine %s", managedVM.Name))
+		return ctrl.Result{}, nil
+	default:
+		// Normal mode
+		break
+	}
+
 	logger.Info(fmt.Sprintf("Reconciling ManagedVirtualMachine %s", managedVM.Name))
 
 	// Handle the external watcher for the ManagedVirtualMachine
@@ -99,44 +117,14 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 		// The object is being deleted
 		if controllerutil.ContainsFinalizer(managedVM, managedvirtualMachineFinalizerName) {
 			logger.Info(fmt.Sprintf("Deleting ManagedVirtualMachine %s", managedVM.Name))
-
-			if !meta.IsStatusConditionPresentAndEqual(managedVM.Status.Conditions, typeDeletingManagedVirtualMachine, metav1.ConditionTrue) {
-				meta.SetStatusCondition(&managedVM.Status.Conditions, metav1.Condition{
-					Type:    typeDeletingManagedVirtualMachine,
-					Status:  metav1.ConditionTrue,
-					Reason:  "Deleting",
-					Message: "Deleting ManagedVirtualMachine",
-				})
-				if err = r.Status().Update(ctx, managedVM); err != nil {
-					logger.Error(err, "Error updating ManagedVirtualMachine status")
-					return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
-				}
-			}
-			// Stop the watcher if resource is being deleted
-			if stopChan, exists := r.Watchers.Watchers[req.Name]; exists {
-				close(stopChan)
-				delete(r.Watchers.Watchers, req.Name)
-			}
-
-			// Delete the VM
-			r.Recorder.Event(managedVM, "Normal", "Deleting", fmt.Sprintf("Deleting ManagedVirtualMachine %s", managedVM.Name))
-			if !managedVM.Spec.DeletionProtection {
-				proxmox.DeleteVM(managedVM.Name, managedVM.Spec.NodeName)
-			} else {
-				// Remove managedVirtualMachineTag from Managed Virtual Machine to not manage it anymore
-				err = proxmox.RemoveVirtualMachineTag(managedVM.Name, managedVM.Spec.NodeName, proxmox.ManagedVirtualMachineTag)
-				if err != nil {
-					logger.Error(err, "Error removing managedVirtualMachineTag from Managed Virtual Machine")
-					return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
-				}
+			// Delete ManagedVM
+			res, delErr := r.handleDelete(ctx, req, managedVM)
+			if delErr != nil {
+				logger.Error(delErr, "unable to delete ManagedVirtualMachine")
+				return res, delErr
 			}
 		}
-		logger.Info("Removing finalizer from ManagedVirtualMachine", "name", managedVM.Name)
-		// Remove finalizer
-		controllerutil.RemoveFinalizer(managedVM, managedvirtualMachineFinalizerName)
-		if err = r.Update(ctx, managedVM); err != nil {
-			logger.Info(fmt.Sprintf("Error updating ManagedVirtualMachine %s", managedVM.Name))
-		}
+		// Stop reconciliation as the item is being deleted
 		return ctrl.Result{}, nil
 	}
 	// If EnableAutoStart is true, start the VM if it's stopped
@@ -292,4 +280,49 @@ func (r *ManagedVirtualMachineReconciler) UpdateManagedVirtualMachineStatus(ctx 
 
 func (r *ManagedVirtualMachineReconciler) IsResourceReady(obj proxmox.Resource) (bool, error) {
 	return proxmox.IsVirtualMachineReady(obj.(*proxmoxv1alpha1.ManagedVirtualMachine))
+}
+
+func (r *ManagedVirtualMachineReconciler) handleDelete(ctx context.Context, req ctrl.Request,
+	managedVM *proxmoxv1alpha1.ManagedVirtualMachine) (
+	ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	var err error
+
+	if !meta.IsStatusConditionPresentAndEqual(managedVM.Status.Conditions, typeDeletingManagedVirtualMachine, metav1.ConditionTrue) {
+		meta.SetStatusCondition(&managedVM.Status.Conditions, metav1.Condition{
+			Type:    typeDeletingManagedVirtualMachine,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Deleting",
+			Message: "Deleting ManagedVirtualMachine",
+		})
+		if err = r.Status().Update(ctx, managedVM); err != nil {
+			logger.Error(err, "Error updating ManagedVirtualMachine status")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		}
+	}
+	// Stop the watcher if resource is being deleted
+	if stopChan, exists := r.Watchers.Watchers[req.Name]; exists {
+		close(stopChan)
+		delete(r.Watchers.Watchers, req.Name)
+	}
+
+	// Delete the VM
+	r.Recorder.Event(managedVM, "Normal", "Deleting", fmt.Sprintf("Deleting ManagedVirtualMachine %s", managedVM.Name))
+	if !managedVM.Spec.DeletionProtection {
+		proxmox.DeleteVM(managedVM.Name, managedVM.Spec.NodeName)
+	} else {
+		// Remove managedVirtualMachineTag from Managed Virtual Machine to not manage it anymore
+		err = proxmox.RemoveVirtualMachineTag(managedVM.Name, managedVM.Spec.NodeName, proxmox.ManagedVirtualMachineTag)
+		if err != nil {
+			logger.Error(err, "Error removing managedVirtualMachineTag from Managed Virtual Machine")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		}
+	}
+	logger.Info("Removing finalizer from ManagedVirtualMachine", "name", managedVM.Name)
+	// Remove finalizer
+	controllerutil.RemoveFinalizer(managedVM, managedvirtualMachineFinalizerName)
+	if err = r.Update(ctx, managedVM); err != nil {
+		logger.Info(fmt.Sprintf("Error updating ManagedVirtualMachine %s", managedVM.Name))
+	}
+	return ctrl.Result{}, nil
 }

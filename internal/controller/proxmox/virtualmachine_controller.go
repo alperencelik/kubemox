@@ -80,14 +80,14 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
-	reconcileMode := r.getReconcileMode(vm)
+	reconcileMode := kubernetes.GetReconcileMode(vm)
 
 	switch reconcileMode {
-	case proxmoxv1alpha1.ReconcileModeWatchOnly:
+	case kubernetes.ReconcileModeWatchOnly:
 		logger.Info(fmt.Sprintf("Reconciliation is watch only for VirtualMachine %s", vm.Name))
 		r.handleWatcher(ctx, req, vm)
 		return ctrl.Result{}, nil
-	case proxmoxv1alpha1.ReconcileModeEnsureExists:
+	case kubernetes.ReconcileModeEnsureExists:
 		logger.Info(fmt.Sprintf("Reconciliation is ensure exists for VirtualMachine %s", vm.Name))
 		vmExists := proxmox.CheckVM(vm.Spec.Name, vm.Spec.NodeName)
 		if !vmExists {
@@ -99,7 +99,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			}
 		}
 		return ctrl.Result{}, nil
-	case proxmoxv1alpha1.ReconcileModeDisable:
+	case kubernetes.ReconcileModeDisable:
 		// Disable the reconciliation
 		logger.Info(fmt.Sprintf("Reconciliation is disabled for VirtualMachine %s", vm.Name))
 		return ctrl.Result{}, nil
@@ -126,7 +126,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			// Delete the VM
 			res, delErr := r.handleDelete(ctx, req, vm)
 			if delErr != nil {
-				logger.Error(err, "Error handling VirtualMachine deletion")
+				logger.Error(delErr, "Error handling VirtualMachine deletion")
 				return res, client.IgnoreNotFound(delErr)
 			}
 		}
@@ -450,18 +450,6 @@ func (r *VirtualMachineReconciler) handleAdditionalConfig(ctx context.Context, v
 		return err
 	}
 	return nil
-}
-
-func (r *VirtualMachineReconciler) getReconcileMode(vm *proxmoxv1alpha1.VirtualMachine) string {
-	// Get the annotations and find out the reconcile mode
-	annotations := vm.GetAnnotations()
-	if annotations == nil {
-		return "Normal"
-	}
-	if mode, ok := annotations[proxmoxv1alpha1.ReconcileModeAnnotation]; ok {
-		return mode
-	}
-	return "Normal"
 }
 
 func (r *VirtualMachineReconciler) handleWatcher(ctx context.Context, req ctrl.Request, vm *proxmoxv1alpha1.VirtualMachine) {

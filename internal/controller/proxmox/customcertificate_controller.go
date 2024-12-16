@@ -69,6 +69,10 @@ const (
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
+
+// CustomCertifaceController implements two main features:
+// 1. It creates a certificate using cert-manager and stores it in a secret
+// 2. It updates the Proxmox node with the new certificate
 func (r *CustomCertificateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
@@ -91,40 +95,15 @@ func (r *CustomCertificateReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		// The object is being deleted
 		if controllerutil.ContainsFinalizer(customCert, customCertificateFinalizerName) {
 			// Delete the custom certificate
-			logger.Info("Deleting the CustomCertificate")
-
-			// Update the condition for the CustomCertificate if it is being deleted
-			if !meta.IsStatusConditionPresentAndEqual(customCert.Status.Conditions, typeDeletingCustomCertificate, metav1.ConditionTrue) {
-				meta.SetStatusCondition(&customCert.Status.Conditions, metav1.Condition{
-					Type:    typeDeletingCustomCertificate,
-					Status:  metav1.ConditionTrue,
-					Reason:  "Deleting",
-					Message: "Deleting CustomCertificate",
-				})
-				if err = r.Status().Update(ctx, customCert); err != nil {
-					logger.Error(err, "Error updating CustomCertificate status")
-					return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
-				}
-			} else {
-				return ctrl.Result{}, nil
-			}
-			// Delete the custom certificate from Proxmox
-			proxmox.DeleteCustomCertificate(customCert.Spec.NodeName)
-			// Remove the finalizer
-			logger.Info("Removing finalizer from CustomCertificate")
-
-			controllerutil.RemoveFinalizer(customCert, customCertificateFinalizerName)
-			if err = r.Update(ctx, customCert); err != nil {
-				log.Log.Error(err, "Error updating CustomCertificate")
-				return ctrl.Result{}, client.IgnoreNotFound(err)
+			res, delErr := r.handleDelete(ctx, customCert)
+			if delErr != nil {
+				logger.Error(delErr, "unable to delete CustomCertificate")
+				return res, delErr
 			}
 		}
 		// Stop reconciliation as the item is being deleted
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	// This controller implements two main features:
-	// 1. It creates a certificate using cert-manager and stores it in a secret
-	// 2. It updates the Proxmox node with the new certificate
 
 	// Create a certificate using cert-manager
 	// 1. Create a Certificate resource
@@ -199,4 +178,38 @@ func (r *CustomCertificateReconciler) handleResourceNotFound(ctx context.Context
 	}
 	logger.Error(err, "Failed to get CustomCertificate")
 	return err
+}
+
+func (r *CustomCertificateReconciler) handleDelete(ctx context.Context,
+	customCert *proxmoxv1alpha1.CustomCertificate) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	var err error
+	logger.Info("Deleting the CustomCertificate")
+
+	// Update the condition for the CustomCertificate if it is being deleted
+	if !meta.IsStatusConditionPresentAndEqual(customCert.Status.Conditions, typeDeletingCustomCertificate, metav1.ConditionTrue) {
+		meta.SetStatusCondition(&customCert.Status.Conditions, metav1.Condition{
+			Type:    typeDeletingCustomCertificate,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Deleting",
+			Message: "Deleting CustomCertificate",
+		})
+		if err = r.Status().Update(ctx, customCert); err != nil {
+			logger.Error(err, "Error updating CustomCertificate status")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		}
+	} else {
+		return ctrl.Result{}, nil
+	}
+	// Delete the custom certificate from Proxmox
+	proxmox.DeleteCustomCertificate(customCert.Spec.NodeName)
+	// Remove the finalizer
+	logger.Info("Removing finalizer from CustomCertificate")
+
+	controllerutil.RemoveFinalizer(customCert, customCertificateFinalizerName)
+	if err = r.Update(ctx, customCert); err != nil {
+		log.Log.Error(err, "Error updating CustomCertificate")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	return ctrl.Result{}, nil
 }

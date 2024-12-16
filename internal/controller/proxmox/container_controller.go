@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
+	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -78,13 +79,36 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err != nil {
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
-	logger.Info(fmt.Sprintf("Reconciling Container %s", container.Name))
+	reconcileMode := kubernetes.GetReconcileMode(container)
 
+	switch reconcileMode {
+	case kubernetes.ReconcileModeWatchOnly:
+		logger.Info(fmt.Sprintf("Reconciling Container %s in WatchOnly mode", container.Name))
+		r.handleWatcher(ctx, req, container)
+		return ctrl.Result{}, nil
+	case kubernetes.ReconcileModeEnsureExists:
+		logger.Info(fmt.Sprintf("Reconciling Container %s in EnsureExists mode", container.Name))
+		containerExists := proxmox.ContainerExists(container.Spec.Name, container.Spec.NodeName)
+		if !containerExists {
+			err = r.handleCloneContainer(ctx, container)
+			if err != nil {
+				logger.Error(err, "Failed to clone Container")
+				return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			}
+		}
+		return ctrl.Result{}, nil
+	case kubernetes.ReconcileModeDisable:
+		// Disable the reconciliation
+		logger.Info(fmt.Sprintf("Reconciling Container %s in Disable mode", container.Name))
+		return ctrl.Result{}, nil
+	default:
+		// Continue with the normal reconciliation
+		break
+	}
+
+	logger.Info(fmt.Sprintf("Reconciling Container %s", container.Name))
 	// Handle the external watcher for the Container
 	r.handleWatcher(ctx, req, container)
-
-	containerName := container.Spec.Name
-	nodeName := container.Spec.NodeName
 
 	// Check if the Container instance is marked to be deleted, which is indicated by the deletion timestamp being set.
 	if container.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -98,50 +122,23 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// The object is being deleted
 		if controllerutil.ContainsFinalizer(container, containerFinalizerName) {
 			// Delete the Container
-			logger.Info("Deleting Container", "name", containerName)
-
-			if !meta.IsStatusConditionPresentAndEqual(container.Status.Conditions, typeDeletingContainer, metav1.ConditionTrue) {
-				meta.SetStatusCondition(&container.Status.Conditions, metav1.Condition{
-					Type:    typeDeletingContainer,
-					Status:  metav1.ConditionTrue,
-					Reason:  "Deleting",
-					Message: "Deleting Container",
-				})
-				if err = r.Status().Update(ctx, container); err != nil {
-					logger.Error(err, "Error updating Container status")
-					return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
-				}
-				return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
-			}
-			// Stop the watcher if resource is being deleted
-			if stopChan, exists := r.Watchers.Watchers[req.Name]; exists {
-				close(stopChan)
-				delete(r.Watchers.Watchers, req.Name)
-			}
-			// Handle deletion of the Container
-			r.handleContainerDeletion(ctx, container)
-			// Remove finalizer
-			controllerutil.RemoveFinalizer(container, containerFinalizerName)
-			if err = r.Update(ctx, container); err != nil {
-				logger.Error(err, "Error updating Container")
+			res, delErr := r.handleDelete(ctx, req, container)
+			if delErr != nil {
+				logger.Error(delErr, "Failed to delete Container")
+				return res, client.IgnoreNotFound(delErr)
 			}
 		}
 		// Stop reconciliation as the item is being deleted
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	containerExists := proxmox.ContainerExists(containerName, nodeName)
-	if containerExists {
-		err = r.StartOrUpdateContainer(ctx, container)
-		if err != nil {
-			logger.Error(err, "Failed to start or update Container")
-			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
-		}
-	} else {
-		err = r.handleCloneContainer(ctx, container)
-		if err != nil {
-			logger.Error(err, "Failed to clone Container")
-			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
-		}
+
+	result, err := r.handleContainerOperations(ctx, container)
+	if err != nil {
+		logger.Error(err, "Failed to handle Container operations")
+		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+	}
+	if result.Requeue {
+		return result, nil
 	}
 
 	return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -269,6 +266,61 @@ func (r *ContainerReconciler) handleCloneContainer(ctx context.Context, containe
 		return err
 	}
 	return nil
+}
+
+func (r *ContainerReconciler) handleDelete(ctx context.Context, req ctrl.Request, container *proxmoxv1alpha1.Container) (
+	ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	var err error
+	logger.Info("Deleting Container", "name", container.Spec.Name)
+
+	if !meta.IsStatusConditionPresentAndEqual(container.Status.Conditions, typeDeletingContainer, metav1.ConditionTrue) {
+		meta.SetStatusCondition(&container.Status.Conditions, metav1.Condition{
+			Type:    typeDeletingContainer,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Deleting",
+			Message: "Deleting Container",
+		})
+		if err = r.Status().Update(ctx, container); err != nil {
+			logger.Error(err, "Error updating Container status")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		}
+		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+	}
+	// Stop the watcher if resource is being deleted
+	if stopChan, exists := r.Watchers.Watchers[req.Name]; exists {
+		close(stopChan)
+		delete(r.Watchers.Watchers, req.Name)
+	}
+	// Handle deletion of the Container
+	r.handleContainerDeletion(ctx, container)
+	// Remove finalizer
+	logger.Info("Removing finalizer from Container", "name", container.Spec.Name)
+	controllerutil.RemoveFinalizer(container, containerFinalizerName)
+	if err = r.Update(ctx, container); err != nil {
+		logger.Error(err, "Error updating Container")
+		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r *ContainerReconciler) handleContainerOperations(ctx context.Context, container *proxmoxv1alpha1.Container) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	containerExists := proxmox.ContainerExists(container.Spec.Name, container.Spec.NodeName)
+	if containerExists {
+		err := r.StartOrUpdateContainer(ctx, container)
+		if err != nil {
+			logger.Error(err, "Failed to start or update Container")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		}
+	} else {
+		err := r.handleCloneContainer(ctx, container)
+		if err != nil {
+			logger.Error(err, "Failed to clone Container")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		}
+	}
+	return ctrl.Result{}, nil
 }
 
 func (r *ContainerReconciler) handleAutoStart(ctx context.Context,
