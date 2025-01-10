@@ -52,6 +52,7 @@ type StorageDownloadURLStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:resource:scope="Cluster",shortName="sdu"
 
 // StorageDownloadURL is the Schema for the storagedownloadurls API
 type StorageDownloadURL struct {
