@@ -52,7 +52,7 @@ type ManagedVirtualMachineSpec struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-//+kubebuilder:resource:shortName="mvm"
+//+kubebuilder:resource:scope=Cluster,shortName="mvm"
 //+kubebuilder:printcolumn:name="Node",type="string",JSONPath=".spec.nodeName",description="The node name"
 //+kubebuilder:printcolumn:name="ID",type="integer",JSONPath=".status.status.id",description="The ID of the VM"
 //+kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.status.state",description="The state of the VM"

@@ -85,7 +85,7 @@ type ContainerStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-//+kubebuilder:resource:shortName=lxc
+//+kubebuilder:resource:scope="Cluster",shortName="lxc"
 //+kubebuilder:printcolumn:name="Node",type="string",JSONPath=".spec.nodeName",description="The name of the target node of Proxmox"
 //+kubebuilder:printcolumn:name="ID",type="string",JSONPath=".status.status.id",description="The ID of the container"
 //+kubebuilder:printcolumn:name="Cores",type="string",JSONPath=".spec.template.cores",description="The number of CPU cores"

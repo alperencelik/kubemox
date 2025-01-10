@@ -55,7 +55,7 @@ type VirtualMachineSetStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-//+kubebuilder:resource:shortName=vmset
+//+kubebuilder:resource:scope="Cluster",shortName=vmset
 //+kubebuilder:printcolumn:name="Replicas",type="integer",JSONPath=".spec.replicas",description="The number of VMs"
 //+kubebuilder:printcolumn:name="Node",type="string",JSONPath=".spec.nodeName",description="The name of the target node of Proxmox"
 //+kubebuilder:printcolumn:name="Cores",type="string",JSONPath=".spec.template.cores",description="The number of CPU cores"

@@ -574,11 +574,6 @@ func CreateManagedVM(managedVM string) *proxmoxv1alpha1.ManagedVirtualMachine {
 	nodeName := GetNodeOfVM(managedVM)
 	cores, memory, disk := GetManagedVMSpec(managedVM, nodeName)
 
-	// IF POD_NAMESPACE is not set, set it to default
-	if os.Getenv("POD_NAMESPACE") == "" {
-		os.Setenv("POD_NAMESPACE", "default")
-	}
-
 	// Create VM object
 	VirtualMachine := &proxmoxv1alpha1.ManagedVirtualMachine{
 		TypeMeta: metav1.TypeMeta{
@@ -586,8 +581,7 @@ func CreateManagedVM(managedVM string) *proxmoxv1alpha1.ManagedVirtualMachine {
 			Kind:       "ManagedVirtualMachine",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      strings.ToLower(managedVM),
-			Namespace: os.Getenv("POD_NAMESPACE"),
+			Name: strings.ToLower(managedVM),
 		},
 		Spec: proxmoxv1alpha1.ManagedVirtualMachineSpec{
 			Name:     managedVM,

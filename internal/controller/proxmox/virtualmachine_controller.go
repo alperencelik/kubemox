@@ -156,7 +156,7 @@ func (r *VirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox version")
 	}
-	logger.Info(fmt.Sprintf("Connected to the Proxmox, version is: %s", version))
+	logger.Info(fmt.Sprintf("Connected to the Proxmox, version is: %s", version.Version))
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.VirtualMachine{}).
 		WithEventFilter(predicate.Funcs{
