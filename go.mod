@@ -5,7 +5,7 @@ go 1.21
 require (
 	github.com/carolynvs/magex v0.9.0
 	github.com/google/go-cmp v0.5.9
-	github.com/luthermonson/go-proxmox v0.1.2-0.20240903152432-1719c8ae0ad6
+	github.com/luthermonson/go-proxmox v0.2.2-0.20250121013250-ebdbadd24d4d
 	github.com/magefile/mage v1.14.0
 	github.com/onsi/ginkgo/v2 v2.9.5
 	github.com/onsi/gomega v1.27.7
@@ -18,9 +18,6 @@ require (
 	sigs.k8s.io/controller-runtime v0.15.0
 	sigs.k8s.io/release-utils v0.7.7
 )
-
-// TODO: Revert that replace once the PR is merged
-replace github.com/luthermonson/go-proxmox v0.1.2-0.20240903152432-1719c8ae0ad6 => github.com/alperencelik/go-proxmox v0.0.1
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
