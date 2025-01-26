@@ -66,19 +66,19 @@ spec:
           - name: PROXMOX_SECRET
             valueFrom:
               secretKeyRef:
-                name: {{ .existingSecret.name | default "proxmox-credentials" }}
+                name: {{ .existingSecret | default "proxmox-credentials" }}
                 key: {{ .secretKey | default "secret" }}
                 optional: true
           - name: PROXMOX_USERNAME
             valueFrom:
               secretKeyRef:
-                name: {{ .existingSecret.name | default "proxmox-credentials" }}
+                name: {{ .existingSecret | default "proxmox-credentials" }}
                 key: {{ .usernameKey | default "username" }}
                 optional: true
           - name: PROXMOX_PASSWORD
             valueFrom:
               secretKeyRef:
-                name: {{ .existingSecret.name | default "proxmox-credentials" }}
+                name: {{ .existingSecret | default "proxmox-credentials" }}
                 key: {{ .passwordKey | default "password" }}
                 optional: true
           {{- end }}
