@@ -52,37 +52,35 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: metadata.namespace
+          {{- with .Values.proxmox }}
           - name: PROXMOX_ENDPOINT
-            value: {{ .Values.proxmox.endpoint }} 
+            value: {{ .endpoint }}
           - name: PROXMOX_INSECURE_SKIP_TLS_VERIFY
-            value: {{ .Values.proxmox.insecureSkipTLSVerify | quote }}
-          {{- if .Values.proxmox.tokenID }}
+            value: {{ .insecureSkipTLSVerify | quote }}
           - name: PROXMOX_TOKEN_ID
             valueFrom:
               secretKeyRef:
-                name: proxmox-credentials 
-                key: tokenID
-          {{- end }}
-          {{- if .Values.proxmox.secret }}
+                name: {{ .existingSecret | default "proxmox-credentials" }}
+                key: {{ .tokenIdKey | default "tokenID" }}
+                optional: true
           - name: PROXMOX_SECRET
             valueFrom:
               secretKeyRef:
-                name: proxmox-credentials 
-                key: secret
-          {{- end }}
-          {{- if .Values.proxmox.username }}
+                name: {{ .existingSecret.name | default "proxmox-credentials" }}
+                key: {{ .secretKey | default "secret" }}
+                optional: true
           - name: PROXMOX_USERNAME
             valueFrom:
               secretKeyRef:
-                name: proxmox-credentials 
-                key: username
-          {{- end }}
-          {{- if .Values.proxmox.password }}
+                name: {{ .existingSecret.name | default "proxmox-credentials" }}
+                key: {{ .usernameKey | default "username" }}
+                optional: true
           - name: PROXMOX_PASSWORD
             valueFrom:
               secretKeyRef:
-                name: proxmox-credentials 
-                key: password
+                name: {{ .existingSecret.name | default "proxmox-credentials" }}
+                key: {{ .passwordKey | default "password" }}
+                optional: true
           {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

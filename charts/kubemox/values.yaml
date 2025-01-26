@@ -20,6 +20,17 @@ proxmox:
   # -- Proxmox VE password
   password: "PROXMOX_PASSWORD"
 
+  # # Existing secret containing credentials
+  # existingSecret:
+  # # Key in the secret containing the Proxmox token id
+  # tokenIdKey: tokenID
+  # # Key in the secret containing the Proxmox token secret
+  # secretKey: secret
+  # # Key in the secret containing the Proxmox username
+  # usernameKey: username
+  # # Key in the secret containing the Proxmox password
+  # passwordKey: password
+
 image:
   # -- Kubemox image repository
   repository: alperencelik/kubemox 
