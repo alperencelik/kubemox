@@ -30,7 +30,6 @@ func CreateProxmoxClient() *proxmox.Client {
 	// Create a new client
 	endpoint := os.Getenv("PROXMOX_ENDPOINT")
 	ProxmoxConfig := &ProxmoxConfig{
-		Endpoint:    os.Getenv("PROXMOX_ENDPOINT"),
 		APIEndpoint: fmt.Sprintf("https://%s:8006/api2/json", endpoint),
 		Username:    os.Getenv("PROXMOX_USERNAME"),
 		Password:    os.Getenv("PROXMOX_PASSWORD"),
@@ -39,8 +38,8 @@ func CreateProxmoxClient() *proxmox.Client {
 	}
 
 	var httpClient *http.Client
-	if os.Getenv("PROXMOX_INSECURE_SKIP_TLS_VERIFY") == "true" {
-		ProxmoxConfig.InsecureSkipTLSVerify = true
+	ProxmoxConfig.InsecureSkipTLSVerify = os.Getenv("PROXMOX_INSECURE_SKIP_TLS_VERIFY") == "true"
+	if ProxmoxConfig.InsecureSkipTLSVerify {
 		httpClient = &http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{

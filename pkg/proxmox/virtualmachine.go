@@ -256,24 +256,25 @@ func DeleteVM(vmName, nodeName string) {
 	}
 }
 
-func StartVM(vmName, nodeName string) (string, error) {
+func StartVM(vmName, nodeName string) (bool, error) {
 	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
-		log.Log.Error(err, "Error getting VM to start")
+		return false, err
 	}
 	// Start VM
 	task, err := VirtualMachine.Start(ctx)
 	if err != nil {
-		panic(err)
+		return false, err
 	}
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineStartTimesNum, virtualMachineStartSteps)
-	switch {
-	case !taskCompleted:
-		return "", taskErr
-	case taskCompleted:
-		return fmt.Sprintf("VirtualMachine %s has been started", vmName), nil
-	default:
-		return fmt.Sprintf("VirtualMachine %s is already running", vmName), nil
+	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineStartTimesNum, virtualMachineStartSteps)
+	if !taskStatus {
+		// Return the taks.ExitStatus as error
+		return false, &TaskError{ExitStatus: task.ExitStatus}
+	}
+	if taskCompleted {
+		return true, taskErr
+	} else {
+		return false, taskErr
 	}
 }
 
@@ -442,6 +443,9 @@ func CheckVMType(vm *proxmoxv1alpha1.VirtualMachine) string {
 }
 
 func CheckManagedVMExists(managedVM string) bool {
+	// Theoretically this should be handled with the reconciler.List method
+	// but since this one is used before the reconciler build it's cache
+	// we have to retrieve the objects from API server directly
 	var existingManagedVMNames []string
 	// Get managed VMs
 	crd := kubernetes.GetManagedVMCRD()
@@ -1222,7 +1226,7 @@ func GetPCIConfiguration(vmName, nodeName string) (map[string]string, error) {
 }
 
 func parsePCIConfiguration(pcis map[string]string) ([]proxmoxv1alpha1.PciDevice, error) {
-	var PCIConfigurations []proxmoxv1alpha1.PciDevice
+	PCIConfigurations := make([]proxmoxv1alpha1.PciDevice, len(pcis))
 	var PCIConfiguration proxmoxv1alpha1.PciDevice
 	// Parse PCI devices to use as PCI devices
 	for i, pci := range pcis {

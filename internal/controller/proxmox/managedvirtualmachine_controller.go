@@ -18,10 +18,11 @@ package proxmox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -170,7 +171,7 @@ func (r *ManagedVirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) err
 
 func (r *ManagedVirtualMachineReconciler) handleResourceNotFound(ctx context.Context, err error) error {
 	logger := log.FromContext(ctx)
-	if errors.IsNotFound(err) {
+	if kerrors.IsNotFound(err) {
 		logger.Info("ManagedVirtualMachine resource not found. Ignoring since object must be deleted")
 		return nil
 	}
@@ -215,12 +216,17 @@ func (r *ManagedVirtualMachineReconciler) handleAutoStart(ctx context.Context,
 		if vmState == proxmox.VirtualMachineStoppedState {
 			startResult, err := proxmox.StartVM(vmName, nodeName)
 			if err != nil {
-				logger.Info(fmt.Sprintf("ManagedVirtualMachine %s could not be started", vmName))
-				return ctrl.Result{Requeue: true}, err
-			} else {
-				logger.Info(startResult)
+				var taskErr *proxmox.TaskError
+				if errors.As(err, &taskErr) {
+					// Handle the specific TaskError
+					r.Recorder.Event(managedVM, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to start due to %s", vmName, taskErr.ExitStatus))
+				} else {
+					logger.Error(err, "Failed to start VirtualMachine")
+				}
 			}
-			logger.Info(fmt.Sprintf("ManagedVirtualMachine %s started", vmName))
+			if startResult {
+				logger.Info(fmt.Sprintf("VirtualMachine %s has been started", managedVM.Spec.Name))
+			}
 			return ctrl.Result{Requeue: true}, nil
 		}
 	}
