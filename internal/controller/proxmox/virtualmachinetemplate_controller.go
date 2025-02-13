@@ -208,7 +208,12 @@ func (r *VirtualMachineTemplateReconciler) handleVMCreation(ctx context.Context,
 	nodeName := vmTemplate.Spec.NodeName
 
 	// Check if the VM template is already exists
-	if proxmox.CheckVM(templateVMName, nodeName) {
+	vmExists, err := proxmox.CheckVM(templateVMName, nodeName)
+	if err != nil {
+		logger.Error(err, "Failed to check VM template")
+		return err
+	}
+	if vmExists {
 		// Check if VM template is on desired state
 		if result, err := proxmox.CheckVirtualMachineTemplateDelta(vmTemplate); err == nil && result {
 			// Update VirtualMachineTemplate resource

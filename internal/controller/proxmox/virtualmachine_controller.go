@@ -90,7 +90,12 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, nil
 	case kubernetes.ReconcileModeEnsureExists:
 		logger.Info(fmt.Sprintf("Reconciliation is ensure exists for VirtualMachine %s", vm.Name))
-		vmExists := proxmox.CheckVM(vm.Spec.Name, vm.Spec.NodeName)
+		var vmExists bool
+		vmExists, err = proxmox.CheckVM(vm.Spec.Name, vm.Spec.NodeName)
+		if err != nil {
+			logger.Error(err, "Error checking VirtualMachine")
+			return ctrl.Result{Requeue: true, RequeueAfter: VMreconcilationPeriod}, client.IgnoreNotFound(err)
+		}
 		if !vmExists {
 			// If not exists, create the VM
 			logger.Info("Creating VirtualMachine", "name", vm.Spec.Name)
@@ -179,7 +184,11 @@ func (r *VirtualMachineReconciler) handleVirtualMachineOperations(ctx context.Co
 	vmName := vm.Spec.Name
 	nodeName := vm.Spec.NodeName
 	logger := log.FromContext(ctx)
-	vmExists := proxmox.CheckVM(vmName, nodeName)
+	vmExists, err := proxmox.CheckVM(vmName, nodeName)
+	if err != nil {
+		logger.Error(err, "Error checking VirtualMachine")
+		return ctrl.Result{Requeue: true, RequeueAfter: VMreconcilationPeriod}, client.IgnoreNotFound(err)
+	}
 	if !vmExists {
 		// If not exists, create the VM
 		logger.Info("Creating VirtualMachine", "name", vmName)
@@ -235,6 +244,7 @@ func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, vm 
 	switch vmType {
 	case "template":
 		r.Recorder.Event(vm, "Normal", "Creating", fmt.Sprintf("VirtualMachine %s is being created", vmName))
+		// TODO: Check return err value and based on the error, update the status if needed.
 		proxmox.CreateVMFromTemplate(vm)
 		if err := r.Status().Update(context.Background(), vm); err != nil {
 			return err
@@ -303,6 +313,8 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(ctx context.Contex
 	// Update the QEMU status
 	qemuStatus, err := proxmox.UpdateVMStatus(vm.Spec.Name, vm.Spec.NodeName)
 	if err != nil {
+		// Update the status condition
+		r.Recorder.Event(vm, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to update status due to %s", vm.Spec.Name, err))
 		return err
 	}
 	vm.Status.Status = qemuStatus

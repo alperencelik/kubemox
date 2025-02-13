@@ -15,37 +15,40 @@ func GetNodes() ([]string, error) {
 	return nodeNames, err
 }
 
-func GetOnlineNodes() []string {
+func GetOnlineNodes() ([]string, error) {
 	nodes, err := Client.Nodes(ctx)
 	var OnlineNodes []string
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	for _, node := range nodes {
 		if node.Status == "online" {
 			OnlineNodes = append(OnlineNodes, node.Node)
 		}
 	}
-	return OnlineNodes
+	return OnlineNodes, nil
 }
 
-func GetNodeOfVM(vmName string) string {
-	nodes := GetOnlineNodes()
+func GetNodeOfVM(vmName string) (string, error) {
+	nodes, err := GetOnlineNodes()
+	if err != nil {
+		return "", err
+	}
 	for _, node := range nodes {
 		node, err := Client.Node(ctx, node)
 		if err != nil {
-			panic(err)
+			return "", err
 		}
 		// List VMs on node
 		VirtualMachines, err := node.VirtualMachines(ctx)
 		if err != nil {
-			panic(err)
+			return "", err
 		}
 		for _, vm := range VirtualMachines {
 			if strings.EqualFold(vm.Name, vmName) {
-				return node.Name
+				return node.Name, nil
 			}
 		}
 	}
-	return ""
+	return "", nil
 }

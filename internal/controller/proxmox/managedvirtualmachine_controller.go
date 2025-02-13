@@ -135,11 +135,19 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 	}
 	// Update ManagedVM
-	proxmox.UpdateManagedVM(ctx, managedVM)
-	err = r.Update(context.Background(), managedVM)
-	if err != nil {
+	if err = proxmox.UpdateManagedVM(ctx, managedVM); err != nil {
+		var taskErr *proxmox.TaskError
+		if errors.As(err, &taskErr) {
+			r.Recorder.Event(managedVM, "Warning", "Error",
+				fmt.Sprintf("ManagedVirtualMachine %s failed to update due to %s", managedVM.Name, taskErr.ExitStatus))
+		} else {
+			logger.Error(err, "Failed to update ManagedVirtualMachine")
+		}
+		return ctrl.Result{Requeue: true, RequeueAfter: ManagedVMreconcilationPeriod}, client.IgnoreNotFound(err)
+	}
+	if err = r.Update(context.Background(), managedVM); err != nil {
 		logger.Info(fmt.Sprintf("ManagedVM %v could not be updated", managedVM.Name))
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return ctrl.Result{Requeue: true, RequeueAfter: ManagedVMreconcilationPeriod}, client.IgnoreNotFound(err)
 	}
 	return ctrl.Result{}, nil
 }
@@ -147,10 +155,15 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 // SetupWithManager sets up the controller with the Manager.
 func (r *ManagedVirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Get list of VMs that tagged with managedVirtualMachineTag
-	managedVMs := proxmox.GetManagedVMs()
-	// Handle ManagedVM creation
-	err := r.handleManagedVMCreation(context.Background(), managedVMs)
+	managedVMs, err := proxmox.GetManagedVMs()
 	if err != nil {
+		return err
+	}
+	// Handle ManagedVM creation
+	if err := r.handleManagedVMCreation(context.Background(), managedVMs); err != nil {
+		// This is going down on the init phase since the ManagedVM's needs to be created by the operator
+		// Can't requeue since it's not involved in reconcile loop
+		// TODO: Review here to make a retry if possible
 		return err
 	}
 
@@ -184,13 +197,20 @@ func (r *ManagedVirtualMachineReconciler) handleManagedVMCreation(ctx context.Co
 	for _, managedVM := range managedVMs {
 		// Create ManagedVM that matches with tag of managedVirtualMachineTag value
 		logger.Info(fmt.Sprintf("ManagedVM %v found!", managedVM))
-		if !proxmox.CheckManagedVMExists(managedVM) {
+		managedVMExists, err := proxmox.CheckManagedVMExists(managedVM)
+		if err != nil {
+			return err
+		}
+		if !managedVMExists {
 			logger.Info(fmt.Sprintf("ManagedVM %v does not exist so creating it", managedVM))
-			managedVM := proxmox.CreateManagedVM(managedVM)
-			err := r.Create(context.Background(), managedVM)
+			managedVM, err := proxmox.CreateManagedVM(managedVM)
+			if err != nil {
+				return err
+			}
+			err = r.Create(context.Background(), managedVM)
 			r.Recorder.Event(managedVM, "Normal", "Creating", fmt.Sprintf("Creating ManagedVirtualMachine %s", managedVM.Name))
 			if err != nil {
-				logger.Info(fmt.Sprintf("ManagedVM %v could not be created", managedVM.Name))
+				logger.Error(err, fmt.Sprintf("ManagedVM %v could not be created", managedVM.Name))
 				return err
 			}
 			// Add metrics and events
@@ -271,7 +291,10 @@ func (r *ManagedVirtualMachineReconciler) UpdateManagedVirtualMachineStatus(ctx 
 		Message: "VirtualMachine status is updated",
 	})
 	managedVMName := managedVM.Name
-	nodeName := proxmox.GetNodeOfVM(managedVMName)
+	nodeName, err := proxmox.GetNodeOfVM(managedVMName)
+	if err != nil {
+		return err
+	}
 	// Update the QEMU status of the ManagedVirtualMachine
 	ManagedVMStatus, err := proxmox.UpdateVMStatus(managedVMName, nodeName)
 	if err != nil {

@@ -251,7 +251,11 @@ func (r *VirtualMachineSetReconciler) updateVMs(ctx context.Context,
 			vm.Spec.DeletionProtection = vmSet.Spec.DeletionProtection
 			vm.Spec.EnableAutoStart = vmSet.Spec.EnableAutoStart
 			// If vm exists in Proxmox, update it
-			if proxmox.CheckVM(vm.Spec.Name, vm.Spec.NodeName) {
+			vmExists, err := proxmox.CheckVM(vm.Spec.Name, vm.Spec.NodeName)
+			if err != nil {
+				return fmt.Errorf("unable to check VirtualMachine: %w", err)
+			}
+			if vmExists {
 				// Update the VM
 				if err := r.Update(ctx, vm); err != nil {
 					return fmt.Errorf("unable to update VirtualMachine: %w", err)

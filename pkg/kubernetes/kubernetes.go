@@ -10,7 +10,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 var (
@@ -37,19 +36,19 @@ func ListCRDs() ([]string, error) {
 	return crdNames, nil
 }
 
-func GetManagedVMCRD() v1.CustomResourceDefinition {
+func GetManagedVMCRD() (*v1.CustomResourceDefinition, error) {
 	config := ClientConfig().(*rest.Config)
 	// create the clientset
 	clientset, err := apiextensionsclientset.NewForConfig(config)
 	if err != nil {
-		panic(err.Error())
+		return nil, err
 	}
 	crd, err := clientset.ApiextensionsV1().CustomResourceDefinitions().Get(context.Background(),
 		"managedvirtualmachines.proxmox.alperen.cloud", metav1.GetOptions{})
 	if err != nil {
-		log.Log.Error(err, "Failed to get CRD")
+		return nil, fmt.Errorf("failed to get managedVM CRD: %w", err)
 	}
-	return *crd
+	return crd, nil
 }
 
 func GetSecretData(namespace string, selector *corev1.SecretKeySelector) (string, error) {
