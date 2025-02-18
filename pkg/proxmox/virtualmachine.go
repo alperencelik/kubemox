@@ -115,27 +115,31 @@ func CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine) error {
 	}
 	mutex.Lock()
 	// TODO: Switch to task Status
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineCreateTimesNum, virtualMachineCreateSteps)
-	switch {
-	case !taskCompleted:
-		log.Log.Error(taskErr, "Error creating VM")
-	case taskCompleted:
-		log.Log.Info(fmt.Sprintf("VM %s has been created", vm.Name))
-	default:
-		log.Log.Info("VM creation task is still running")
+	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineCreateTimesNum, virtualMachineCreateSteps)
+	if !taskStatus {
+		// Return the task.ExitStatus as error
+		return &TaskError{ExitStatus: task.ExitStatus}
 	}
-
+	if !taskCompleted {
+		log.Log.Error(taskErr, "Can't stop VM")
+		return taskErr
+	}
 	// Add tag to VM
 	VirtualMachine, err := node.VirtualMachine(ctx, newID)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 		return err
 	}
-	addTagTask, err := VirtualMachine.AddTag(ctx, virtualMachineTag)
-	// TODO: Switch to task Status
-	_, taskCompleted, taskErr = addTagTask.WaitForCompleteStatus(ctx, 5, 3)
+	task, err = VirtualMachine.AddTag(ctx, virtualMachineTag)
+	// TODO: Use strings instead of numbers
+	taskStatus, taskCompleted, taskErr = task.WaitForCompleteStatus(ctx, 3, 5)
+	if !taskStatus {
+		// Return the task.ExitStatus as error
+		return &TaskError{ExitStatus: task.ExitStatus}
+	}
 	if !taskCompleted {
 		log.Log.Error(taskErr, "Error adding tag to VM")
+		return taskErr
 	}
 	mutex.Unlock()
 	if err != nil {
@@ -225,11 +229,12 @@ func GetVMUptime(vmName, nodeName string) string {
 	return uptime
 }
 
-func DeleteVM(vmName, nodeName string) {
+func DeleteVM(vmName, nodeName string) error {
 	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	mutex.Lock()
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
+		return err
 	}
 	mutex.Unlock()
 	// Stop VM
@@ -237,32 +242,35 @@ func DeleteVM(vmName, nodeName string) {
 	if vmStatus == VirtualMachineRunningState {
 		stopTask, stopErr := VirtualMachine.Stop(ctx)
 		if stopErr != nil {
-			panic(err)
+			log.Log.Error(stopErr, "Can't stop VM")
+			return &TaskError{ExitStatus: stopTask.ExitStatus}
 		}
-		_, taskCompleted, taskErr := stopTask.WaitForCompleteStatus(ctx, virtualMachineStopTimesNum, virtualMachineStopSteps)
-		switch taskCompleted {
-		case false:
+		taskStatus, taskCompleted, taskErr := stopTask.WaitForCompleteStatus(ctx, virtualMachineStopTimesNum, virtualMachineStopSteps)
+		if !taskStatus {
+			// Return the task.ExitStatus as error
+			return &TaskError{ExitStatus: stopTask.ExitStatus}
+		}
+		if !taskCompleted {
 			log.Log.Error(taskErr, "Can't stop VM")
-		case true:
-			log.Log.Info(fmt.Sprintf("VM %s has been stopped", vmName))
-		default:
-			log.Log.Info("VM is already stopped")
+			return taskErr
 		}
+		return nil
 	}
 	// Delete VM
 	task, err := VirtualMachine.Delete(ctx)
 	if err != nil {
-		panic(err)
+		return err
 	}
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineDeleteTimesNum, virtualMachineDeleteSteps)
-	switch {
-	case !taskCompleted:
+	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineDeleteTimesNum, virtualMachineDeleteSteps)
+	if !taskStatus {
+		// Return the task.ExitStatus as error
+		return &TaskError{ExitStatus: task.ExitStatus}
+	}
+	if !taskCompleted {
 		log.Log.Error(taskErr, "Can't delete VM")
-	case taskCompleted:
-		log.Log.Info(fmt.Sprintf("VM %s has been deleted", vmName))
-	default:
-		log.Log.Info("VM is already deleted")
+		return taskErr
 	}
+	return nil
 }
 
 func StartVM(vmName, nodeName string) (bool, error) {
@@ -287,28 +295,30 @@ func StartVM(vmName, nodeName string) (bool, error) {
 	}
 }
 
-func RestartVM(vmName, nodeName string) *proxmox.Task {
+func RestartVM(vmName, nodeName string) (*proxmox.Task, error) {
 	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM to restart")
+		return nil, err
 	}
 	// Restart VM
 	task, err := VirtualMachine.Reboot(ctx)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return task
+	return task, nil
 }
 
 func StopVM(vmName, nodeName string) error {
 	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM to stop")
+		return err
 	}
 	// Stop VM
 	task, err := VirtualMachine.Stop(ctx)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineStopTimesNum, virtualMachineStopSteps)
@@ -348,11 +358,11 @@ func AgentIsRunning(vmName, nodeName string) bool {
 	}
 }
 
-func CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine) {
+func CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine) error {
 	nodeName := vm.Spec.NodeName
 	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	virtualMachineSpec := vm.Spec.VMSpec
 
@@ -406,34 +416,40 @@ func CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine) {
 	vmID, err := getNextVMID(Client)
 	if err != nil {
 		log.Log.Error(err, "Error getting next VMID")
+		return err
 	}
 	// Create VM
 	task, err := node.NewVirtualMachine(ctx, vmID, VMOptions...)
 	if err != nil {
-		panic(err)
+		log.Log.Error(err, "Error creating VM")
+		return err
 	}
 	mutex.Unlock()
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 10, 10)
-	switch taskCompleted {
-	case false:
-		log.Log.Error(taskErr, "Can't create VM")
-	case true:
-		log.Log.Info(fmt.Sprintf("VM %s has been created", vm.Spec.Name))
-	default:
-		log.Log.Info("VM is already created")
+	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 10, 10)
+	if !taskStatus {
+		// Return the task.ExitStatus as an error
+		return &TaskError{ExitStatus: task.ExitStatus}
+	}
+	if !taskCompleted {
+		return taskErr
 	}
 	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	addTagTask, err := VirtualMachine.AddTag(ctx, virtualMachineTag)
-	_, taskCompleted, taskErr = addTagTask.WaitForCompleteStatus(ctx, 3, 10)
-	if !taskCompleted {
-		log.Log.Error(taskErr, "Can't add tag to VM")
-	}
 	if err != nil {
-		log.Log.Error(taskErr, "Can't add tag to VM")
+		return err
 	}
+	taskStatus, taskCompleted, taskErr = addTagTask.WaitForCompleteStatus(ctx, 3, 10)
+	if !taskStatus {
+		// Return the task.ExitStatus as an error
+		return &TaskError{ExitStatus: task.ExitStatus}
+	}
+	if !taskCompleted {
+		return taskErr
+	}
+	return nil
 }
 
 func CheckVMType(vm *proxmoxv1alpha1.VirtualMachine) string {
@@ -537,13 +553,14 @@ func UpdateVMStatus(vmName, nodeName string) (*proxmoxv1alpha1.QEMUStatus, error
 	}
 }
 
-func UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) bool {
+func UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) {
 	vmName := vm.Spec.Name
 	nodeName := vm.Spec.NodeName
 	updateStatus := false
 	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
+		return false, err
 	}
 	// Update VM
 	var cpuOption proxmox.VirtualMachineOption
@@ -566,28 +583,36 @@ func UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) bool {
 		var task *proxmox.Task
 		task, err = VirtualMachine.Config(ctx, cpuOption, memoryOption)
 		if err != nil {
-			panic(err)
+			log.Log.Error(err, "Can't update VM")
+			return false, err
 		}
 
-		_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineUpdateTimesNum, virtualMachineUpdateSteps)
-		switch taskCompleted {
-		case false:
-			log.Log.Error(taskErr, "Can't update VM")
-		case true:
-			log.Log.Info(fmt.Sprintf("Virtual machine %s is updating", vmName))
-		default:
-			log.Log.Info("VM is already updated")
+		taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineUpdateTimesNum, virtualMachineUpdateSteps)
+		if !taskStatus {
+			// Return the taks.ExitStatus as error
+			return false, &TaskError{ExitStatus: task.ExitStatus}
+		}
+		if !taskCompleted {
+			return false, taskErr
 		}
 		// After config update, restart VM
-		task = RestartVM(vmName, nodeName)
-		_, taskCompleted, taskErr = task.WaitForCompleteStatus(ctx, virtualMachineRestartTimesNum, virtualMachineRestartSteps)
+		task, err = RestartVM(vmName, nodeName)
+		if err != nil {
+			return false, err
+		}
+		taskStatus, taskCompleted, taskErr = task.WaitForCompleteStatus(ctx, virtualMachineRestartTimesNum, virtualMachineRestartSteps)
+		if !taskStatus {
+			// Return the taks.ExitStatus as error
+			return false, &TaskError{ExitStatus: task.ExitStatus}
+		}
 		if !taskCompleted {
 			log.Log.Error(taskErr, "Can't restart VM")
+			return false, taskErr
 		} else {
 			updateStatus = true
 		}
 	}
-	return updateStatus
+	return updateStatus, nil
 }
 
 func CreateManagedVM(managedVM string) (*proxmoxv1alpha1.ManagedVirtualMachine, error) {
@@ -646,7 +671,6 @@ func GetManagedVMs() ([]string, error) {
 
 func UpdateManagedVM(ctx context.Context, managedVM *proxmoxv1alpha1.ManagedVirtualMachine) error {
 	managedVMName := managedVM.Spec.Name
-	logger := log.FromContext(ctx)
 	nodeName, err := GetNodeOfVM(managedVMName)
 	if err != nil {
 		return err
@@ -694,22 +718,21 @@ func UpdateManagedVM(ctx context.Context, managedVM *proxmoxv1alpha1.ManagedVirt
 			// || Memory: %d, %d", managedVM.Spec.Cores, VirtualMachine.CPUs, managedVM.Spec.Memory, VirtualMachineMem))
 			task, err := VirtualMachine.Config(ctx, cpuOption, memoryOption)
 			if err != nil {
-				panic(err)
+				log.Log.Error(err, "Can't update VM")
+				return err
 			}
 			taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineUpdateTimesNum, virtualMachineUpdateSteps)
 			if !taskStatus {
 				// Return the taks.ExitStatus as error
 				return &TaskError{ExitStatus: task.ExitStatus}
 			}
-			switch taskCompleted {
-			case false:
+			if !taskCompleted {
 				return taskErr
-			case true:
-				logger.Info(fmt.Sprintf("Managed VM %s has been updated", managedVMName))
-			default:
-				logger.Info("Managed VM is already updated")
 			}
-			task = RestartVM(managedVMName, nodeName)
+			task, err = RestartVM(managedVMName, nodeName)
+			if err != nil {
+				return err
+			}
 			taskStatus, taskCompleted, taskErr = task.WaitForCompleteStatus(ctx, virtualMachineRestartTimesNum, virtualMachineRestartSteps)
 			if !taskStatus {
 				// Return the taks.ExitStatus as error
@@ -723,30 +746,32 @@ func UpdateManagedVM(ctx context.Context, managedVM *proxmoxv1alpha1.ManagedVirt
 	return nil
 }
 
-func CreateVMSnapshot(vmName, snapshotName string) (statusCode int) {
+func CreateVMSnapshot(vmName, snapshotName string) (statusCode int, err error) {
 	nodeName, err := GetNodeOfVM(vmName)
 	if err != nil {
 		log.Log.Error(err, "Error getting node of VM for snapshot creation")
+		return 1, err
 	}
 	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for snapshot creation")
+		return 1, err
 	}
 	// Create snapshot
 	task, err := VirtualMachine.NewSnapshot(ctx, snapshotName)
 	if err != nil {
-		panic(err)
+		return 1, err
 	}
 	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 3, 10)
 	switch taskCompleted {
 	case false:
 		log.Log.Error(taskErr, "Can't create snapshot for the VirtualMachine %s", vmName)
-		return 1
+		return 1, taskErr
 	case true:
-		return 0
+		return 0, nil
 	default:
 		log.Log.Info("VirtualMachine has already a snapshot with the same name")
-		return 2
+		return 2, nil
 	}
 }
 

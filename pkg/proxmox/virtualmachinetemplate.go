@@ -126,6 +126,7 @@ func ImportDiskToVM(vmName, nodeName, diskName string) error {
 	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for importing disk")
+		return err
 	}
 	// Check if scsi0 is already imported or not
 	scsi0 := VirtualMachine.VirtualMachineConfig.SCSI0
@@ -135,6 +136,7 @@ func ImportDiskToVM(vmName, nodeName, diskName string) error {
 	localStorage, err := GetStorage("local")
 	if err != nil {
 		log.Log.Error(err, "Error getting local storage")
+		return err
 	}
 	diskLocation := localStorage.Path + "/template/iso/" + diskName
 
@@ -145,19 +147,17 @@ func ImportDiskToVM(vmName, nodeName, diskName string) error {
 		Value: "local-lvm:0,import-from=" + diskLocation,
 	})
 	if err != nil {
-		panic(err)
+		return err
 	}
 
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 10, 10)
-	switch taskCompleted {
-	case false:
-		log.Log.Error(taskErr, "Can't import disk to VM")
-	case true:
-		log.Log.Info(fmt.Sprintf("Disk %s has been imported to VM %s", diskName, vmName))
-	default:
-		log.Log.Info("Disk is already imported")
+	taskStatus, taskCompleted, taskWaitErr := task.WaitForCompleteStatus(ctx, 10, 10)
+	if !taskStatus {
+		// Return the task.ExitStatus as an error
+		return &TaskError{ExitStatus: task.ExitStatus}
 	}
-
+	if !taskCompleted {
+		return taskWaitErr
+	}
 	return nil
 }
 
@@ -178,16 +178,17 @@ func AddCloudInitDrive(vmName, nodeName string) error {
 		Value: "local-lvm:cloudinit",
 	})
 	if err != nil {
-		panic(err)
+		log.Log.Error(err, "Error adding cloud-init drive to VM")
+		return err
 	}
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 10, 10)
-	switch taskCompleted {
-	case false:
-		log.Log.Error(taskErr, "Can't add cloud-init drive to VM")
-	case true:
-		log.Log.Info(fmt.Sprintf("Cloud-init drive has been added to VM %s", vmName))
-	default:
-		log.Log.Info("Cloud-init drive is already added")
+	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 10, 10)
+
+	if !taskStatus {
+		// Return the task.ExitStatus as an error
+		return &TaskError{ExitStatus: task.ExitStatus}
+	}
+	if !taskCompleted {
+		return taskErr
 	}
 	return nil
 }
@@ -230,11 +231,13 @@ func CreateVMTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (*prox
 	nodeName := vmTemplate.Spec.NodeName
 	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
-		panic(err)
+		log.Log.Error(err, "Error getting node for creating VM template")
+		return nil, err
 	}
 	vmID, err := getNextVMID(Client)
 	if err != nil {
 		log.Log.Error(err, "Error getting next VMID")
+		return nil, err
 	}
 	virtualMachineSpec := vmTemplate.Spec.VirtualMachineConfig
 	networkConfig := fmt.Sprintf("%s,bridge=%s", virtualMachineSpec.Network.Model, virtualMachineSpec.Network.Bridge)
@@ -269,7 +272,8 @@ func CreateVMTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (*prox
 	// Create VM
 	task, err := node.NewVirtualMachine(ctx, vmID, VMOptions...)
 	if err != nil {
-		panic(err)
+		log.Log.Error(err, "Error creating VM template")
+		return nil, err
 	}
 	return task, err
 }
@@ -278,11 +282,13 @@ func AddTagToVMTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (*pr
 	virtualMachine, err := getVirtualMachine(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for adding tag")
+		return nil, err
 	}
 	// Add tag to VM
 	task, err := virtualMachine.AddTag(ctx, virtualMachineTemplateTag)
 	if err != nil {
-		panic(err)
+		log.Log.Error(err, "Error adding tag to VM")
+		return nil, err
 	}
 	return task, err
 }

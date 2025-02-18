@@ -18,11 +18,12 @@ package proxmox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -168,7 +169,7 @@ func (r *VirtualMachineTemplateReconciler) SetupWithManager(mgr ctrl.Manager) er
 
 func (r *VirtualMachineTemplateReconciler) handleResourceNotFound(ctx context.Context, err error) error {
 	logger := log.FromContext(ctx)
-	if errors.IsNotFound(err) {
+	if kerrors.IsNotFound(err) {
 		logger.Info("VirtualMachineTemplate resource not found. Ignoring since object must be deleted")
 		return nil
 	}
@@ -184,7 +185,7 @@ func (r *VirtualMachineTemplateReconciler) handleImageOperations(ctx context.Con
 	err := r.Get(ctx, client.ObjectKey{Name: fmt.Sprintf(imageNameFormat, vmTemplate.Name),
 		Namespace: vmTemplate.Namespace}, storageDownloadURL)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if kerrors.IsNotFound(err) {
 			// If storageDownloadURL is not found, create a new one
 			err = r.createStorageDownloadURLCR(ctx, vmTemplate)
 			if err != nil {
@@ -246,12 +247,19 @@ func (r *VirtualMachineTemplateReconciler) handleVMCreation(ctx context.Context,
 		task, err = proxmox.AddTagToVMTemplate(vmTemplate)
 		if err != nil {
 			logger.Error(err, "Failed to add tag to VM template")
+			return err
 		}
 		// Wait for the task to complete
-		_, taskCompleted, err = task.WaitForCompleteStatus(ctx, 3, 7)
+		taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 3, 7)
+		if !taskStatus {
+			r.Recorder.Event(vmTemplate, "Warning", "VMTemplateCreateFailed",
+				fmt.Sprintf("VirtualMachine template %s creation failed: %s", templateVMName, task.ExitStatus))
+			// Return the task.ExitStatus as an error
+			return &proxmox.TaskError{ExitStatus: task.ExitStatus}
+		}
 		if !taskCompleted {
-			logger.Error(err, "Failed to add tag to VM template")
-			return err
+			logger.Error(taskErr, "Failed to add tag to VM template")
+			return taskErr
 		}
 		r.Recorder.Event(vmTemplate, "Normal", "VMTemplateCreated", fmt.Sprintf("VirtualMachine template %s is created", templateVMName))
 	}
@@ -272,17 +280,26 @@ func (r *VirtualMachineTemplateReconciler) handleFinalizer(ctx context.Context,
 }
 
 func (r *VirtualMachineTemplateReconciler) deleteVirtualMachineTemplate(ctx context.Context,
-	vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) {
+	vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) error {
 	logger := log.FromContext(ctx)
 	logger.Info(fmt.Sprintf("Deleting VirtualMachineTemplate %s", vmTemplate.Name))
 	// Delete the VM
 	r.Recorder.Event(vmTemplate, "Normal", "VMTemplateDeleting", fmt.Sprintf("VirtualMachine template %s is deleting", vmTemplate.Name))
 	if vmTemplate.Spec.DeletionProtection {
 		logger.Info("Deletion protection is enabled, skipping the deletion of VM")
-		return
+		return nil
 	} else {
-		proxmox.DeleteVM(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
+		err := proxmox.DeleteVM(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
+		if err != nil {
+			var taskErr *proxmox.TaskError
+			if errors.As(err, &taskErr) {
+				r.Recorder.Event(vmTemplate, "Warning", "VMTemplateDeleteFailed",
+					fmt.Sprintf("VirtualMachine template %s deletion failed: %s", vmTemplate.Name, err))
+			}
+			return err
+		}
 	}
+	return nil
 }
 
 func (r *VirtualMachineTemplateReconciler) createStorageDownloadURLCR(ctx context.Context,
@@ -331,12 +348,22 @@ func (r *VirtualMachineTemplateReconciler) handleCloudInitOperations(ctx context
 	// 1. Import Disk
 	err = proxmox.ImportDiskToVM(templateVMName, nodeName, storageDownloadURL.Spec.Filename)
 	if err != nil {
+		var taskErr *proxmox.TaskError
+		if errors.As(err, &taskErr) {
+			r.Recorder.Event(vmTemplate, "Warning", "VMTemplateImportDiskFailed",
+				fmt.Sprintf("VirtualMachine template %s import disk failed: %s", templateVMName, err))
+		}
 		logger.Error(err, "Failed to import disk to VM")
 		return err
 	}
 	// 2. Add cloud Init CD-ROM drive
 	err = proxmox.AddCloudInitDrive(templateVMName, nodeName)
 	if err != nil {
+		var taskErr *proxmox.TaskError
+		if errors.As(err, &taskErr) {
+			r.Recorder.Event(vmTemplate, "Warning", "VMTemplateAddCloudInitDriveFailed",
+				fmt.Sprintf("VirtualMachine template %s cloud init drive addition failed: %s", templateVMName, err))
+		}
 		logger.Error(err, "Failed to add cloud-init drive to VM")
 		return err
 	}
@@ -469,7 +496,9 @@ func (r *VirtualMachineTemplateReconciler) handleDelete(ctx context.Context,
 		delete(r.Watchers.Watchers, req.Name)
 	}
 	// Delete the VirtualMachineTemplate
-	r.deleteVirtualMachineTemplate(ctx, vmTemplate)
+	if err := r.deleteVirtualMachineTemplate(ctx, vmTemplate); err != nil {
+		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+	}
 	// Remove the finalizer
 	logger.Info("Removing finalizer from VirtualMachineTemplate", "name", vmTemplate.Name)
 	controllerutil.RemoveFinalizer(vmTemplate, virtualMachineTemplateFinalizerName)

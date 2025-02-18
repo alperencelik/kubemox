@@ -140,9 +140,8 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 		if errors.As(err, &taskErr) {
 			r.Recorder.Event(managedVM, "Warning", "Error",
 				fmt.Sprintf("ManagedVirtualMachine %s failed to update due to %s", managedVM.Name, taskErr.ExitStatus))
-		} else {
-			logger.Error(err, "Failed to update ManagedVirtualMachine")
 		}
+		logger.Error(err, "Failed to update ManagedVirtualMachine")
 		return ctrl.Result{Requeue: true, RequeueAfter: ManagedVMreconcilationPeriod}, client.IgnoreNotFound(err)
 	}
 	if err = r.Update(context.Background(), managedVM); err != nil {
@@ -338,7 +337,15 @@ func (r *ManagedVirtualMachineReconciler) handleDelete(ctx context.Context, req 
 	// Delete the VM
 	r.Recorder.Event(managedVM, "Normal", "Deleting", fmt.Sprintf("Deleting ManagedVirtualMachine %s", managedVM.Name))
 	if !managedVM.Spec.DeletionProtection {
-		proxmox.DeleteVM(managedVM.Name, managedVM.Spec.NodeName)
+		err = proxmox.DeleteVM(managedVM.Name, managedVM.Spec.NodeName)
+		if err != nil {
+			var taskErr *proxmox.TaskError
+			if errors.As(err, &taskErr) {
+				r.Recorder.Event(managedVM, "Warning", "Error", fmt.Sprintf("ManagedVirtualMachine %s failed to delete due to %s", managedVM.Name, err))
+			}
+			logger.Error(err, "Error deleting Managed Virtual Machine")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		}
 	} else {
 		// Remove managedVirtualMachineTag from Managed Virtual Machine to not manage it anymore
 		err = proxmox.RemoveVirtualMachineTag(managedVM.Name, managedVM.Spec.NodeName, proxmox.ManagedVirtualMachineTag)
