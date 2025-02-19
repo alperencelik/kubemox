@@ -88,7 +88,12 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	case kubernetes.ReconcileModeEnsureExists:
 		logger.Info(fmt.Sprintf("Reconciling Container %s in EnsureExists mode", container.Name))
-		containerExists := proxmox.ContainerExists(container.Spec.Name, container.Spec.NodeName)
+		var containerExists bool
+		containerExists, err = proxmox.ContainerExists(container.Spec.Name, container.Spec.NodeName)
+		if err != nil {
+			logger.Error(err, "Failed to check if Container exists")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		}
 		if !containerExists {
 			err = r.handleCloneContainer(ctx, container)
 			if err != nil {
@@ -178,7 +183,9 @@ func (r *ContainerReconciler) CloneContainer(container *proxmoxv1alpha1.Containe
 }
 
 func (r *ContainerReconciler) UpdateContainer(ctx context.Context, container *proxmoxv1alpha1.Container) error {
-	proxmox.UpdateContainer(container)
+	if err := proxmox.UpdateContainer(container); err != nil {
+		return err
+	}
 	r.Recorder.Event(container, "Normal", "Updated", fmt.Sprintf("Updated Container %s", container.Name))
 	err := r.Update(ctx, container)
 	if err != nil {
@@ -188,7 +195,10 @@ func (r *ContainerReconciler) UpdateContainer(ctx context.Context, container *pr
 }
 
 func (r *ContainerReconciler) UpdateContainerStatus(ctx context.Context, container *proxmoxv1alpha1.Container) error {
-	containerStatus := proxmox.UpdateContainerStatus(container.Name, container.Spec.NodeName)
+	containerStatus, err := proxmox.UpdateContainerStatus(container.Name, container.Spec.NodeName)
+	if err != nil {
+		return err
+	}
 
 	qemuStatus := proxmoxv1alpha1.QEMUStatus{
 		State:  containerStatus.State,
@@ -198,7 +208,7 @@ func (r *ContainerReconciler) UpdateContainerStatus(ctx context.Context, contain
 	}
 	container.Status.Status = qemuStatus
 	// Update Container
-	err := r.Status().Update(ctx, container)
+	err = r.Status().Update(ctx, container)
 	if err != nil {
 		return err
 	}
@@ -233,7 +243,11 @@ func (r *ContainerReconciler) StartOrUpdateContainer(ctx context.Context,
 	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
 	// Update Container
-	containerState := proxmox.GetContainerState(containerName, nodeName)
+	containerState, err := proxmox.GetContainerState(containerName, nodeName)
+	if err != nil {
+		logger.Error(err, "Failed to get Container state")
+		return err
+	}
 	if containerState == typeStoppedContainer {
 		err := proxmox.StartContainer(containerName, nodeName)
 		if err != nil {
@@ -306,7 +320,11 @@ func (r *ContainerReconciler) handleDelete(ctx context.Context, req ctrl.Request
 
 func (r *ContainerReconciler) handleContainerOperations(ctx context.Context, container *proxmoxv1alpha1.Container) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	containerExists := proxmox.ContainerExists(container.Spec.Name, container.Spec.NodeName)
+	containerExists, err := proxmox.ContainerExists(container.Spec.Name, container.Spec.NodeName)
+	if err != nil {
+		logger.Error(err, "Failed to check if Container exists")
+		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+	}
 	if containerExists {
 		err := r.StartOrUpdateContainer(ctx, container)
 		if err != nil {
@@ -329,7 +347,11 @@ func (r *ContainerReconciler) handleAutoStart(ctx context.Context,
 	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
 	if container.Spec.EnableAutoStart {
-		containerState := proxmox.GetContainerState(containerName, nodeName)
+		containerState, err := proxmox.GetContainerState(containerName, nodeName)
+		if err != nil {
+			logger.Error(err, "Failed to get Container state")
+			return ctrl.Result{Requeue: true}, err
+		}
 		if containerState == typeStoppedContainer {
 			err := proxmox.StartContainer(containerName, nodeName)
 			if err != nil {
@@ -378,7 +400,10 @@ func (r *ContainerReconciler) handleContainerDeletion(ctx context.Context, conta
 		logger.Info(fmt.Sprintf("Container %s is protected from deletion", containerName))
 		return
 	} else {
-		proxmox.DeleteContainer(containerName, nodeName)
+		if err := proxmox.DeleteContainer(containerName, nodeName); err != nil {
+			logger.Error(err, "Failed to delete Container")
+			return
+		}
 	}
 	r.Recorder.Event(container, "Normal", "Deleted", fmt.Sprintf("Deleted Container %s", containerName))
 }

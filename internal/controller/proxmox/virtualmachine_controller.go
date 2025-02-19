@@ -18,10 +18,11 @@ package proxmox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -89,7 +90,12 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, nil
 	case kubernetes.ReconcileModeEnsureExists:
 		logger.Info(fmt.Sprintf("Reconciliation is ensure exists for VirtualMachine %s", vm.Name))
-		vmExists := proxmox.CheckVM(vm.Spec.Name, vm.Spec.NodeName)
+		var vmExists bool
+		vmExists, err = proxmox.CheckVM(vm.Spec.Name, vm.Spec.NodeName)
+		if err != nil {
+			logger.Error(err, "Error checking VirtualMachine")
+			return ctrl.Result{Requeue: true, RequeueAfter: VMreconcilationPeriod}, client.IgnoreNotFound(err)
+		}
 		if !vmExists {
 			// If not exists, create the VM
 			logger.Info("Creating VirtualMachine", "name", vm.Spec.Name)
@@ -178,7 +184,11 @@ func (r *VirtualMachineReconciler) handleVirtualMachineOperations(ctx context.Co
 	vmName := vm.Spec.Name
 	nodeName := vm.Spec.NodeName
 	logger := log.FromContext(ctx)
-	vmExists := proxmox.CheckVM(vmName, nodeName)
+	vmExists, err := proxmox.CheckVM(vmName, nodeName)
+	if err != nil {
+		logger.Error(err, "Error checking VirtualMachine")
+		return ctrl.Result{Requeue: true, RequeueAfter: VMreconcilationPeriod}, client.IgnoreNotFound(err)
+	}
 	if !vmExists {
 		// If not exists, create the VM
 		logger.Info("Creating VirtualMachine", "name", vmName)
@@ -204,7 +214,6 @@ func (r *VirtualMachineReconciler) handleVirtualMachineOperations(ctx context.Co
 			logger.Error(err, "Error handling auto start")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}
-
 		err = r.UpdateVirtualMachine(ctx, vm)
 		if err != nil {
 			logger.Error(err, "Error updating VirtualMachine")
@@ -224,6 +233,9 @@ func (r *VirtualMachineReconciler) handleVirtualMachineOperations(ctx context.Co
 	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
 
+// TODO: Reduce cyclomatic complexity or refactor the function
+//
+//nolint:all
 func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) error {
 	logger := log.FromContext(ctx)
 	vmName := vm.Spec.Name
@@ -234,31 +246,65 @@ func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, vm 
 	switch vmType {
 	case "template":
 		r.Recorder.Event(vm, "Normal", "Creating", fmt.Sprintf("VirtualMachine %s is being created", vmName))
-		proxmox.CreateVMFromTemplate(vm)
-		if err := r.Status().Update(context.Background(), vm); err != nil {
-			return err
+		// TODO: Check return err value and based on the error, update the status if needed.
+		err := proxmox.CreateVMFromTemplate(vm)
+		// Check if return error is task error
+		if err != nil {
+			var taskErr *proxmox.TaskError
+			if errors.As(err, &taskErr) {
+				r.Recorder.Event(vm, "Warning", "Error",
+					fmt.Sprintf("VirtualMachine %s failed to create due to %s", vmName, err))
+				return err
+			}
+			if updateErr := r.Status().Update(context.Background(), vm); updateErr != nil {
+				return updateErr
+			}
 		}
+		r.Recorder.Event(vm, "Normal", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
 		startResult, err := proxmox.StartVM(vmName, nodeName)
 		if err != nil {
-			return err
-		} else {
-			logger.Info(startResult)
+			var taskErr *proxmox.TaskError
+			if errors.As(err, &taskErr) {
+				r.Recorder.Event(vm, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to start due to %s", vmName, err))
+			} else {
+				logger.Error(err, "Failed to start VirtualMachine")
+			}
 		}
-		r.Recorder.Event(vm, "Normal", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
+		if startResult {
+			logger.Info(fmt.Sprintf("VirtualMachine %s has been started", vm.Spec.Name))
+		}
+
 	case "scratch":
 		r.Recorder.Event(vm, "Normal", "Creating", fmt.Sprintf("VirtualMachine %s is being created", vmName))
-		proxmox.CreateVMFromScratch(vm)
+		err := proxmox.CreateVMFromScratch(vm)
+		if err != nil {
+			var taskErr *proxmox.TaskError
+			if errors.As(err, &taskErr) {
+				r.Recorder.Event(vm, "Warning", "Error",
+					fmt.Sprintf("VirtualMachine %s failed to create due to %s", vmName, err))
+				return err
+			}
+			if updateErr := r.Status().Update(context.Background(), vm); updateErr != nil {
+				return updateErr
+			}
+		}
 		r.Recorder.Event(vm, "Normal", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
-		err := r.handleCloudInitOperations(ctx, vm)
+		err = r.handleCloudInitOperations(ctx, vm)
 		if err != nil {
 			return err
 		}
 
 		startResult, err := proxmox.StartVM(vmName, nodeName)
 		if err != nil {
-			return err
-		} else {
-			logger.Info(startResult)
+			var taskErr *proxmox.TaskError
+			if errors.As(err, &taskErr) {
+				r.Recorder.Event(vm, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to start due to %s", vmName, err))
+			} else {
+				logger.Error(err, "Failed to start VirtualMachine")
+			}
+		}
+		if startResult {
+			logger.Info(fmt.Sprintf("VirtualMachine %s has been started", vm.Spec.Name))
 		}
 		r.Recorder.Event(vm, "Normal", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
 	default:
@@ -267,16 +313,25 @@ func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, vm 
 	return nil
 }
 
-func (r *VirtualMachineReconciler) DeleteVirtualMachine(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) {
+func (r *VirtualMachineReconciler) DeleteVirtualMachine(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) error {
 	logger := log.FromContext(ctx)
 	// Delete the VM
 	r.Recorder.Event(vm, "Normal", "Deleting", fmt.Sprintf("VirtualMachine %s is being deleted", vm.Spec.Name))
 	if vm.Spec.DeletionProtection {
 		logger.Info(fmt.Sprintf("VirtualMachine %s is protected from deletion", vm.Spec.Name))
-		return
+		return nil
 	} else {
-		proxmox.DeleteVM(vm.Spec.Name, vm.Spec.NodeName)
+		err := proxmox.DeleteVM(vm.Spec.Name, vm.Spec.NodeName)
+		if err != nil {
+			logger.Error(err, "Failed to delete VirtualMachine")
+			var taskErr *proxmox.TaskError
+			if errors.As(err, &taskErr) {
+				r.Recorder.Event(vm, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to delete due to %s", vm.Spec.Name, err))
+			}
+			return err
+		}
 	}
+	return nil
 }
 
 func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) error {
@@ -289,6 +344,8 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(ctx context.Contex
 	// Update the QEMU status
 	qemuStatus, err := proxmox.UpdateVMStatus(vm.Spec.Name, vm.Spec.NodeName)
 	if err != nil {
+		// Update the status condition
+		r.Recorder.Event(vm, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to update status due to %s", vm.Spec.Name, err))
 		return err
 	}
 	vm.Status.Status = qemuStatus
@@ -300,7 +357,7 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(ctx context.Contex
 
 func (r *VirtualMachineReconciler) handleResourceNotFound(ctx context.Context, err error) error {
 	logger := log.FromContext(ctx)
-	if errors.IsNotFound(err) {
+	if kerrors.IsNotFound(err) {
 		logger.Info("VirtualMachine resource not found. Ignoring since object must be deleted")
 		return nil
 	}
@@ -321,9 +378,15 @@ func (r *VirtualMachineReconciler) handleAutoStart(ctx context.Context,
 		if vmState == "stopped" {
 			startResult, err := proxmox.StartVM(vmName, nodeName)
 			if err != nil {
-				return ctrl.Result{Requeue: true}, err
-			} else {
-				logger.Info(startResult)
+				var taskErr *proxmox.TaskError
+				if errors.As(err, &taskErr) {
+					r.Recorder.Event(vm, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to start due to %s", vmName, err))
+				} else {
+					logger.Error(err, "Failed to start VirtualMachine")
+				}
+			}
+			if startResult {
+				logger.Info(fmt.Sprintf("VirtualMachine %s has been started", vm.Spec.Name))
 			}
 			return ctrl.Result{Requeue: true}, nil
 		}
@@ -334,8 +397,17 @@ func (r *VirtualMachineReconciler) handleAutoStart(ctx context.Context,
 func (r *VirtualMachineReconciler) UpdateVirtualMachine(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) error {
 	logger := log.FromContext(ctx)
 	// UpdateVM is checks the delta for CPU and Memory and updates the VM with a restart
-	updateStatus := proxmox.UpdateVM(vm)
-	err := r.UpdateVirtualMachineStatus(ctx, vm)
+	updateStatus, err := proxmox.UpdateVM(vm)
+	if err != nil {
+		logger.Error(err, "Failed to update VirtualMachine")
+		var taskErr *proxmox.TaskError
+		if errors.As(err, &taskErr) {
+			r.Recorder.Event(vm, "Warning", "Error",
+				fmt.Sprintf("VirtualMachine %s failed to update due to %s", vm.Name, taskErr.ExitStatus))
+		}
+		return err
+	}
+	err = r.UpdateVirtualMachineStatus(ctx, vm)
 	if err != nil {
 		return err
 	}
@@ -390,7 +462,19 @@ func (r *VirtualMachineReconciler) handleDelete(ctx context.Context, req ctrl.Re
 	}
 	// Perform all operations to delete the VM if the VM is not marked as deleting
 	// TODO: Evaluate the requirement of check mechanism for VM whether it's already deleting
-	r.DeleteVirtualMachine(ctx, vm)
+	err := r.DeleteVirtualMachine(ctx, vm)
+	if err != nil {
+		logger.Error(err, "Failed to delete VirtualMachine")
+		var taskErr *proxmox.TaskError
+		if errors.As(err, &taskErr) {
+			r.Recorder.Event(vm, "Warning", "Error",
+				fmt.Sprintf("VirtualMachine %s failed to delete due to %s", vm.Spec.Name, err))
+			return ctrl.Result{Requeue: true, RequeueAfter: VMreconcilationPeriod}, client.IgnoreNotFound(err)
+		}
+		if err = r.Status().Update(context.Background(), vm); err != nil {
+			return ctrl.Result{Requeue: true, RequeueAfter: VMreconcilationPeriod}, client.IgnoreNotFound(err)
+		}
+	}
 
 	// Remove finalizer
 	logger.Info("Removing finalizer from VirtualMachine", "name", vm.Spec.Name)
