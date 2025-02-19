@@ -233,6 +233,9 @@ func (r *VirtualMachineReconciler) handleVirtualMachineOperations(ctx context.Co
 	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
 
+// TODO: Reduce cyclomatic complexity or refactor the function
+//
+//nolint:all
 func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) error {
 	logger := log.FromContext(ctx)
 	vmName := vm.Spec.Name
