@@ -183,12 +183,6 @@ func (r *VirtualMachineSnapshotReconciler) handleSnapshotCreation(ctx context.Co
 				return client.IgnoreNotFound(err)
 			}
 			logger.Info(fmt.Sprintf("Snapshot %s is created for %s", snapshotName, vmName))
-		case 2:
-			// Snapshot is already created, return
-			vmSnapshot.Status.Status = "Snapshot is already created"
-			if err = r.Status().Update(ctx, vmSnapshot); err != nil {
-				return client.IgnoreNotFound(err)
-			}
 		default:
 			// Snapshot creation failed, return
 			vmSnapshot.Status.ErrorMessage = "Snapshot creation failed"

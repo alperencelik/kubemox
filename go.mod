@@ -11,6 +11,7 @@ require (
 	github.com/onsi/gomega v1.27.7
 	github.com/prometheus/client_golang v1.15.1
 	github.com/robfig/cron/v3 v3.0.1
+	gotest.tools/v3 v3.5.2
 	k8s.io/api v0.28.3
 	k8s.io/apiextensions-apiserver v0.27.2
 	k8s.io/apimachinery v0.28.3
@@ -79,7 +80,7 @@ require (
 	golang.org/x/term v0.13.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
-	golang.org/x/tools v0.12.0 // indirect
+	golang.org/x/tools v0.13.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.3.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect

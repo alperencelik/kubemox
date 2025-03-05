@@ -254,7 +254,6 @@ func DeleteVM(vmName, nodeName string) error {
 			log.Log.Error(taskErr, "Can't stop VM")
 			return taskErr
 		}
-		return nil
 	}
 	// Delete VM
 	task, err := VirtualMachine.Delete(ctx)
@@ -321,11 +320,17 @@ func StopVM(vmName, nodeName string) error {
 		return err
 	}
 
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineStopTimesNum, virtualMachineStopSteps)
+	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineStopTimesNum, virtualMachineStopSteps)
+	if !taskStatus {
+		// Return the taks.ExitStatus as error
+		return &TaskError{ExitStatus: task.ExitStatus}
+	}
 	if !taskCompleted {
 		log.Log.Error(taskErr, "Can't stop VM")
+		return taskErr
+	} else {
+		return taskErr
 	}
-	return err
 }
 
 func GetVMState(vmName, nodeName string) (state string, err error) {
@@ -567,16 +572,8 @@ func UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) {
 	var memoryOption proxmox.VirtualMachineOption
 	cpuOption.Name = virtualMachineCPUOption
 	memoryOption.Name = virtualMachineMemoryOption
-	switch CheckVMType(vm) {
-	case VirtualMachineTemplateType:
-		cpuOption.Value = vm.Spec.Template.Cores
-		memoryOption.Value = uint64(vm.Spec.Template.Memory)
-	case VirtualMachineScratchType:
-		cpuOption.Value = vm.Spec.VMSpec.Cores
-		memoryOption.Value = uint64(vm.Spec.VMSpec.Memory)
-	default:
-		log.Log.Info(fmt.Sprintf("VM %s doesn't have any template or vmSpec defined", vmName))
-	}
+	cpuOption.Value = GetCores(vm)
+	memoryOption.Value = GetMemory(vm)
 	VirtualMachineMem := VirtualMachine.MaxMem / 1024 / 1024 // As MB
 
 	if VirtualMachine.CPUs != cpuOption.Value || VirtualMachineMem != memoryOption.Value {
@@ -762,17 +759,16 @@ func CreateVMSnapshot(vmName, snapshotName string) (statusCode int, err error) {
 	if err != nil {
 		return 1, err
 	}
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 3, 10)
-	switch taskCompleted {
-	case false:
+	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 3, 10)
+	if !taskStatus {
+		// Return the task.ExitStatus as error
+		return 1, &TaskError{ExitStatus: task.ExitStatus}
+	}
+	if !taskCompleted {
 		log.Log.Error(taskErr, "Can't create snapshot for the VirtualMachine %s", vmName)
 		return 1, taskErr
-	case true:
-		return 0, nil
-	default:
-		log.Log.Info("VirtualMachine has already a snapshot with the same name")
-		return 2, nil
 	}
+	return 0, nil
 }
 
 func GetVMSnapshots(vmName string) ([]string, error) {
@@ -816,11 +812,19 @@ func RemoveVirtualMachineTag(vmName, nodeName, tag string) error {
 		log.Log.Error(err, "Error getting VM for removing tag")
 	}
 	removeTagTask, err := VirtualMachine.RemoveTag(ctx, tag)
-	_, taskCompleted, taskErr := removeTagTask.WaitForCompleteStatus(ctx, 5, 3)
+	if err != nil {
+		return err
+	}
+	taskStatus, taskCompleted, taskErr := removeTagTask.WaitForCompleteStatus(ctx, 5, 3)
+	if !taskStatus {
+		// Return the task.ExitStatus as error
+		return &TaskError{ExitStatus: removeTagTask.ExitStatus}
+	}
 	if !taskCompleted {
 		log.Log.Error(taskErr, "Error removing tag from VirtualMachine")
+		return taskErr
 	}
-	return err
+	return nil
 }
 
 func GetNetworkConfiguration(vm *proxmoxv1alpha1.VirtualMachine) (map[string]string, error) {
@@ -894,11 +898,23 @@ func updateNetworkConfig(ctx context.Context,
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for updating network configuration")
 	}
-	_, err = virtualMachine.Config(ctx, proxmox.VirtualMachineOption{
+	task, err := virtualMachine.Config(ctx, proxmox.VirtualMachineOption{
 		Name:  netStr + strconv.Itoa(i),
 		Value: networkModel + "," + "bridge=" + networkBridge,
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 3)
+	if !taskStatus {
+		// Return the task.ExitStatus as error
+		return &TaskError{ExitStatus: task.ExitStatus}
+	}
+	if !taskCompleted {
+		log.Log.Error(taskErr, "Error updating network configuration")
+		return taskErr
+	}
+	return nil
 }
 
 // func configureVirtualMachineNetwork(vm *proxmoxv1alpha1.VirtualMachine) error {
@@ -982,15 +998,23 @@ func configureVirtualMachineNetwork(vm *proxmoxv1alpha1.VirtualMachine) error {
 		return err
 	}
 	// Check if network configuration is different
-	if !reflect.DeepEqual(networks, virtualMachineNetworksParsed) {
+	if !reflect.DeepEqual(*networks, virtualMachineNetworksParsed) {
 		// The desired network configuration is different than the actual one
 		log.Log.Info(fmt.Sprintf("Updating network configuration for VirtualMachine %s", vm.Name))
 		// Update the network configuration
 		for i := len(*networks); i < len(virtualMachineNetworksParsed); i++ {
 			// Remove the network configuration
 			log.Log.Info(fmt.Sprintf("Removing the network configuration for net%d of VM %s", i, vm.Spec.Name))
-			taskID, _ := deleteVirtualMachineOption(vm, "net"+strconv.Itoa(i))
-			_, taskCompleted, taskErr := taskID.WaitForCompleteStatus(ctx, 5, 3)
+			var taskID proxmox.Task
+			taskID, err = deleteVirtualMachineOption(vm, "net"+strconv.Itoa(i))
+			if err != nil {
+				return err
+			}
+			taskStatus, taskCompleted, taskErr := taskID.WaitForCompleteStatus(ctx, 5, 3)
+			if !taskStatus {
+				// Return the task.ExitStatus as error
+				return &TaskError{ExitStatus: taskID.ExitStatus}
+			}
 			if !taskCompleted {
 				log.Log.Error(taskErr, "Error removing network configuration from VirtualMachine")
 			}
@@ -1150,11 +1174,20 @@ func addDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 		Name:  disk.Device,
 		Value: disk.Storage + ":" + strconv.Itoa(disk.Size),
 	})
-	_, taskCompleted, taskErr := taskID.WaitForCompleteStatus(ctx, 5, 3)
+	if err != nil {
+		log.Log.Error(err, "Error adding disk configuration for VirtualMachine")
+		return err
+	}
+	taskStatus, taskCompleted, taskErr := taskID.WaitForCompleteStatus(ctx, 5, 3)
+	if !taskStatus {
+		// Return the task.ExitStatus as error
+		return &TaskError{ExitStatus: taskID.ExitStatus}
+	}
 	if !taskCompleted {
 		log.Log.Error(taskErr, "Error updating disk configuration for VirtualMachine")
+		return nil
 	}
-	return err
+	return nil
 }
 
 func CheckVirtualMachineDelta(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) {
@@ -1348,10 +1381,12 @@ func updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
+		return err
 	}
 	index, err := getIndexOfPCIConfig(vmName, nodeName, pci)
 	if err != nil {
 		log.Log.Error(err, "Error getting index of PCI configuration")
+		return err
 	}
 	// If the type is "mapped" then the value should be "mapped=deviceID"
 	var pciID string
@@ -1361,37 +1396,21 @@ func updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 		pciID = pci.DeviceID
 	}
 
-	taskID, err := VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
-		Name: "hostpci" + index,
-		Value: pciID + func() string {
-			var value string
-			value += ","
-			var pcieSet, xVgaSet bool
-			if pci.PCIE {
-				value += "pcie=1"
-				pcieSet = true
-			}
-			if pci.PrimaryGPU {
-				if pcieSet {
-					value += ","
-				}
-				value += "x-vga=1"
-				xVgaSet = true
-			}
-			if !pcieSet && !xVgaSet {
-				return ""
-			}
-
-			return value
-		}(),
+	task, err := VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
+		Name:  "hostpci" + index,
+		Value: pciID + "," + buildPCIOptions(pci),
 	})
 	if err != nil {
 		log.Log.Error(err, "Error updating PCI configuration for VirtualMachine")
 		return err
 	}
-	_, taskCompleted, taskErr := taskID.WaitForCompleteStatus(ctx, 5, 3)
+	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 3)
+	if !taskStatus {
+		// Return the task.ExitStatus as error
+		return &TaskError{ExitStatus: task.ExitStatus}
+	}
 	if !taskCompleted {
-		log.Log.Error(taskErr, "Error updating PCI configuration for VirtualMachine")
+		return taskErr
 	}
 	// Rebooting VM spawns two different tasks, one for stopping and one for starting and unfortunately you can't track the start so
 	// here we should do stop and start separately
@@ -1399,28 +1418,28 @@ func updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	err = StopVM(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error stopping VirtualMachine")
+		return err
 	}
 	// TODO: Implement something more logical
 	// Start VM
-	virtualMachine, err := getVirtualMachine(vmName, nodeName)
+	task, err = VirtualMachine.Start(ctx)
 	if err != nil {
-		log.Log.Error(err, "Error getting VM")
+		log.Log.Error(err, "Error starting VirtualMachine")
+		return err
 	}
-	// start the VM
-	task, _ := virtualMachine.Start(ctx)
-	_, _, err = task.WaitForCompleteStatus(ctx, 5, 3)
-	// Check the task status and return the error if it's not completed
-	if task.IsFailed {
-		log.Log.Error(err, fmt.Sprintf("Error starting VirtualMachine %s while attaching %s PCI device", vmName, pci.DeviceID))
-		// Try to revert the changes
-		err = revertVirtualMachineOption(vmName, nodeName, "hostpci"+index)
-		if err != nil {
-			log.Log.Error(err, "Error reverting changes")
-		}
-		// TODO:
-		// Remove the PCI device from the VirtualMachine object YAML
+	taskStatus, taskCompleted, err = task.WaitForCompleteStatus(ctx, 5, 3)
+	if err != nil {
+		log.Log.Error(err, "Error starting VirtualMachine")
+		return err
 	}
-	return err
+	if !taskStatus {
+		// Return the task.ExitStatus as error
+		return &TaskError{ExitStatus: task.ExitStatus}
+	}
+	if !taskCompleted {
+		return err
+	}
+	return nil
 }
 
 func getIndexOfPCIConfig(vmName, nodeName string, pciDevice proxmoxv1alpha1.PciDevice) (string, error) {
@@ -1439,24 +1458,46 @@ func getIndexOfPCIConfig(vmName, nodeName string, pciDevice proxmoxv1alpha1.PciD
 	return "0", err
 }
 
-func revertVirtualMachineOption(vmName, nodeName, value string) error {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
-	if err != nil {
-		log.Log.Error(err, "Error getting VM for reverting")
+func buildPCIOptions(pci proxmoxv1alpha1.PciDevice) string {
+	var pciOptions []string
+	if pci.Type == "mapped" {
+		pciOptions = append(pciOptions, "mapping="+pci.DeviceID)
+	} else {
+		pciOptions = append(pciOptions, pci.DeviceID)
 	}
-	revertTask, err := VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
-		Name:  "revert",
-		Value: value,
-	})
-	if err != nil {
-		log.Log.Error(err, "Error reverting VirtualMachine")
+	if pci.PCIE {
+		pciOptions = append(pciOptions, "pcie=1")
 	}
-	_, taskCompleted, taskErr := revertTask.WaitForCompleteStatus(ctx, 5, 3)
-	if !taskCompleted {
-		log.Log.Error(taskErr, "Error occurred while reverting VirtualMachine")
+	if pci.PrimaryGPU {
+		pciOptions = append(pciOptions, "x-vga=1")
 	}
-	return taskErr
+	// Join only if there are extra pciOptions beyond the device ID or mapping
+	return strings.Join(pciOptions, ",")
 }
+
+// func revertVirtualMachineOption(vmName, nodeName, value string) error {
+// 	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+// 	if err != nil {
+// 		log.Log.Error(err, "Error getting VM for reverting")
+// 	}
+// 	revertTask, err := VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
+// 		Name:  "revert",
+// 		Value: value,
+// 	})
+// 	if err != nil {
+// 		log.Log.Error(err, "Error reverting VirtualMachine")
+// 	}
+// 	taskStatus, taskCompleted, taskErr := revertTask.WaitForCompleteStatus(ctx, 5, 3)
+// 	if !taskStatus {
+// 		// Return the task.ExitStatus as error
+// 		return &TaskError{ExitStatus: revertTask.ExitStatus}
+// 	}
+// 	if !taskCompleted {
+// 		log.Log.Error(taskErr, "Error occurred while reverting VirtualMachine")
+// 		return taskErr
+// 	}
+// 	return nil
+// }
 
 func RebootVM(vmName, nodeName string) error {
 	virtualMachine, err := getVirtualMachine(vmName, nodeName)
@@ -1468,11 +1509,16 @@ func RebootVM(vmName, nodeName string) error {
 	if err != nil {
 		log.Log.Error(err, "Error rebooting VirtualMachine %s", vmName)
 	}
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 3)
-	if !taskCompleted {
-		log.Log.Error(taskErr, "Error rebooting VirtualMachine %s", vmName)
+	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 3)
+	if !taskStatus {
+		// Return the task.ExitStatus as error
+		return &TaskError{ExitStatus: task.ExitStatus}
 	}
-	return err
+	if !taskCompleted {
+		log.Log.Error(taskErr, "Error rebooting VirtualMachine")
+		return taskErr
+	}
+	return nil
 }
 
 func ApplyAdditionalConfiguration(vm *proxmoxv1alpha1.VirtualMachine) error {
@@ -1491,15 +1537,21 @@ func ApplyAdditionalConfiguration(vm *proxmoxv1alpha1.VirtualMachine) error {
 		if err != nil {
 			log.Log.Error(err, "Error applying additional configuration")
 		}
-		_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 3)
+		taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 3)
+		if !taskStatus {
+			// Return the task.ExitStatus as error
+			return &TaskError{ExitStatus: task.ExitStatus}
+		}
 		if !taskCompleted {
 			log.Log.Error(taskErr, "Error applying additional configuration")
+			return taskErr
 		}
 	}
 	// Check if there is a need to reboot the VM
 	pendingConfig, err := VirtualMachine.Pending(ctx)
 	if err != nil {
 		log.Log.Error(err, "Error getting pending configuration")
+		return err
 	}
 	var reboot bool
 	// TODO: Re-think about the watching pendingConfig
