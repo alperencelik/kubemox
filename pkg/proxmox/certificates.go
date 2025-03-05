@@ -11,7 +11,7 @@ func CreateCustomCertificate(nodeName string, proxmoxCertSpec *proxmoxv1alpha1.P
 	// get the node object
 	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	certificate := proxmoxCertSpec.Certificate
 	privateKey := proxmoxCertSpec.PrivateKey
@@ -29,16 +29,17 @@ func CreateCustomCertificate(nodeName string, proxmoxCertSpec *proxmoxv1alpha1.P
 }
 
 // Delete certificate object from proxmox node
-func DeleteCustomCertificate(nodeName string) {
+func DeleteCustomCertificate(nodeName string) error {
 	// get the node object
 	node, err := Client.Node(ctx, nodeName)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	// Delete the certificate object from proxmox node
 	log.Log.Info("Deleting the certificate from the Proxmox node", "Node", nodeName)
 	err = node.DeleteCustomCertificate(ctx)
 	if err != nil {
-		log.Log.Error(err, "unable to delete custom certificate")
+		return err
 	}
+	return nil
 }

@@ -76,73 +76,31 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 	if err != nil {
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
-
-	vmName := vmSnapshot.Spec.VirtualMachineName
-	snapshotName := vmSnapshot.Spec.SnapshotName
-	if snapshotName == "" {
-		// If snapshot name is not specified, use the timestamp as the snapshot name
-		snapshotName = fmt.Sprintf("snapshot_%s", time.Now().Format("2006_01_02T15_04_05Z07_00"))
-	}
-
-	vm := &proxmoxv1alpha1.VirtualMachine{}
-	err = r.Get(ctx, client.ObjectKey{Namespace: req.Namespace, Name: vmName}, vm)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			logger.Error(err, "VirtualMachine not found. Ignoring since object must be deleted")
-			return ctrl.Result{}, client.IgnoreNotFound(err)
-		}
-		logger.Error(err, "Failed to get VirtualMachine")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
-
 	logger.Info("Reconciling VirtualMachineSnapshot", "Name", vmSnapshot.Name)
+
+	// Get ref vm
+	vm, err := r.getVMreference(ctx, vmSnapshot)
+	if err != nil {
+		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
+	}
 
 	// Set ownerRef for the VirtualMachineSnapshot
 	if err = controllerutil.SetControllerReference(vm, vmSnapshot, r.Scheme); err != nil {
 		logger.Error(err, "unable to set owner reference for VirtualMachineSnapshot")
 		return ctrl.Result{}, err
 	}
+	snapshotName := vmSnapshot.Spec.SnapshotName
+	if snapshotName == "" {
+		// If snapshot name is not specified, use the timestamp as the snapshot name
+		snapshotName = fmt.Sprintf("snapshot_%s", time.Now().Format("2006_01_02T15_04_05Z07_00"))
+	}
 
-	// Get all the snapshots of the VM
-	snapshots, err := proxmox.GetVMSnapshots(vmName)
+	// Handle snapshot creation
+	err = r.handleSnapshotCreation(ctx, vmSnapshot, snapshotName)
 	if err != nil {
-		logger.Error(err, "Failed to get VM snapshots")
-		return ctrl.Result{}, err
+		return ctrl.Result{Requeue: true, RequeueAfter: VMSnapshotreconcilationPeriod}, client.IgnoreNotFound(err)
 	}
-	// If snapshotName is exists in the snapshots, return
-	if utils.ExistsIn([]string{snapshotName}, snapshots) {
-		logger.Info("Snapshot is already exists")
-		vmSnapshot.Status.Status = snapshotCreatedStatus
-		err = r.Status().Update(ctx, vmSnapshot)
-		if err != nil {
-			return ctrl.Result{}, client.IgnoreNotFound(err)
-		}
-		return ctrl.Result{}, nil
-	} else if vmSnapshot.Status.Status != snapshotCreatedStatus {
-		// Create the snapshot
-		StatusCode := proxmox.CreateVMSnapshot(vmName, snapshotName)
-		switch StatusCode {
-		case 0:
-			vmSnapshot.Status.Status = snapshotCreatedStatus
-			vmSnapshot.Spec.Timestamp = metav1.Now()
-			if err = r.Status().Update(ctx, vmSnapshot); err != nil {
-				return ctrl.Result{}, client.IgnoreNotFound(err)
-			}
-			logger.Info(fmt.Sprintf("Snapshot %s is created for %s", snapshotName, vmName))
-		case 2:
-			// Snapshot is already created, return
-			vmSnapshot.Status.Status = "Snapshot is already created"
-			if err = r.Status().Update(ctx, vmSnapshot); err != nil {
-				return ctrl.Result{}, client.IgnoreNotFound(err)
-			}
-		default:
-			// Snapshot creation failed, return
-			vmSnapshot.Status.ErrorMessage = "Snapshot creation failed"
-			if err = r.Status().Update(ctx, vmSnapshot); err != nil {
-				return ctrl.Result{}, client.IgnoreNotFound(err)
-			}
-		}
-	}
+
 	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
 
@@ -170,4 +128,68 @@ func (r *VirtualMachineSnapshotReconciler) handleResourceNotFound(ctx context.Co
 	}
 	logger.Error(err, "Failed to get VirtualMachineSnapshot")
 	return err
+}
+
+func (r *VirtualMachineSnapshotReconciler) getVMreference(ctx context.Context,
+	vmSnapshot *proxmoxv1alpha1.VirtualMachineSnapshot) (*proxmoxv1alpha1.VirtualMachine, error) {
+	logger := log.FromContext(ctx)
+	vmName := vmSnapshot.Spec.VirtualMachineName
+
+	vm := &proxmoxv1alpha1.VirtualMachine{}
+	// VirtualMachine is now Cluster scoped
+	err := r.Get(ctx, client.ObjectKey{Name: vmName}, vm)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Error(err, "VirtualMachine not found. Ignoring since object must be deleted")
+			return nil, err
+		}
+		logger.Error(err, "Failed to get VirtualMachine")
+		return nil, err
+	}
+	return vm, nil
+}
+
+func (r *VirtualMachineSnapshotReconciler) handleSnapshotCreation(ctx context.Context,
+	vmSnapshot *proxmoxv1alpha1.VirtualMachineSnapshot, snapshotName string) error {
+	logger := log.FromContext(ctx)
+	vmName := vmSnapshot.Spec.VirtualMachineName
+	// Get all the snapshots of the VM
+	snapshots, err := proxmox.GetVMSnapshots(vmName)
+	if err != nil {
+		logger.Error(err, "Failed to get VM snapshots")
+		return err
+	}
+	// If snapshotName is exists in the snapshots, return
+	if utils.ExistsIn([]string{snapshotName}, snapshots) {
+		logger.Info("Snapshot is already exists")
+		vmSnapshot.Status.Status = snapshotCreatedStatus
+		err = r.Status().Update(ctx, vmSnapshot)
+		if err != nil {
+			return client.IgnoreNotFound(err)
+		}
+		return nil
+	} else if vmSnapshot.Status.Status != snapshotCreatedStatus {
+		// Create the snapshot
+		StatusCode, err = proxmox.CreateVMSnapshot(vmName, snapshotName)
+		if err != nil {
+			logger.Error(err, "Failed to create VM snapshot")
+			return client.IgnoreNotFound(err)
+		}
+		switch StatusCode {
+		case 0:
+			vmSnapshot.Status.Status = snapshotCreatedStatus
+			vmSnapshot.Spec.Timestamp = metav1.Now()
+			if err = r.Status().Update(ctx, vmSnapshot); err != nil {
+				return client.IgnoreNotFound(err)
+			}
+			logger.Info(fmt.Sprintf("Snapshot %s is created for %s", snapshotName, vmName))
+		default:
+			// Snapshot creation failed, return
+			vmSnapshot.Status.ErrorMessage = "Snapshot creation failed"
+			if err = r.Status().Update(ctx, vmSnapshot); err != nil {
+				return client.IgnoreNotFound(err)
+			}
+		}
+	}
+	return nil
 }
