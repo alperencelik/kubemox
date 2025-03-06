@@ -593,6 +593,11 @@ func UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) {
 			return false, taskErr
 		}
 		// After config update, restart VM
+		if VirtualMachine.Status != VirtualMachineRunningState {
+			// If the machine is not running then return
+			return true, nil
+		}
+
 		task, err = RestartVM(vmName, nodeName)
 		if err != nil {
 			return false, err
@@ -1388,17 +1393,10 @@ func updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 		log.Log.Error(err, "Error getting index of PCI configuration")
 		return err
 	}
-	// If the type is "mapped" then the value should be "mapped=deviceID"
-	var pciID string
-	if pci.Type == "mapped" {
-		pciID = "mapping=" + pci.DeviceID
-	} else {
-		pciID = pci.DeviceID
-	}
 
 	task, err := VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
 		Name:  "hostpci" + index,
-		Value: pciID + "," + buildPCIOptions(pci),
+		Value: buildPCIOptions(pci),
 	})
 	if err != nil {
 		log.Log.Error(err, "Error updating PCI configuration for VirtualMachine")
