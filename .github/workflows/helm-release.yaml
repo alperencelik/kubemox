@@ -1,0 +1,59 @@
+name: Package and Publish Helm Chart
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  publish_chart:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Kubemox Repo 
+        uses: actions/checkout@v2
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v1
+        with:
+          version: '3.8.0'  
+
+      - name: Lint Helm Chart
+        run: helm lint charts/kubemox 
+    
+      - name: Test Helm Chart
+        run: helm install kubemox charts/kubemox --dry-run --debug 
+
+      - name: Update Chart Version (Optional)
+        run: |
+          # Remove the leading 'v' if present (e.g., v1.2.3 -> 1.2.3)
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "Updating chart version to $VERSION"
+          # Assume the Chart.yaml is in helm-chart-directory; adjust as needed.
+          sed -i "s/^version:.*/version: ${VERSION}/" charts/kubemox/Chart.yaml
+          # COPY the updated chart to the /tmp/kubemox
+          cp -R charts/kubemox /tmp/kubemox
+        env:
+          GITHUB_REF: ${{ github.ref }}
+
+      # 6. Checkout the helm-charts Repo
+      - name: Checkout helm-charts Repo
+        uses: actions/checkout@v2
+        with:
+          repository: alperencelik/helm-charts 
+          token: ${{ secrets.RELEASE_TOKEN }}
+          path: /tmp/kubemox 
+
+      - name: Copy  Helm Chart
+        run: |
+          rm -rf helm-charts/charts/kubemox
+          # Copy the entire chart directory into helm-charts
+          cp -R /tmp/kubemox helm-charts/charts/kubemox
+
+      - name: Commit and Push Changes
+        run: |
+          cd helm-charts
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "Release: Update helm chart from Kubemox repo" || echo "No changes to commit"
+          git tag "kubemox-$VERSION"
+          git push origin main --follow-tags
