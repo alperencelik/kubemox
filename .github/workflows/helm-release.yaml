@@ -20,7 +20,7 @@ jobs:
         run: helm lint charts/kubemox 
     
       - name: Test Helm Chart
-        run: helm install kubemox charts/kubemox --dry-run --debug 
+        run: helm template kubemox charts/kubemox --dry-run --debug 
 
       - name: Update Chart Version (Optional)
         run: |

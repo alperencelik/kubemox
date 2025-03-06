@@ -3,6 +3,8 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '.github/**'
 permissions:
   contents: write
 jobs:

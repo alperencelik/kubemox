@@ -3,9 +3,13 @@ name: GolangCI-Lint
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
+    paths-ignore:
+      - '.github/**'
   push:
     branches:
       - '**'
+    paths-ignore:
+      - '.github/**'
 
 jobs:
   lint:

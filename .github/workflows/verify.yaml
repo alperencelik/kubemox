@@ -5,9 +5,13 @@ on:
     types: [opened, edited, synchronize, reopened]
     branches:
       - main
+    paths-ignore:
+      - '.github/**'
   push:
     branches:
       - main
+    paths-ignore:
+      - '.github/**'
 
 jobs:
   verify:
