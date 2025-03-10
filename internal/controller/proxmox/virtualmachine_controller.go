@@ -165,12 +165,6 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *VirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	logger := log.FromContext(context.Background())
-	version, err := proxmox.GetProxmoxVersion()
-	if err != nil {
-		logger.Error(err, "Error getting Proxmox version")
-	}
-	logger.Info(fmt.Sprintf("Connected to the Proxmox, version is: %s", version.Version))
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.VirtualMachine{}).
 		WithEventFilter(predicate.Funcs{
@@ -328,6 +322,7 @@ func (r *VirtualMachineReconciler) DeleteVirtualMachine(ctx context.Context, vm 
 	// Delete the VM
 	r.Recorder.Event(vm, "Normal", "Deleting", fmt.Sprintf("VirtualMachine %s is being deleted", vm.Spec.Name))
 	if vm.Spec.DeletionProtection {
+		// TODO: Remove the Kubemox tag from the VM
 		logger.Info(fmt.Sprintf("VirtualMachine %s is protected from deletion", vm.Spec.Name))
 		return ctrl.Result{}, nil
 	} else {
