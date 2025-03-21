@@ -11,9 +11,7 @@ import (
 )
 
 var (
-	// Create Proxmox client
-	Client = CreateProxmoxClient()
-	ctx    = context.Background()
+	ctx = context.Background()
 )
 
 type ProxmoxConfig struct {
@@ -70,11 +68,11 @@ func CreateProxmoxClient() *proxmox.Client {
 	return client
 }
 
-func GetProxmoxVersion() (*proxmox.Version, error) {
-	// Get the version of the Proxmox server
-	version, err := Client.Version(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return version, nil
-}
+// func GetProxmoxVersion() (*proxmox.Version, error) {
+// // Get the version of the Proxmox server
+// version, err := Client.Version(ctx)
+// if err != nil {
+// return nil, err
+// }
+// return version, nil
+// }

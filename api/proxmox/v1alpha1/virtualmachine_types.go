@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -49,6 +50,9 @@ type VirtualMachineSpec struct {
 	// AdditionalConfig is the additional configuration of the VM
 	// +kubebuilder:validation:Optional
 	AdditionalConfig map[string]string `json:"additionalConfig,omitempty"`
+
+	// ConnectionRef is the reference to the ProxmoxConnection object
+	ConnectionRef *corev1.ObjectReference `json:"connectionRef,omitempty"`
 }
 
 type NewVMSpec struct {

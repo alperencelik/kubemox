@@ -7,9 +7,9 @@ import (
 )
 
 // CreateCustomCertificate creates a custom certificate object in proxmox node
-func CreateCustomCertificate(nodeName string, proxmoxCertSpec *proxmoxv1alpha1.ProxmoxCertSpec) error {
+func (pi *ProxmoxInstance) CreateCustomCertificate(nodeName string, proxmoxCertSpec *proxmoxv1alpha1.ProxmoxCertSpec) error {
 	// get the node object
-	node, err := Client.Node(ctx, nodeName)
+	node, err := pi.Client.Node(ctx, nodeName)
 	if err != nil {
 		return err
 	}
@@ -29,9 +29,9 @@ func CreateCustomCertificate(nodeName string, proxmoxCertSpec *proxmoxv1alpha1.P
 }
 
 // Delete certificate object from proxmox node
-func DeleteCustomCertificate(nodeName string) error {
+func (pi *ProxmoxInstance) DeleteCustomCertificate(nodeName string) error {
 	// get the node object
-	node, err := Client.Node(ctx, nodeName)
+	node, err := pi.Client.Node(ctx, nodeName)
 	if err != nil {
 		return err
 	}

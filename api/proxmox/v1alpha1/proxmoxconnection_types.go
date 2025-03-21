@@ -29,6 +29,7 @@ type ProxmoxConnectionSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 	// Host address of the Proxmox cluster
 	Endpoint string `json:"endpoint"`
+	//nolint:lll // The following line is too long, but it is a validation rule
 	//+kubebuilder:validation:XValidation:rule="((len(self.username) > 0 && len(self.password) > 0) && (len(self.tokenID) == 0 && len(self.secret) == 0)) || ((len(self.username) == 0 && len(self.password) == 0) && (len(self.tokenID) > 0 && len(self.secret) > 0))",message="Either username and password must be provided or tokenID and secret, but not both"
 	// Username to authenticate with the Proxmox cluster
 	Username string `json:"username,omitempty"`

@@ -28,12 +28,12 @@ type Resource interface {
 }
 
 type FetchResourceFunc func(ctx context.Context, key client.ObjectKey, obj Resource) error
-type UpdateStatusFunc func(ctx context.Context, obj Resource) error
-type CheckDeltaFunc func(obj Resource) (bool, error)
+type UpdateStatusFunc func(ctx context.Context, pi *ProxmoxInstance, obj Resource) error
+type CheckDeltaFunc func(obj Resource, pi *ProxmoxInstance) (bool, error)
 type HandleAutoStartFunc func(ctx context.Context, obj Resource) (ctrl.Result, error)
 type HandleReconcileFunc func(ctx context.Context, obj Resource) (ctrl.Result, error)
 type DeleteWatcherFunc func(name string)
-type IsResourceReadyFunc func(obj Resource) (bool, error)
+type IsResourceReadyFunc func(pi *ProxmoxInstance, obj Resource) (bool, error)
 
 func NewExternalWatchers() *ExternalWatchers {
 	return &ExternalWatchers{
@@ -106,7 +106,7 @@ func StartWatcher(ctx context.Context, resource Resource,
 				return ctrl.Result{}, err
 			}
 
-			err = updateStatus(ctx, resource)
+			err = updateStatus(ctx, nil, resource)
 			if err != nil {
 				logger.Error(err, "Error updating resource status")
 				return ctrl.Result{}, err
@@ -116,7 +116,8 @@ func StartWatcher(ctx context.Context, resource Resource,
 			if val == kubernetes.ReconcileModeWatchOnly || val == kubernetes.ReconcileModeEnsureExists {
 				continue
 			}
-			triggerReconcile, err := checkDelta(resource)
+			// FIX
+			triggerReconcile, err := checkDelta(resource, nil)
 			if err != nil {
 				logger.Error(err, "Error comparing resource state")
 				return ctrl.Result{}, err
@@ -140,7 +141,7 @@ func StartWatcher(ctx context.Context, resource Resource,
 func waitForResourceReady(ctx context.Context, resource Resource, isResourceReady IsResourceReadyFunc) (bool, error) {
 	logger := log.FromContext(ctx)
 	for retry := 0; retry < MaxRetriesForReady; retry++ {
-		ready, err := isResourceReady(resource)
+		ready, err := isResourceReady(nil, resource)
 		if err != nil {
 			logger.Error(err, "Error checking if the resource is ready")
 			return false, err

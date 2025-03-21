@@ -2,9 +2,9 @@ package proxmox
 
 import "strings"
 
-func GetNodes() ([]string, error) {
+func (pi *ProxmoxInstance) GetNodes() ([]string, error) {
 	// Get all nodes
-	nodes, err := Client.Nodes(ctx)
+	nodes, err := pi.Client.Nodes(ctx)
 	nodeNames := []string{}
 	for _, node := range nodes {
 		nodeNames = append(nodeNames, node.Node)
@@ -15,8 +15,8 @@ func GetNodes() ([]string, error) {
 	return nodeNames, err
 }
 
-func GetOnlineNodes() ([]string, error) {
-	nodes, err := Client.Nodes(ctx)
+func (pi *ProxmoxInstance) GetOnlineNodes() ([]string, error) {
+	nodes, err := pi.Client.Nodes(ctx)
 	var OnlineNodes []string
 	if err != nil {
 		return nil, err
@@ -29,13 +29,13 @@ func GetOnlineNodes() ([]string, error) {
 	return OnlineNodes, nil
 }
 
-func GetNodeOfVM(vmName string) (string, error) {
-	nodes, err := GetOnlineNodes()
+func (pi *ProxmoxInstance) GetNodeOfVM(vmName string) (string, error) {
+	nodes, err := pi.GetOnlineNodes()
 	if err != nil {
 		return "", err
 	}
 	for _, node := range nodes {
-		node, err := Client.Node(ctx, node)
+		node, err := pi.Client.Node(ctx, node)
 		if err != nil {
 			return "", err
 		}

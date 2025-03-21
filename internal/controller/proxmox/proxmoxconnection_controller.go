@@ -19,6 +19,7 @@ package proxmox
 import (
 	"context"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -47,9 +48,15 @@ type ProxmoxConnectionReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.1/pkg/reconcile
 func (r *ProxmoxConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
-	// TODO(user): your logic here
+	// Fetch the ProxmoxConnection object and build the ProxmoxClient
+	proxmoxConnection := &proxmoxv1alpha1.ProxmoxConnection{}
+	if err := r.Get(ctx, req.NamespacedName, proxmoxConnection); err != nil {
+		logger.Error(err, "unable to fetch ProxmoxConnection")
+		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
+	}
+	// Set the ProxmoxClient
 
 	return ctrl.Result{}, nil
 }
@@ -60,4 +67,14 @@ func (r *ProxmoxConnectionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&proxmoxv1alpha1.ProxmoxConnection{}).
 		Named("proxmox-proxmoxconnection").
 		Complete(r)
+}
+
+func (r *ProxmoxConnectionReconciler) handleResourceNotFound(ctx context.Context, err error) error {
+	logger := log.FromContext(ctx)
+	if errors.IsNotFound(err) {
+		logger.Info("ProxmoxConnection resource not found. Ignoring since object must be deleted.")
+		return nil
+	}
+	logger.Error(err, "Failed to get ProxmoxConnection")
+	return err
 }

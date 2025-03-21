@@ -112,68 +112,68 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachine")
 		os.Exit(1)
 	}
-	if err = (&proxmoxcontroller.ManagedVirtualMachineReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("ManagedVirtualMachine"),
-		Watchers: proxmox.NewExternalWatchers(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ManagedVirtualMachine")
-		os.Exit(1)
-	}
-	if err = (&proxmoxcontroller.VirtualMachineSetReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineSet")
-		os.Exit(1)
-	}
-	if err = (&proxmoxcontroller.VirtualMachineSnapshotReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineSnapshot")
-		os.Exit(1)
-	}
-	if err = (&proxmoxcontroller.VirtualMachineSnapshotPolicyReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineSnapshotPolicy")
-		os.Exit(1)
-	}
-	if err = (&proxmoxcontroller.ContainerReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("Container"),
-		Watchers: proxmox.NewExternalWatchers(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Container")
-		os.Exit(1)
-	}
-	if err = (&proxmoxcontroller.CustomCertificateReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "CustomCertificate")
-		os.Exit(1)
-	}
-	if err = (&proxmoxcontroller.StorageDownloadURLReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "StorageDownloadURL")
-		os.Exit(1)
-	}
-	if err = (&proxmoxcontroller.VirtualMachineTemplateReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Watchers: proxmox.NewExternalWatchers(),
-		Recorder: mgr.GetEventRecorderFor("VirtualMachineTemplate"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineTemplate")
-		os.Exit(1)
-	}
+	// if err = (&proxmoxcontroller.ManagedVirtualMachineReconciler{
+	// 	Client:   mgr.GetClient(),
+	// 	Scheme:   mgr.GetScheme(),
+	// 	Recorder: mgr.GetEventRecorderFor("ManagedVirtualMachine"),
+	// 	Watchers: proxmox.NewExternalWatchers(),
+	// }).SetupWithManager(mgr); err != nil {
+	// 	setupLog.Error(err, "unable to create controller", "controller", "ManagedVirtualMachine")
+	// 	os.Exit(1)
+	// }
+	// if err = (&proxmoxcontroller.VirtualMachineSetReconciler{
+	// 	Client: mgr.GetClient(),
+	// 	Scheme: mgr.GetScheme(),
+	// }).SetupWithManager(mgr); err != nil {
+	// 	setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineSet")
+	// 	os.Exit(1)
+	// }
+	// if err = (&proxmoxcontroller.VirtualMachineSnapshotReconciler{
+	// 	Client: mgr.GetClient(),
+	// 	Scheme: mgr.GetScheme(),
+	// }).SetupWithManager(mgr); err != nil {
+	// 	setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineSnapshot")
+	// 	os.Exit(1)
+	// }
+	// if err = (&proxmoxcontroller.VirtualMachineSnapshotPolicyReconciler{
+	// 	Client: mgr.GetClient(),
+	// 	Scheme: mgr.GetScheme(),
+	// }).SetupWithManager(mgr); err != nil {
+	// 	setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineSnapshotPolicy")
+	// 	os.Exit(1)
+	// }
+	// if err = (&proxmoxcontroller.ContainerReconciler{
+	// 	Client:   mgr.GetClient(),
+	// 	Scheme:   mgr.GetScheme(),
+	// 	Recorder: mgr.GetEventRecorderFor("Container"),
+	// 	Watchers: proxmox.NewExternalWatchers(),
+	// }).SetupWithManager(mgr); err != nil {
+	// 	setupLog.Error(err, "unable to create controller", "controller", "Container")
+	// 	os.Exit(1)
+	// }
+	// if err = (&proxmoxcontroller.CustomCertificateReconciler{
+	// 	Client: mgr.GetClient(),
+	// 	Scheme: mgr.GetScheme(),
+	// }).SetupWithManager(mgr); err != nil {
+	// 	setupLog.Error(err, "unable to create controller", "controller", "CustomCertificate")
+	// 	os.Exit(1)
+	// }
+	// if err = (&proxmoxcontroller.StorageDownloadURLReconciler{
+	// 	Client: mgr.GetClient(),
+	// 	Scheme: mgr.GetScheme(),
+	// }).SetupWithManager(mgr); err != nil {
+	// 	setupLog.Error(err, "unable to create controller", "controller", "StorageDownloadURL")
+	// 	os.Exit(1)
+	// }
+	// if err = (&proxmoxcontroller.VirtualMachineTemplateReconciler{
+	// 	Client:   mgr.GetClient(),
+	// 	Scheme:   mgr.GetScheme(),
+	// 	Watchers: proxmox.NewExternalWatchers(),
+	// 	Recorder: mgr.GetEventRecorderFor("VirtualMachineTemplate"),
+	// }).SetupWithManager(mgr); err != nil {
+	// 	setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineTemplate")
+	// 	os.Exit(1)
+	// }
 	// if err = (&proxmoxcontroller.ProxmoxConnectionReconciler{
 	// 	Client: mgr.GetClient(),
 	// 	Scheme: mgr.GetScheme(),

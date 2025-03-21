@@ -79,14 +79,14 @@ func init() {
 	}
 }
 
-func CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine) error {
+func (pi *ProxmoxInstance) CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine) error {
 	nodeName := vm.Spec.NodeName
-	node, err := Client.Node(ctx, nodeName)
+	node, err := pi.Client.Node(ctx, nodeName)
 	if err != nil {
 		return err
 	}
 	templateVMName := vm.Spec.Template.Name
-	templateVM, err := getVirtualMachine(templateVMName, nodeName)
+	templateVM, err := pi.getVirtualMachine(templateVMName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting template VM")
 		return err
@@ -148,8 +148,8 @@ func CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine) error {
 	return nil
 }
 
-func getVMID(vmName, nodeName string) (int, error) {
-	node, err := Client.Node(ctx, nodeName)
+func (pi *ProxmoxInstance) getVMID(vmName, nodeName string) (int, error) {
+	node, err := pi.Client.Node(ctx, nodeName)
 	if err != nil {
 		return 0, err
 	}
@@ -168,8 +168,8 @@ func getVMID(vmName, nodeName string) (int, error) {
 	return 0, nil
 }
 
-func CheckVM(vmName, nodeName string) (bool, error) {
-	node, err := Client.Node(ctx, nodeName)
+func (pi *ProxmoxInstance) CheckVM(vmName, nodeName string) (bool, error) {
+	node, err := pi.Client.Node(ctx, nodeName)
 	if err != nil {
 		return false, err
 	}
@@ -186,8 +186,8 @@ func CheckVM(vmName, nodeName string) (bool, error) {
 	return false, nil
 }
 
-func GetVMIPAddress(vmName, nodeName string) string {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pi *ProxmoxInstance) GetVMIPAddress(vmName, nodeName string) string {
+	VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
@@ -204,8 +204,8 @@ func GetVMIPAddress(vmName, nodeName string) string {
 	return ""
 }
 
-func GetOSInfo(vmName, nodeName string) string {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pi *ProxmoxInstance) GetOSInfo(vmName, nodeName string) string {
+	VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
@@ -217,8 +217,8 @@ func GetOSInfo(vmName, nodeName string) string {
 	return VirtualMachineOS.PrettyName
 }
 
-func GetVMUptime(vmName, nodeName string) string {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pi *ProxmoxInstance) GetVMUptime(vmName, nodeName string) string {
+	VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
@@ -229,8 +229,8 @@ func GetVMUptime(vmName, nodeName string) string {
 	return uptime
 }
 
-func DeleteVM(vmName, nodeName string) error {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pi *ProxmoxInstance) DeleteVM(vmName, nodeName string) error {
+	VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 	mutex.Lock()
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
@@ -272,8 +272,8 @@ func DeleteVM(vmName, nodeName string) error {
 	return nil
 }
 
-func StartVM(vmName, nodeName string) (bool, error) {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pi *ProxmoxInstance) StartVM(vmName, nodeName string) (bool, error) {
+	VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		return false, err
 	}
@@ -294,8 +294,8 @@ func StartVM(vmName, nodeName string) (bool, error) {
 	}
 }
 
-func RestartVM(vmName, nodeName string) (*proxmox.Task, error) {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pi *ProxmoxInstance) RestartVM(vmName, nodeName string) (*proxmox.Task, error) {
+	VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM to restart")
 		return nil, err
@@ -308,8 +308,8 @@ func RestartVM(vmName, nodeName string) (*proxmox.Task, error) {
 	return task, nil
 }
 
-func StopVM(vmName, nodeName string) error {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pi *ProxmoxInstance) StopVM(vmName, nodeName string) error {
+	VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM to stop")
 		return err
@@ -333,9 +333,9 @@ func StopVM(vmName, nodeName string) error {
 	}
 }
 
-func GetVMState(vmName, nodeName string) (state string, err error) {
+func (pi *ProxmoxInstance) GetVMState(vmName, nodeName string) (state string, err error) {
 	// Gets the VMstate from Proxmox API
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+	VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 	VirtualMachineState := VirtualMachine.Status
 	if err != nil {
 		return "unknown", err
@@ -350,8 +350,8 @@ func GetVMState(vmName, nodeName string) (state string, err error) {
 	}
 }
 
-func AgentIsRunning(vmName, nodeName string) bool {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pi *ProxmoxInstance) AgentIsRunning(vmName, nodeName string) bool {
+	VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for agent check")
 	}
@@ -363,9 +363,9 @@ func AgentIsRunning(vmName, nodeName string) bool {
 	}
 }
 
-func CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine) error {
+func (pi *ProxmoxInstance) CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine) error {
 	nodeName := vm.Spec.NodeName
-	node, err := Client.Node(ctx, nodeName)
+	node, err := pi.Client.Node(ctx, nodeName)
 	if err != nil {
 		return err
 	}
@@ -418,7 +418,7 @@ func CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine) error {
 	// Make sure that not two VMs are created at the exact time
 	mutex.Lock()
 	// Get next VMID
-	vmID, err := getNextVMID(Client)
+	vmID, err := getNextVMID(pi.Client)
 	if err != nil {
 		log.Log.Error(err, "Error getting next VMID")
 		return err
@@ -500,9 +500,9 @@ func CheckManagedVMExists(managedVM string) (bool, error) {
 	return utils.StringInSlice(managedVM, existingManagedVMNames), nil
 }
 
-func GetManagedVMSpec(managedVMName, nodeName string) (cores, memory, disk int) {
+func (pi *ProxmoxInstance) GetManagedVMSpec(managedVMName, nodeName string) (cores, memory, disk int) {
 	// Get spec of VM
-	VirtualMachine, err := getVirtualMachine(managedVMName, nodeName)
+	VirtualMachine, err := pi.getVirtualMachine(managedVMName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for managed VM spec")
 	}
@@ -513,25 +513,25 @@ func GetManagedVMSpec(managedVMName, nodeName string) (cores, memory, disk int) 
 	return cores, memory, disk
 }
 
-func UpdateVMStatus(vmName, nodeName string) (*proxmoxv1alpha1.QEMUStatus, error) {
+func (pi *ProxmoxInstance) UpdateVMStatus(vmName, nodeName string) (*proxmoxv1alpha1.QEMUStatus, error) {
 	var VirtualMachineIP string
 	var VirtualMachineOS string
 	var VirtualmachineStatus *proxmoxv1alpha1.QEMUStatus
 	// Get VM status
 	// Check if VM is already created
-	vmExists, err := CheckVM(vmName, nodeName)
+	vmExists, err := pi.CheckVM(vmName, nodeName)
 	if err != nil {
 		return nil, err
 	}
 	if vmExists {
 		// Get VMID
-		VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+		VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 		if err != nil {
 			return nil, err
 		}
-		if AgentIsRunning(vmName, nodeName) {
-			VirtualMachineIP = GetVMIPAddress(vmName, nodeName)
-			VirtualMachineOS = GetOSInfo(vmName, nodeName)
+		if pi.AgentIsRunning(vmName, nodeName) {
+			VirtualMachineIP = pi.GetVMIPAddress(vmName, nodeName)
+			VirtualMachineOS = pi.GetOSInfo(vmName, nodeName)
 		} else {
 			VirtualMachineIP = "nil"
 			VirtualMachineOS = "nil"
@@ -540,7 +540,7 @@ func UpdateVMStatus(vmName, nodeName string) (*proxmoxv1alpha1.QEMUStatus, error
 			State:     VirtualMachine.Status,
 			ID:        int(VirtualMachine.VMID),
 			Node:      VirtualMachine.Node,
-			Uptime:    GetVMUptime(vmName, nodeName),
+			Uptime:    pi.GetVMUptime(vmName, nodeName),
 			IPAddress: VirtualMachineIP,
 			OSInfo:    VirtualMachineOS,
 		}
@@ -558,11 +558,11 @@ func UpdateVMStatus(vmName, nodeName string) (*proxmoxv1alpha1.QEMUStatus, error
 	}
 }
 
-func UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) {
+func (pi *ProxmoxInstance) UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) {
 	vmName := vm.Spec.Name
 	nodeName := vm.Spec.NodeName
 	updateStatus := false
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+	VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 		return false, err
@@ -598,7 +598,7 @@ func UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) {
 			return true, nil
 		}
 
-		task, err = RestartVM(vmName, nodeName)
+		task, err = pi.RestartVM(vmName, nodeName)
 		if err != nil {
 			return false, err
 		}
@@ -617,12 +617,12 @@ func UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) {
 	return updateStatus, nil
 }
 
-func CreateManagedVM(managedVM string) (*proxmoxv1alpha1.ManagedVirtualMachine, error) {
-	nodeName, err := GetNodeOfVM(managedVM)
+func (pi *ProxmoxInstance) CreateManagedVM(managedVM string) (*proxmoxv1alpha1.ManagedVirtualMachine, error) {
+	nodeName, err := pi.GetNodeOfVM(managedVM)
 	if err != nil {
 		return nil, err
 	}
-	cores, memory, disk := GetManagedVMSpec(managedVM, nodeName)
+	cores, memory, disk := pi.GetManagedVMSpec(managedVM, nodeName)
 
 	// Create VM object
 	VirtualMachine := &proxmoxv1alpha1.ManagedVirtualMachine{
@@ -644,15 +644,15 @@ func CreateManagedVM(managedVM string) (*proxmoxv1alpha1.ManagedVirtualMachine, 
 	return VirtualMachine, err
 }
 
-func GetManagedVMs() ([]string, error) {
+func (pi *ProxmoxInstance) GetManagedVMs() ([]string, error) {
 	// Get VMs with tag managedVirtualMachineTag
-	nodes, err := GetOnlineNodes()
+	nodes, err := pi.GetOnlineNodes()
 	if err != nil {
 		return nil, err
 	}
 	var ManagedVMs []string
 	for _, node := range nodes {
-		node, err := Client.Node(ctx, node)
+		node, err := pi.Client.Node(ctx, node)
 		if err != nil {
 			return nil, err
 		}
@@ -671,20 +671,20 @@ func GetManagedVMs() ([]string, error) {
 	return ManagedVMs, nil
 }
 
-func UpdateManagedVM(ctx context.Context, managedVM *proxmoxv1alpha1.ManagedVirtualMachine) error {
+func (pi *ProxmoxInstance) UpdateManagedVM(ctx context.Context, managedVM *proxmoxv1alpha1.ManagedVirtualMachine) error {
 	managedVMName := managedVM.Spec.Name
-	nodeName, err := GetNodeOfVM(managedVMName)
+	nodeName, err := pi.GetNodeOfVM(managedVMName)
 	if err != nil {
 		return err
 	}
-	vmState, err := GetVMState(managedVMName, nodeName)
+	vmState, err := pi.GetVMState(managedVMName, nodeName)
 	if err != nil {
 		return err
 	}
 	if vmState != VirtualMachineRunningState {
 		return fmt.Errorf("managed virtual machine %s is not running, update can't be applied", managedVMName)
 	} else {
-		VirtualMachine, err := getVirtualMachine(managedVMName, nodeName)
+		VirtualMachine, err := pi.getVirtualMachine(managedVMName, nodeName)
 		if err != nil {
 			return err
 		}
@@ -731,7 +731,7 @@ func UpdateManagedVM(ctx context.Context, managedVM *proxmoxv1alpha1.ManagedVirt
 			if !taskCompleted {
 				return taskErr
 			}
-			task, err = RestartVM(managedVMName, nodeName)
+			task, err = pi.RestartVM(managedVMName, nodeName)
 			if err != nil {
 				return err
 			}
@@ -748,13 +748,13 @@ func UpdateManagedVM(ctx context.Context, managedVM *proxmoxv1alpha1.ManagedVirt
 	return nil
 }
 
-func CreateVMSnapshot(vmName, snapshotName string) (statusCode int, err error) {
-	nodeName, err := GetNodeOfVM(vmName)
+func (pi *ProxmoxInstance) CreateVMSnapshot(vmName, snapshotName string) (statusCode int, err error) {
+	nodeName, err := pi.GetNodeOfVM(vmName)
 	if err != nil {
 		log.Log.Error(err, "Error getting node of VM for snapshot creation")
 		return 1, err
 	}
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+	VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for snapshot creation")
 		return 1, err
@@ -776,12 +776,12 @@ func CreateVMSnapshot(vmName, snapshotName string) (statusCode int, err error) {
 	return 0, nil
 }
 
-func GetVMSnapshots(vmName string) ([]string, error) {
-	nodeName, err := GetNodeOfVM(vmName)
+func (pi *ProxmoxInstance) GetVMSnapshots(vmName string) ([]string, error) {
+	nodeName, err := pi.GetNodeOfVM(vmName)
 	if err != nil {
 		log.Log.Error(err, "Error getting node of VM for snapshot listing")
 	}
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+	VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for snapshot listing")
 	}
@@ -797,8 +797,8 @@ func GetVMSnapshots(vmName string) ([]string, error) {
 	return snapshotNames, err
 }
 
-func VMSnapshotExists(vmName, snapshotName string) bool {
-	snapshots, err := GetVMSnapshots(vmName)
+func (pi *ProxmoxInstance) VMSnapshotExists(vmName, snapshotName string) bool {
+	snapshots, err := pi.GetVMSnapshots(vmName)
 	if err != nil {
 		log.Log.Error(err, "Error getting snapshots")
 		return false
@@ -811,8 +811,8 @@ func VMSnapshotExists(vmName, snapshotName string) bool {
 	return false
 }
 
-func RemoveVirtualMachineTag(vmName, nodeName, tag string) error {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pi *ProxmoxInstance) RemoveVirtualMachineTag(vmName, nodeName, tag string) error {
+	VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for removing tag")
 	}
@@ -832,8 +832,8 @@ func RemoveVirtualMachineTag(vmName, nodeName, tag string) error {
 	return nil
 }
 
-func GetNetworkConfiguration(vm *proxmoxv1alpha1.VirtualMachine) (map[string]string, error) {
-	VirtualMachine, err := getVirtualMachine(vm.Name, vm.Spec.NodeName)
+func (pi *ProxmoxInstance) GetNetworkConfiguration(vm *proxmoxv1alpha1.VirtualMachine) (map[string]string, error) {
+	VirtualMachine, err := pi.getVirtualMachine(vm.Name, vm.Spec.NodeName)
 	if err != nil {
 		return make(map[string]string), err
 	}
@@ -862,26 +862,26 @@ func parseNetworkConfiguration(networks map[string]string) ([]proxmoxv1alpha1.Vi
 	return networkConfiguration, nil
 }
 
-func ConfigureVirtualMachine(vm *proxmoxv1alpha1.VirtualMachine) error {
-	err := configureVirtualMachineNetwork(vm)
+func (pi *ProxmoxInstance) ConfigureVirtualMachine(vm *proxmoxv1alpha1.VirtualMachine) error {
+	err := pi.configureVirtualMachineNetwork(vm)
 	if err != nil {
 		return err
 	}
-	err = configureVirtualMachineDisk(vm)
+	err = pi.configureVirtualMachineDisk(vm)
 	if err != nil {
 		return err
 	}
 
-	err = configureVirtualMachinePCI(vm)
+	err = pi.configureVirtualMachinePCI(vm)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func deleteVirtualMachineOption(vm *proxmoxv1alpha1.VirtualMachine, option string) (proxmox.Task, error) {
+func (pi *ProxmoxInstance) deleteVirtualMachineOption(vm *proxmoxv1alpha1.VirtualMachine, option string) (proxmox.Task, error) {
 	nodeName := vm.Spec.NodeName
-	virtualMachine, err := getVirtualMachine(vm.Name, nodeName)
+	virtualMachine, err := pi.getVirtualMachine(vm.Name, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for deleting option")
 	}
@@ -893,13 +893,13 @@ func deleteVirtualMachineOption(vm *proxmoxv1alpha1.VirtualMachine, option strin
 	return *taskID, err
 }
 
-func updateNetworkConfig(ctx context.Context,
+func (pi *ProxmoxInstance) updateNetworkConfig(ctx context.Context,
 	vm *proxmoxv1alpha1.VirtualMachine, i int, networks []proxmoxv1alpha1.VirtualMachineNetwork) error {
 	// Get the network model&bridge name
 	networkModel := networks[i].Model
 	networkBridge := networks[i].Bridge
 	// Update the network configuration
-	virtualMachine, err := getVirtualMachine(vm.Name, vm.Spec.NodeName)
+	virtualMachine, err := pi.getVirtualMachine(vm.Name, vm.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for updating network configuration")
 	}
@@ -990,11 +990,11 @@ func updateNetworkConfig(ctx context.Context,
 // return err
 // }
 
-func configureVirtualMachineNetwork(vm *proxmoxv1alpha1.VirtualMachine) error {
+func (pi *ProxmoxInstance) configureVirtualMachineNetwork(vm *proxmoxv1alpha1.VirtualMachine) error {
 	// Get desired network configuration
 	networks := getNetworks(vm)
 	// Get actual network configuration
-	virtualMachineNetworks, err := GetNetworkConfiguration(vm)
+	virtualMachineNetworks, err := pi.GetNetworkConfiguration(vm)
 	if err != nil {
 		return err
 	}
@@ -1011,7 +1011,7 @@ func configureVirtualMachineNetwork(vm *proxmoxv1alpha1.VirtualMachine) error {
 			// Remove the network configuration
 			log.Log.Info(fmt.Sprintf("Removing the network configuration for net%d of VM %s", i, vm.Spec.Name))
 			var taskID proxmox.Task
-			taskID, err = deleteVirtualMachineOption(vm, "net"+strconv.Itoa(i))
+			taskID, err = pi.deleteVirtualMachineOption(vm, "net"+strconv.Itoa(i))
 			if err != nil {
 				return err
 			}
@@ -1027,7 +1027,7 @@ func configureVirtualMachineNetwork(vm *proxmoxv1alpha1.VirtualMachine) error {
 		for i := len(virtualMachineNetworksParsed); i < len(*networks); i++ {
 			// Add the network configuration
 			log.Log.Info(fmt.Sprintf("Adding the network configuration for net%d of VM %s", i, vm.Spec.Name))
-			err = updateNetworkConfig(ctx, vm, i, *networks)
+			err = pi.updateNetworkConfig(ctx, vm, i, *networks)
 			if err != nil {
 				return err
 			}
@@ -1038,7 +1038,7 @@ func configureVirtualMachineNetwork(vm *proxmoxv1alpha1.VirtualMachine) error {
 				// Update the network configuration
 				log.Log.Info(fmt.Sprintf("Updating the network configuration for net%d of VM %s", i, vm.Spec.Name))
 				// Get the network model&bridge name
-				err = updateNetworkConfig(ctx, vm, i, *networks)
+				err = pi.updateNetworkConfig(ctx, vm, i, *networks)
 				if err != nil {
 					return err
 				}
@@ -1048,9 +1048,9 @@ func configureVirtualMachineNetwork(vm *proxmoxv1alpha1.VirtualMachine) error {
 	return nil
 }
 
-func GetDiskConfiguration(vm *proxmoxv1alpha1.VirtualMachine) (map[string]string, error) {
+func (pi *ProxmoxInstance) GetDiskConfiguration(vm *proxmoxv1alpha1.VirtualMachine) (map[string]string, error) {
 	nodeName := vm.Spec.NodeName
-	VirtualMachine, err := getVirtualMachine(vm.Name, nodeName)
+	VirtualMachine, err := pi.getVirtualMachine(vm.Name, nodeName)
 	if err != nil {
 		return make(map[string]string), err
 	}
@@ -1064,10 +1064,10 @@ func GetDiskConfiguration(vm *proxmoxv1alpha1.VirtualMachine) (map[string]string
 	return disks, nil
 }
 
-func configureVirtualMachineDisk(vm *proxmoxv1alpha1.VirtualMachine) error {
+func (pi *ProxmoxInstance) configureVirtualMachineDisk(vm *proxmoxv1alpha1.VirtualMachine) error {
 	// Get VM disk spec and actual disk configuration
 	disks := getDisks(vm)
-	virtualMachineDisks, err := GetDiskConfiguration(vm)
+	virtualMachineDisks, err := pi.GetDiskConfiguration(vm)
 	if err != nil {
 		return err
 	}
@@ -1080,7 +1080,7 @@ func configureVirtualMachineDisk(vm *proxmoxv1alpha1.VirtualMachine) error {
 	disksToAdd, disksToUpdate, disksToDelete := classifyDisks(disks, virtualMachineDisksParsed)
 
 	// Apply disk changes
-	if err := applyDiskChanges(ctx, vm, disksToAdd, disksToUpdate, disksToDelete); err != nil {
+	if err := pi.applyDiskChanges(ctx, vm, disksToAdd, disksToUpdate, disksToDelete); err != nil {
 		return err
 	}
 	return nil
@@ -1103,7 +1103,7 @@ func classifyPCIs(desiredPcis, actualPcis []proxmoxv1alpha1.PciDevice) (
 	return classifyItems(desiredPcis, actualPcis, getKey)
 }
 
-func applyDiskChanges(
+func (pi *ProxmoxInstance) applyDiskChanges(
 	ctx context.Context,
 	vm *proxmoxv1alpha1.VirtualMachine,
 	disksToAdd, disksToUpdate, disksToDelete []proxmoxv1alpha1.VirtualMachineDisk) error {
@@ -1113,13 +1113,14 @@ func applyDiskChanges(
 
 	return applyChanges(
 		ctx,
+		pi,
 		vm,
 		disksToAdd,
 		disksToUpdate,
 		disksToDelete,
 		getDeviceID,
-		addDiskConfig,
-		updateDiskConfig,
+		pi.addDiskConfig,
+		pi.updateDiskConfig,
 		"Disk",
 	)
 }
@@ -1156,9 +1157,9 @@ func parseDiskConfiguration(disks map[string]string) ([]proxmoxv1alpha1.VirtualM
 	return diskConfiguration, nil
 }
 
-func updateDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
+func (pi *ProxmoxInstance) updateDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	disk proxmoxv1alpha1.VirtualMachineDisk) error {
-	virtualMachine, err := getVirtualMachine(vm.Name, vm.Spec.NodeName)
+	virtualMachine, err := pi.getVirtualMachine(vm.Name, vm.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for updating disk configuration")
 	}
@@ -1169,9 +1170,9 @@ func updateDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	return err
 }
 
-func addDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
+func (pi *ProxmoxInstance) addDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	disk proxmoxv1alpha1.VirtualMachineDisk) error {
-	virtualMachine, err := getVirtualMachine(vm.Name, vm.Spec.NodeName)
+	virtualMachine, err := pi.getVirtualMachine(vm.Name, vm.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for updating disk configuration")
 	}
@@ -1195,15 +1196,15 @@ func addDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	return nil
 }
 
-func CheckVirtualMachineDelta(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) {
+func (pi *ProxmoxInstance) CheckVirtualMachineDelta(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) {
 	// Compare the actual state of the VM with the desired state
 	// If there is a difference, return true
-	VirtualMachine, err := getVirtualMachine(vm.Name, vm.Spec.NodeName)
+	VirtualMachine, err := pi.getVirtualMachine(vm.Name, vm.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for watching")
 	}
 	// Get actual VM's network configuration
-	virtualMachineNetworks, err := GetNetworkConfiguration(vm)
+	virtualMachineNetworks, err := pi.GetNetworkConfiguration(vm)
 	if err != nil {
 		return false, err
 	}
@@ -1211,7 +1212,7 @@ func CheckVirtualMachineDelta(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) 
 	if err != nil {
 		return false, err
 	}
-	virtualMachineDisks, err := GetDiskConfiguration(vm)
+	virtualMachineDisks, err := pi.GetDiskConfiguration(vm)
 	if err != nil {
 		return false, err
 	}
@@ -1253,11 +1254,11 @@ func sortDisks(disks []proxmoxv1alpha1.VirtualMachineDisk) []proxmoxv1alpha1.Vir
 	return disks
 }
 
-func CheckManagedVMDelta(managedVM *proxmoxv1alpha1.ManagedVirtualMachine) (
+func (pi *ProxmoxInstance) CheckManagedVMDelta(managedVM *proxmoxv1alpha1.ManagedVirtualMachine) (
 	bool, error) {
 	// Compare the actual state of the VM with the desired state
 	// If there is a difference, return true
-	VirtualMachine, err := getVirtualMachine(managedVM.Spec.Name, managedVM.Spec.NodeName)
+	VirtualMachine, err := pi.getVirtualMachine(managedVM.Spec.Name, managedVM.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for watching")
 	}
@@ -1282,12 +1283,12 @@ func getNextVMID(client *proxmox.Client) (int, error) {
 	return vmID, nil
 }
 
-func getVirtualMachine(vmName, nodeName string) (*proxmox.VirtualMachine, error) {
-	node, err := Client.Node(ctx, nodeName)
+func (pi *ProxmoxInstance) getVirtualMachine(vmName, nodeName string) (*proxmox.VirtualMachine, error) {
+	node, err := pi.Client.Node(ctx, nodeName)
 	if err != nil {
 		return nil, err
 	}
-	vmID, err := getVMID(vmName, nodeName)
+	vmID, err := pi.getVMID(vmName, nodeName)
 	if err != nil {
 		return nil, err
 	}
@@ -1298,10 +1299,10 @@ func getVirtualMachine(vmName, nodeName string) (*proxmox.VirtualMachine, error)
 	return VirtualMachine, nil
 }
 
-func configureVirtualMachinePCI(vm *proxmoxv1alpha1.VirtualMachine) error {
+func (pi *ProxmoxInstance) configureVirtualMachinePCI(vm *proxmoxv1alpha1.VirtualMachine) error {
 	// Get VM PCI spec and actual PCI configuration
 	PCIs := getPciDevices(vm)
-	virtualMachinePCIs, err := GetPCIConfiguration(vm.Name, vm.Spec.NodeName)
+	virtualMachinePCIs, err := pi.GetPCIConfiguration(vm.Name, vm.Spec.NodeName)
 	if err != nil {
 		return err
 	}
@@ -1314,14 +1315,14 @@ func configureVirtualMachinePCI(vm *proxmoxv1alpha1.VirtualMachine) error {
 	PcisToadd, PCIsToUpdate, PcisToDelete := classifyPCIs(PCIs, virtualMachinePCIsParsed)
 
 	// Apply PCI changes
-	if err := applyPCIChanges(ctx, vm, PcisToadd, PCIsToUpdate, PcisToDelete); err != nil {
+	if err := pi.applyPCIChanges(ctx, vm, PcisToadd, PCIsToUpdate, PcisToDelete); err != nil {
 		return err
 	}
 	return nil
 }
 
-func GetPCIConfiguration(vmName, nodeName string) (map[string]string, error) {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pi *ProxmoxInstance) GetPCIConfiguration(vmName, nodeName string) (map[string]string, error) {
+	VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		return make(map[string]string), err
 	}
@@ -1357,7 +1358,7 @@ func parsePCIConfiguration(pcis map[string]string) ([]proxmoxv1alpha1.PciDevice,
 	return PCIConfigurations, nil
 }
 
-func applyPCIChanges(
+func (pi *ProxmoxInstance) applyPCIChanges(
 	ctx context.Context,
 	vm *proxmoxv1alpha1.VirtualMachine,
 	pcisToAdd, pcisToUpdate, pcisToDelete []proxmoxv1alpha1.PciDevice,
@@ -1368,27 +1369,28 @@ func applyPCIChanges(
 
 	return applyChanges(
 		ctx,
+		pi,
 		vm,
 		pcisToAdd,
 		pcisToUpdate,
 		pcisToDelete,
 		getDeviceID,
-		updatePCIConfig,
-		updatePCIConfig,
+		pi.updatePCIConfig,
+		pi.updatePCIConfig,
 		"PCI device",
 	)
 }
 
-func updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
+func (pi *ProxmoxInstance) updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	pci proxmoxv1alpha1.PciDevice) error {
 	vmName, nodeName := vm.Name, vm.Spec.NodeName
 
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+	VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 		return err
 	}
-	index, err := getIndexOfPCIConfig(vmName, nodeName, pci)
+	index, err := pi.getIndexOfPCIConfig(vmName, nodeName, pci)
 	if err != nil {
 		log.Log.Error(err, "Error getting index of PCI configuration")
 		return err
@@ -1413,7 +1415,7 @@ func updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	// Rebooting VM spawns two different tasks, one for stopping and one for starting and unfortunately you can't track the start so
 	// here we should do stop and start separately
 	// Stop VM
-	err = StopVM(vmName, nodeName)
+	err = pi.StopVM(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error stopping VirtualMachine")
 		return err
@@ -1440,8 +1442,8 @@ func updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	return nil
 }
 
-func getIndexOfPCIConfig(vmName, nodeName string, pciDevice proxmoxv1alpha1.PciDevice) (string, error) {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pi *ProxmoxInstance) getIndexOfPCIConfig(vmName, nodeName string, pciDevice proxmoxv1alpha1.PciDevice) (string, error) {
+	VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
 	}
@@ -1474,7 +1476,7 @@ func buildPCIOptions(pci proxmoxv1alpha1.PciDevice) string {
 }
 
 // func revertVirtualMachineOption(vmName, nodeName, value string) error {
-// 	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+// 	VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 // 	if err != nil {
 // 		log.Log.Error(err, "Error getting VM for reverting")
 // 	}
@@ -1497,8 +1499,8 @@ func buildPCIOptions(pci proxmoxv1alpha1.PciDevice) string {
 // 	return nil
 // }
 
-func RebootVM(vmName, nodeName string) error {
-	virtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pi *ProxmoxInstance) RebootVM(vmName, nodeName string) error {
+	virtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for rebooting")
 	}
@@ -1519,9 +1521,9 @@ func RebootVM(vmName, nodeName string) error {
 	return nil
 }
 
-func ApplyAdditionalConfiguration(vm *proxmoxv1alpha1.VirtualMachine) error {
+func (pi *ProxmoxInstance) ApplyAdditionalConfiguration(vm *proxmoxv1alpha1.VirtualMachine) error {
 	// Get VirtualMachine
-	VirtualMachine, err := getVirtualMachine(vm.Name, vm.Spec.NodeName)
+	VirtualMachine, err := pi.getVirtualMachine(vm.Name, vm.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for applying additional configuration")
 	}
@@ -1561,7 +1563,7 @@ func ApplyAdditionalConfiguration(vm *proxmoxv1alpha1.VirtualMachine) error {
 	}
 	if reboot {
 		// Reboot the VM
-		err = RebootVM(vm.Name, vm.Spec.NodeName)
+		err = pi.RebootVM(vm.Name, vm.Spec.NodeName)
 		if err != nil {
 			log.Log.Error(err, "Error rebooting VirtualMachine")
 		}
@@ -1569,7 +1571,7 @@ func ApplyAdditionalConfiguration(vm *proxmoxv1alpha1.VirtualMachine) error {
 	return nil
 }
 
-func IsVirtualMachineReady(obj Resource) (bool, error) {
+func (pi *ProxmoxInstance) IsVirtualMachineReady(obj Resource) (bool, error) {
 	var vmName, nodeName string
 	objectKind := obj.GetObjectKind()
 	switch objectKind.GroupVersionKind().Kind {
@@ -1584,7 +1586,7 @@ func IsVirtualMachineReady(obj Resource) (bool, error) {
 		nodeName = obj.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.NodeName
 	}
 	// Get VM ID
-	vmID, err := getVMID(vmName, nodeName)
+	vmID, err := pi.getVMID(vmName, nodeName)
 	if err != nil {
 		return false, err
 	}
@@ -1592,7 +1594,7 @@ func IsVirtualMachineReady(obj Resource) (bool, error) {
 		return false, nil
 	}
 
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+	VirtualMachine, err := pi.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for checking readiness")
 		return false, err

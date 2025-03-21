@@ -11,16 +11,16 @@ import (
 )
 
 // CloneContainer clones a container from a template
-func CloneContainer(container *proxmoxv1alpha1.Container) error {
+func (pi *ProxmoxInstance) CloneContainer(container *proxmoxv1alpha1.Container) error {
 	// Returning an error is quite reasonable here since that error moved up
 	// to the controller and will be handled there as requeue
 	nodeName := container.Spec.NodeName
-	node, err := Client.Node(ctx, nodeName)
+	node, err := pi.Client.Node(ctx, nodeName)
 	if err != nil {
 		return err
 	}
 	templateContainerName := container.Spec.Template.Name
-	templateContainerID, err := GetContainerID(templateContainerName, nodeName)
+	templateContainerID, err := pi.GetContainerID(templateContainerName, nodeName)
 	if err != nil {
 		return err
 	}
@@ -51,8 +51,8 @@ func CloneContainer(container *proxmoxv1alpha1.Container) error {
 	return nil
 }
 
-func GetContainerID(containerName, nodeName string) (int, error) {
-	node, err := Client.Node(ctx, nodeName)
+func (pi *ProxmoxInstance) GetContainerID(containerName, nodeName string) (int, error) {
+	node, err := pi.Client.Node(ctx, nodeName)
 	if err != nil {
 		return 0, err
 	}
@@ -68,8 +68,8 @@ func GetContainerID(containerName, nodeName string) (int, error) {
 	return 0, nil
 }
 
-func ContainerExists(containerName, nodeName string) (bool, error) {
-	node, err := Client.Node(ctx, nodeName)
+func (pi *ProxmoxInstance) ContainerExists(containerName, nodeName string) (bool, error) {
+	node, err := pi.Client.Node(ctx, nodeName)
 	if err != nil {
 		return false, err
 	}
@@ -85,12 +85,12 @@ func ContainerExists(containerName, nodeName string) (bool, error) {
 	return false, nil
 }
 
-func GetContainer(containerName, nodeName string) (*proxmox.Container, error) {
-	node, err := Client.Node(ctx, nodeName)
+func (pi *ProxmoxInstance) GetContainer(containerName, nodeName string) (*proxmox.Container, error) {
+	node, err := pi.Client.Node(ctx, nodeName)
 	if err != nil {
 		return nil, err
 	}
-	containerID, err := GetContainerID(containerName, nodeName)
+	containerID, err := pi.GetContainerID(containerName, nodeName)
 	if err != nil {
 		return nil, err
 	}
@@ -101,10 +101,10 @@ func GetContainer(containerName, nodeName string) (*proxmox.Container, error) {
 	return container, nil
 }
 
-func StopContainer(containerName, nodeName string) error {
+func (pi *ProxmoxInstance) StopContainer(containerName, nodeName string) error {
 	// Get container
 	log.Log.Info(fmt.Sprintf("Stopping container %s", containerName))
-	container, err := GetContainer(containerName, nodeName)
+	container, err := pi.GetContainer(containerName, nodeName)
 	if err != nil {
 		return err
 	}
@@ -123,10 +123,10 @@ func StopContainer(containerName, nodeName string) error {
 	return nil
 }
 
-func DeleteContainer(containerName, nodeName string) error {
+func (pi *ProxmoxInstance) DeleteContainer(containerName, nodeName string) error {
 	// Get container
 	mutex.Lock()
-	container, err := GetContainer(containerName, nodeName)
+	container, err := pi.GetContainer(containerName, nodeName)
 	if err != nil {
 		return err
 	}
@@ -134,7 +134,7 @@ func DeleteContainer(containerName, nodeName string) error {
 	containerStatus := container.Status
 	if containerStatus == VirtualMachineRunningState {
 		// Stop container
-		err = StopContainer(containerName, nodeName)
+		err = pi.StopContainer(containerName, nodeName)
 		if err != nil {
 			return err
 		}
@@ -161,9 +161,9 @@ func DeleteContainer(containerName, nodeName string) error {
 	return nil
 }
 
-func StartContainer(containerName, nodeName string) error {
+func (pi *ProxmoxInstance) StartContainer(containerName, nodeName string) error {
 	// Get container
-	container, err := GetContainer(containerName, nodeName)
+	container, err := pi.GetContainer(containerName, nodeName)
 	if err != nil {
 		return err
 	}
@@ -184,9 +184,9 @@ func StartContainer(containerName, nodeName string) error {
 	return nil
 }
 
-func GetContainerState(containerName, nodeName string) (string, error) {
+func (pi *ProxmoxInstance) GetContainerState(containerName, nodeName string) (string, error) {
 	// Get container
-	container, err := GetContainer(containerName, nodeName)
+	container, err := pi.GetContainer(containerName, nodeName)
 	if err != nil {
 		return "", err
 	}
@@ -194,8 +194,8 @@ func GetContainerState(containerName, nodeName string) (string, error) {
 	return container.Status, nil
 }
 
-func UpdateContainerStatus(containerName, nodeName string) (proxmoxv1alpha1.QEMUStatus, error) {
-	container, err := GetContainer(containerName, nodeName)
+func (pi *ProxmoxInstance) UpdateContainerStatus(containerName, nodeName string) (proxmoxv1alpha1.QEMUStatus, error) {
+	container, err := pi.GetContainer(containerName, nodeName)
 	if err != nil {
 		return proxmoxv1alpha1.QEMUStatus{}, err
 	}
@@ -209,7 +209,7 @@ func UpdateContainerStatus(containerName, nodeName string) (proxmoxv1alpha1.QEMU
 	return containerStatus, nil
 }
 
-func UpdateContainer(container *proxmoxv1alpha1.Container) error {
+func (pi *ProxmoxInstance) UpdateContainer(container *proxmoxv1alpha1.Container) error {
 	// Get container from proxmox
 	containerName := container.Name
 	nodeName := container.Spec.NodeName
@@ -217,7 +217,7 @@ func UpdateContainer(container *proxmoxv1alpha1.Container) error {
 	var memoryOption proxmox.ContainerOption
 	cpuOption.Name = virtualMachineCPUOption
 	memoryOption.Name = virtualMachineMemoryOption
-	ProxmoxContainer, err := GetContainer(containerName, nodeName)
+	ProxmoxContainer, err := pi.GetContainer(containerName, nodeName)
 	if err != nil {
 		return err
 	}
@@ -237,9 +237,9 @@ func UpdateContainer(container *proxmoxv1alpha1.Container) error {
 	return nil
 }
 
-func RestartContainer(containerName, nodeName string) (bool, error) {
+func (pi *ProxmoxInstance) RestartContainer(containerName, nodeName string) (bool, error) {
 	// Get container
-	container, err := GetContainer(containerName, nodeName)
+	container, err := pi.GetContainer(containerName, nodeName)
 	if err != nil {
 		return false, err
 	}
@@ -250,7 +250,7 @@ func RestartContainer(containerName, nodeName string) (bool, error) {
 	}
 	// Retry method to understand if container is stopped
 	for i := 0; i < 5; i++ {
-		contStatus, errr := GetContainerState(containerName, nodeName)
+		contStatus, errr := pi.GetContainerState(containerName, nodeName)
 		if errr != nil {
 			return false, errr
 		}
@@ -263,11 +263,11 @@ func RestartContainer(containerName, nodeName string) (bool, error) {
 	return false, err
 }
 
-func CheckContainerDelta(container *proxmoxv1alpha1.Container) (bool, error) {
+func (pi *ProxmoxInstance) CheckContainerDelta(container *proxmoxv1alpha1.Container) (bool, error) {
 	// Get container
 	containerName := container.Name
 	nodeName := container.Spec.NodeName
-	ProxmoxContainer, err := GetContainer(containerName, nodeName)
+	ProxmoxContainer, err := pi.GetContainer(containerName, nodeName)
 	if err != nil {
 		return false, err
 	}
@@ -278,10 +278,10 @@ func CheckContainerDelta(container *proxmoxv1alpha1.Container) (bool, error) {
 	return false, nil
 }
 
-func IsContainerReady(container *proxmoxv1alpha1.Container) (bool, error) {
+func (pi *ProxmoxInstance) IsContainerReady(container *proxmoxv1alpha1.Container) (bool, error) {
 	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
-	ProxmoxContainer, err := GetContainer(containerName, nodeName)
+	ProxmoxContainer, err := pi.GetContainer(containerName, nodeName)
 	if err != nil {
 		return false, err
 	}

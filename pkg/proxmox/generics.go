@@ -43,6 +43,7 @@ func classifyItems[I any](desiredItems, actualItems []I, getKey func(I) string) 
 
 func applyChanges[I any](
 	ctx context.Context,
+	pi *ProxmoxInstance,
 	vm *proxmoxv1alpha1.VirtualMachine,
 	itemsToAdd, itemsToUpdate, itemsToDelete []I,
 	getDeviceID func(I) string,
@@ -74,7 +75,7 @@ func applyChanges[I any](
 	for _, item := range itemsToDelete {
 		deviceID := getDeviceID(item)
 		log.Log.Info(fmt.Sprintf("Deleting %s %s of VirtualMachine %s", operationName, deviceID, vm.Name))
-		if task, err := deleteVirtualMachineOption(vm, deviceID); err != nil {
+		if task, err := pi.deleteVirtualMachineOption(vm, deviceID); err != nil {
 			taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 3, 10)
 			if !taskStatus {
 				// Return the task.ExitStatus
