@@ -432,7 +432,7 @@ func GetCloudInitConfig(vmName, nodeName string) (proxmoxv1alpha1.CloudInitConfi
 		User: virtualMachineConfig.CIUser,
 		// Password is not returned as plain text
 		DNSDomain:       virtualMachineConfig.Searchdomain,
-		DNSServers:      strings.Split(virtualMachineConfig.Nameserver, ""),
+		DNSServers:      strings.Split(virtualMachineConfig.Nameserver, ","),
 		SSHKeys:         strings.Split(virtualMachineConfig.SSHKeys, ""),
 		UpgradePackages: virtualMachineConfig.CIUpgrade != 0,
 		IPConfig:        IPConfigParser(virtualMachineConfig.IPConfig0),

@@ -243,6 +243,12 @@ func (r *VirtualMachineTemplateReconciler) handleVMCreation(ctx context.Context,
 			logger.Error(err, "Failed to create VM for template")
 			return err
 		}
+		// Handle additional configuration
+		err = r.handleAdditionalConfig(ctx, vmTemplate)
+		if err != nil {
+			logger.Error(err, "Error handling additional configuration")
+			return err
+		}
 		// Add tag to the VM
 		task, err = proxmox.AddTagToVMTemplate(vmTemplate)
 		if err != nil {
@@ -421,6 +427,17 @@ func (r *VirtualMachineTemplateReconciler) handleStorageDownloadURL(ctx context.
 	return ctrl.Result{}, nil
 }
 
+func (r *VirtualMachineTemplateReconciler) handleAdditionalConfig(ctx context.Context,
+	vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) error {
+	logger := log.FromContext(ctx)
+	err := proxmox.ApplyAdditionalConfiguration(vmTemplate)
+	if err != nil {
+		logger.Error(err, "Failed to apply additional configuration")
+		return err
+	}
+	return nil
+}
+
 func (r *VirtualMachineTemplateReconciler) handleStatus(ctx context.Context,
 	vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -486,8 +503,6 @@ func (r *VirtualMachineTemplateReconciler) handleDelete(ctx context.Context,
 			logger.Error(err, "Failed to update VirtualMachineTemplate status")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}
-	} else {
-		return ctrl.Result{}, nil
 	}
 	// TODO: Stop the watcher if resource is being deleted
 	// Stop the watcher if resource is being deleted

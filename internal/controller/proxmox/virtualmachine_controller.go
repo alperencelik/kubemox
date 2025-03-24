@@ -252,6 +252,12 @@ func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, vm 
 		err := proxmox.CreateVMFromTemplate(vm)
 		// Check if return error is task error
 		if err != nil {
+			var notFoundErr *proxmox.NotFoundError
+			if errors.As(err, &notFoundErr) {
+				r.Recorder.Event(vm, "Warning", "Error",
+					fmt.Sprintf("VirtualMachine %s failed to create due to %s", vmName, err))
+				return dontRequeue, err
+			}
 			var taskErr *proxmox.TaskError
 			if errors.As(err, &taskErr) {
 				r.Recorder.Event(vm, "Warning", "Error",
@@ -265,6 +271,12 @@ func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, vm 
 			}
 		}
 		r.Recorder.Event(vm, "Normal", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
+		// Before starting the VM handle the additional configuration
+		err = r.handleAdditionalConfig(ctx, vm)
+		if err != nil {
+			logger.Error(err, "Error handling additional configuration")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		}
 		startResult, err := proxmox.StartVM(vmName, nodeName)
 		if err != nil {
 			var taskErr *proxmox.TaskError
@@ -332,6 +344,11 @@ func (r *VirtualMachineReconciler) DeleteVirtualMachine(ctx context.Context, vm 
 		return ctrl.Result{}, nil
 	} else {
 		err := proxmox.DeleteVM(vm.Spec.Name, vm.Spec.NodeName)
+		var notFoundErr *proxmox.NotFoundError
+		if errors.As(err, &notFoundErr) {
+			logger.Info("VirtualMachine not found, proceeding with finalizer removal")
+			return ctrl.Result{}, nil
+		}
 		if err != nil {
 			logger.Error(err, "Failed to delete VirtualMachine")
 			var taskErr *proxmox.TaskError

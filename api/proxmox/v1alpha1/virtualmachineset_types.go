@@ -44,6 +44,9 @@ type VirtualMachineSetSpec struct {
 	NodeName string `json:"nodeName"`
 	// Template is the name of the source VM template
 	Template VirtualMachineSpecTemplate `json:"template,omitempty"`
+	// AdditionalConfig is the additional configuration of the VM
+	// +kubebuilder:validation:Optional
+	AdditionalConfig map[string]string `json:"additionalConfig,omitempty"`
 }
 
 // VirtualMachineSetStatus defines the observed state of VirtualMachineSet

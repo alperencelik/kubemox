@@ -181,6 +181,7 @@ func (r *VirtualMachineSetReconciler) CreateVirtualMachineCR(vmSet *proxmoxv1alp
 			Template:           &vmSet.Spec.Template,
 			DeletionProtection: vmSet.Spec.DeletionProtection,
 			EnableAutoStart:    vmSet.Spec.EnableAutoStart,
+			AdditionalConfig:   vmSet.Spec.AdditionalConfig,
 		},
 	}
 	// Set VirtualMachineSet instance as the owner and controller
@@ -246,10 +247,13 @@ func (r *VirtualMachineSetReconciler) updateVMs(ctx context.Context,
 		vm := &vmList.Items[i]
 		if !reflect.DeepEqual(vm.Spec.Template, vmSet.Spec.Template) ||
 			vmSet.Spec.DeletionProtection != vm.Spec.DeletionProtection ||
-			vmSet.Spec.EnableAutoStart != vm.Spec.EnableAutoStart {
+			vmSet.Spec.EnableAutoStart != vm.Spec.EnableAutoStart ||
+			!reflect.DeepEqual(vmSet.Spec.AdditionalConfig, vm.Spec.AdditionalConfig) {
+			// Update the VM
 			vm.Spec.Template = &vmSet.Spec.Template
 			vm.Spec.DeletionProtection = vmSet.Spec.DeletionProtection
 			vm.Spec.EnableAutoStart = vmSet.Spec.EnableAutoStart
+			vm.Spec.AdditionalConfig = vmSet.Spec.AdditionalConfig
 			// If vm exists in Proxmox, update it
 			vmExists, err := proxmox.CheckVM(vm.Spec.Name, vm.Spec.NodeName)
 			if err != nil {

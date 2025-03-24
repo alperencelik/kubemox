@@ -74,6 +74,12 @@ spec:
           spec:
             description: VirtualMachineTemplateSpec defines the desired state of VirtualMachineTemplate
             properties:
+              additionalConfig:
+                additionalProperties:
+                  type: string
+                description: AdditionalConfig is the additional configuration of the
+                  VM
+                type: object
               cloudInitConfig:
                 description: Cloud Init Config
                 properties:

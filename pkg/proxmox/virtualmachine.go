@@ -89,7 +89,10 @@ func CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine) error {
 	templateVM, err := getVirtualMachine(templateVMName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting template VM")
-		return err
+		// If template VM doesn't exist, return the error as unrecoverable
+		// Add prefix to the error message
+		modifiedErr := fmt.Sprintf("Template VirtualMachine %s not found: %s", templateVMName, err.Error())
+		return &NotFoundError{Message: modifiedErr}
 	}
 	var CloneOptions proxmox.VirtualMachineCloneOptions
 	CloneOptions.Full = 1
@@ -231,12 +234,11 @@ func GetVMUptime(vmName, nodeName string) string {
 
 func DeleteVM(vmName, nodeName string) error {
 	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
-	mutex.Lock()
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
-		return err
+		// Make the error as not found error to complete the deletion
+		return &NotFoundError{Message: err.Error()}
 	}
-	mutex.Unlock()
 	// Stop VM
 	vmStatus := VirtualMachine.Status
 	if vmStatus == VirtualMachineRunningState {
@@ -568,15 +570,20 @@ func UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) {
 		return false, err
 	}
 	// Update VM
-	var cpuOption proxmox.VirtualMachineOption
-	var memoryOption proxmox.VirtualMachineOption
-	cpuOption.Name = virtualMachineCPUOption
-	memoryOption.Name = virtualMachineMemoryOption
-	cpuOption.Value = GetCores(vm)
-	memoryOption.Value = GetMemory(vm)
+	desiredCores := GetCores(vm)
+	desiredMemory := GetMemory(vm)
 	VirtualMachineMem := VirtualMachine.MaxMem / 1024 / 1024 // As MB
 
-	if VirtualMachine.CPUs != cpuOption.Value || VirtualMachineMem != memoryOption.Value {
+	cpuOption := proxmox.VirtualMachineOption{
+		Name:  virtualMachineCPUOption,
+		Value: desiredCores,
+	}
+	memoryOption := proxmox.VirtualMachineOption{
+		Name:  virtualMachineMemoryOption,
+		Value: desiredMemory,
+	}
+
+	if VirtualMachine.CPUs != desiredCores || VirtualMachineMem != uint64(desiredMemory) {
 		var task *proxmox.Task
 		task, err = VirtualMachine.Config(ctx, cpuOption, memoryOption)
 		if err != nil {
@@ -1140,9 +1147,21 @@ func parseDiskConfiguration(disks map[string]string) ([]proxmoxv1alpha1.VirtualM
 		var err error
 		for _, part := range diskSplit {
 			if strings.Contains(part, "size") {
-				diskSize, err = strconv.Atoi(strings.TrimSuffix(strings.Split(part, "=")[1], "G"))
-				if err != nil {
-					return nil, err
+				sizeStr := strings.Split(part, "=")[1]
+				if strings.HasSuffix(sizeStr, "G") {
+					trimmed := strings.TrimSuffix(sizeStr, "G")
+					diskSize, err = strconv.Atoi(trimmed)
+					if err != nil {
+						return nil, err
+					}
+				} else if strings.HasSuffix(sizeStr, "M") {
+					trimmed := strings.TrimSuffix(sizeStr, "M")
+					sizeMB, err := strconv.Atoi(trimmed)
+					if err != nil {
+						return nil, err
+					}
+					// Convert MB to GB for disk size
+					diskSize = sizeMB / 1024
 				}
 				break
 			}
@@ -1519,14 +1538,27 @@ func RebootVM(vmName, nodeName string) error {
 	return nil
 }
 
-func ApplyAdditionalConfiguration(vm *proxmoxv1alpha1.VirtualMachine) error {
+func ApplyAdditionalConfiguration(vm Resource) error {
+	var vmName, nodeName string
+	var additionalConfig map[string]string
+	// vm could be either VirtualMachine or VirtualMachineTemplate
+	if vm.GetObjectKind().GroupVersionKind().Kind == "VirtualMachine" {
+		vmName = vm.(*proxmoxv1alpha1.VirtualMachine).Spec.Name
+		nodeName = vm.(*proxmoxv1alpha1.VirtualMachine).Spec.NodeName
+		additionalConfig = vm.(*proxmoxv1alpha1.VirtualMachine).Spec.AdditionalConfig
+	} else if vm.GetObjectKind().GroupVersionKind().Kind == "VirtualMachineTemplate" {
+		vmName = vm.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.Name
+		nodeName = vm.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.NodeName
+		additionalConfig = vm.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.AdditionalConfig
+	}
+
 	// Get VirtualMachine
-	VirtualMachine, err := getVirtualMachine(vm.Name, vm.Spec.NodeName)
+	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for applying additional configuration")
 	}
 	// Apply additional configuration
-	for key, value := range vm.Spec.AdditionalConfig {
+	for key, value := range additionalConfig {
 		var task *proxmox.Task
 		task, err = VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
 			Name:  key,
@@ -1561,7 +1593,7 @@ func ApplyAdditionalConfiguration(vm *proxmoxv1alpha1.VirtualMachine) error {
 	}
 	if reboot {
 		// Reboot the VM
-		err = RebootVM(vm.Name, vm.Spec.NodeName)
+		err = RebootVM(vmName, nodeName)
 		if err != nil {
 			log.Log.Error(err, "Error rebooting VirtualMachine")
 		}

@@ -65,6 +65,12 @@ spec:
           spec:
             description: VirtualMachineSetSpec defines the desired state of VirtualMachineSet
             properties:
+              additionalConfig:
+                additionalProperties:
+                  type: string
+                description: AdditionalConfig is the additional configuration of the
+                  VM
+                type: object
               deletionProtection:
                 default: false
                 description: |-

@@ -44,6 +44,9 @@ type VirtualMachineTemplateSpec struct {
 
 	// Cloud Init Config
 	CloudInitConfig CloudInitConfig `json:"cloudInitConfig,omitempty"`
+	// AdditionalConfig is the additional configuration of the VM
+	// +kubebuilder:validation:Optional
+	AdditionalConfig map[string]string `json:"additionalConfig,omitempty"`
 }
 
 type VirtualMachineConfig struct {
