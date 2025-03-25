@@ -28,3 +28,7 @@ Dockerfile.cross
 ## Env files
 .env
 .env.local
+
+## Talos Example
+examples/talos/talos-proxmox-cluster
+examples/talos/kubeconfig

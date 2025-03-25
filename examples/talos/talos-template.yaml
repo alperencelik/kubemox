@@ -1,0 +1,27 @@
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachineTemplate
+metadata:
+  name: talos-template 
+spec:
+  name: talos-template 
+  node: NODE_NAME
+  imageConfig:
+    content: "iso" 
+    filename: "talos-1.9.5-with-qemu-amd64.iso"
+    node: "talos-template"
+    storage: "local" 
+    url: "https://factory.talos.dev/image/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515/v1.9.5/metal-amd64.iso"
+  cloudInitConfig:
+    dnsServers:
+      - 8.8.8.8
+      - 1.1.1.1 
+  virtualMachineConfig:
+    sockets: 1
+    cores: 4
+    memory: 4096 
+    network: 
+      model: virtio 
+      bridge: vmbr0 
+  additionalConfig:
+    cpu: x86-64-v2
+    agent: enabled=true

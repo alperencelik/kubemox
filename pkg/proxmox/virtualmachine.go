@@ -217,7 +217,14 @@ func GetOSInfo(vmName, nodeName string) string {
 	if err != nil {
 		log.Log.Error(err, "Error getting VM OS")
 	}
-	return VirtualMachineOS.PrettyName
+	// Check either the OS name or pretty name is empty
+	if VirtualMachineOS.Name == "" && VirtualMachineOS.PrettyName == "" {
+		return VirtualMachineOS.KernelRelease
+	} else if VirtualMachineOS.PrettyName == "" {
+		return VirtualMachineOS.Name
+	} else {
+		return VirtualMachineOS.PrettyName
+	}
 }
 
 func GetVMUptime(vmName, nodeName string) string {
