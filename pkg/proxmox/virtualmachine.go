@@ -218,11 +218,12 @@ func GetOSInfo(vmName, nodeName string) string {
 		log.Log.Error(err, "Error getting VM OS")
 	}
 	// Check either the OS name or pretty name is empty
-	if VirtualMachineOS.Name == "" && VirtualMachineOS.PrettyName == "" {
+	switch {
+	case VirtualMachineOS.Name == "" && VirtualMachineOS.PrettyName == "":
 		return VirtualMachineOS.KernelRelease
-	} else if VirtualMachineOS.PrettyName == "" {
+	case VirtualMachineOS.PrettyName == "":
 		return VirtualMachineOS.Name
-	} else {
+	default:
 		return VirtualMachineOS.PrettyName
 	}
 }
