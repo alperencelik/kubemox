@@ -5,7 +5,7 @@ This example demonstrates how to deploy a Talos cluster on Proxmox using the `Ku
 ## Prerequisites
 
 - A Proxmox host/cluster.
-- A Kubernetes cluster with the `Kubemox` operator installed. [Installation instructions](../../kubemox/README.md).
+- A Kubernetes cluster with the `Kubemox` operator installed. [Installation instructions](https://alperencelik.github.io/kubemox/getting_started/)
 - Installed tools: `kubectl` and `talosctl`.
 
 ## Deployment Steps
