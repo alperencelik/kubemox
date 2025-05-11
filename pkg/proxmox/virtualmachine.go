@@ -1390,6 +1390,17 @@ func applyPCIChanges(
 	pcisToAdd, pcisToUpdate, pcisToDelete []proxmoxv1alpha1.PciDevice,
 ) error {
 	getDeviceID := func(pci proxmoxv1alpha1.PciDevice) string {
+		// Use hostpci[N] when deleting; for add/update, use the raw DeviceID
+		for _, del := range pcisToDelete {
+			if del.DeviceID == pci.DeviceID {
+				index, err := getIndexOfPCIConfig(vm.Spec.Name, vm.Spec.NodeName, pci)
+				if err != nil {
+					log.Log.Error(err, "Error getting PCI config index for deletion")
+					return pci.DeviceID
+				}
+				return index
+			}
+		}
 		return pci.DeviceID
 	}
 
@@ -1415,6 +1426,7 @@ func updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 		log.Log.Error(err, "Error getting VM")
 		return err
 	}
+	// Index returns as hostpci[n]
 	index, err := getIndexOfPCIConfig(vmName, nodeName, pci)
 	if err != nil {
 		log.Log.Error(err, "Error getting index of PCI configuration")
@@ -1422,7 +1434,7 @@ func updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	}
 
 	task, err := VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
-		Name:  "hostpci" + index,
+		Name:  index,
 		Value: buildPCIOptions(pci),
 	})
 	if err != nil {
@@ -1467,6 +1479,8 @@ func updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	return nil
 }
 
+// getIndexOfPCIConfig returns the index of the PCI device in the VM configuration
+// Returns as hostpci0, hostpci1, etc.
 func getIndexOfPCIConfig(vmName, nodeName string, pciDevice proxmoxv1alpha1.PciDevice) (string, error) {
 	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
 	if err != nil {
