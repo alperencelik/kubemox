@@ -66,9 +66,10 @@ var (
 // VirtualMachineReconciler reconciles a VirtualMachine object
 type VirtualMachineReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Watchers *proxmox.ExternalWatchers
-	Recorder record.EventRecorder
+	Scheme        *runtime.Scheme
+	Watchers      *proxmox.ExternalWatchers
+	Recorder      record.EventRecorder
+	ProxmoxClient *proxmox.ProxmoxClient
 }
 
 //+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachines,verbs=get;list;watch;create;update;patch;delete
@@ -86,6 +87,18 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
+	// Get the Proxmox client reference
+	proxmoxConnectionName := vm.Spec.ConnectionRef.Name
+	// Setup the ProxmoxClient based on the connection name
+	proxmoxConn := &proxmoxv1alpha1.ProxmoxConnection{}
+	err = r.Get(ctx, client.ObjectKey{Name: proxmoxConnectionName}, proxmoxConn)
+	if err != nil {
+		logger.Error(err, "Error getting Proxmox connection reference")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	pc := proxmox.NewProxmoxClient(proxmoxConn)
+	r.ProxmoxClient = &pc
+
 	reconcileMode := kubernetes.GetReconcileMode(vm)
 
 	switch reconcileMode {
@@ -96,7 +109,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	case kubernetes.ReconcileModeEnsureExists:
 		logger.Info(fmt.Sprintf("Reconciliation is ensure exists for VirtualMachine %s", vm.Name))
 		var vmExists bool
-		vmExists, err = proxmox.CheckVM(vm.Spec.Name, vm.Spec.NodeName)
+		vmExists, err = pc.CheckVM(vm.Spec.Name, vm.Spec.NodeName)
 		if err != nil {
 			logger.Error(err, "Error checking VirtualMachine")
 			return ctrl.Result{Requeue: true, RequeueAfter: VMreconcilationPeriod}, client.IgnoreNotFound(err)
@@ -165,12 +178,12 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *VirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	logger := log.FromContext(context.Background())
-	version, err := proxmox.GetProxmoxVersion()
-	if err != nil {
-		logger.Error(err, "Error getting Proxmox version")
-	}
-	logger.Info(fmt.Sprintf("Connected to the Proxmox, version is: %s", version.Version))
+	// logger := log.FromContext(context.Background())
+	// version, err := proxmox.GetProxmoxVersion()
+	// if err != nil {
+	// logger.Error(err, "Error getting Proxmox version")
+	// }
+	// logger.Info(fmt.Sprintf("Connected to the Proxmox, version is: %s", version.Version))
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.VirtualMachine{}).
 		WithEventFilter(predicate.Funcs{
@@ -192,7 +205,7 @@ func (r *VirtualMachineReconciler) handleVirtualMachineOperations(ctx context.Co
 	vmName := vm.Spec.Name
 	nodeName := vm.Spec.NodeName
 	logger := log.FromContext(ctx)
-	vmExists, err := proxmox.CheckVM(vmName, nodeName)
+	vmExists, err := r.ProxmoxClient.CheckVM(vmName, nodeName)
 	if err != nil {
 		logger.Error(err, "Error checking VirtualMachine")
 		return ctrl.Result{Requeue: true, RequeueAfter: VMreconcilationPeriod}, client.IgnoreNotFound(err)
@@ -249,7 +262,7 @@ func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, vm 
 	case "template":
 		r.Recorder.Event(vm, "Normal", "Creating", fmt.Sprintf("VirtualMachine %s is being created", vmName))
 		// TODO: Check return err value and based on the error, update the status if needed.
-		err := proxmox.CreateVMFromTemplate(vm)
+		err := r.ProxmoxClient.CreateVMFromTemplate(vm)
 		// Check if return error is task error
 		if err != nil {
 			var notFoundErr *proxmox.NotFoundError
@@ -277,7 +290,7 @@ func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, vm 
 			logger.Error(err, "Error handling additional configuration")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}
-		startResult, err := proxmox.StartVM(vmName, nodeName)
+		startResult, err := r.ProxmoxClient.StartVM(vmName, nodeName)
 		if err != nil {
 			var taskErr *proxmox.TaskError
 			if errors.As(err, &taskErr) {
@@ -295,7 +308,7 @@ func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, vm 
 
 	case "scratch":
 		r.Recorder.Event(vm, "Normal", "Creating", fmt.Sprintf("VirtualMachine %s is being created", vmName))
-		err := proxmox.CreateVMFromScratch(vm)
+		err := r.ProxmoxClient.CreateVMFromScratch(vm)
 		if err != nil {
 			var taskErr *proxmox.TaskError
 			if errors.As(err, &taskErr) {
@@ -314,7 +327,7 @@ func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, vm 
 			return requeue, err
 		}
 
-		startResult, err := proxmox.StartVM(vmName, nodeName)
+		startResult, err := r.ProxmoxClient.StartVM(vmName, nodeName)
 		if err != nil {
 			var taskErr *proxmox.TaskError
 			if errors.As(err, &taskErr) {
@@ -343,7 +356,7 @@ func (r *VirtualMachineReconciler) DeleteVirtualMachine(ctx context.Context, vm 
 		logger.Info(fmt.Sprintf("VirtualMachine %s is protected from deletion", vm.Spec.Name))
 		return ctrl.Result{}, nil
 	} else {
-		err := proxmox.DeleteVM(vm.Spec.Name, vm.Spec.NodeName)
+		err := r.ProxmoxClient.DeleteVM(vm.Spec.Name, vm.Spec.NodeName)
 		var notFoundErr *proxmox.NotFoundError
 		if errors.As(err, &notFoundErr) {
 			logger.Info("VirtualMachine not found, proceeding with finalizer removal")
@@ -371,7 +384,7 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(ctx context.Contex
 		Message: "VirtualMachine status is updated",
 	})
 	// Update the QEMU status
-	qemuStatus, err := proxmox.UpdateVMStatus(vm.Spec.Name, vm.Spec.NodeName)
+	qemuStatus, err := r.ProxmoxClient.UpdateVMStatus(vm.Spec.Name, vm.Spec.NodeName)
 	if err != nil {
 		// Update the status condition
 		r.Recorder.Event(vm, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to update status due to %s", vm.Spec.Name, err))
@@ -400,12 +413,12 @@ func (r *VirtualMachineReconciler) handleAutoStart(ctx context.Context,
 	if vm.Spec.EnableAutoStart {
 		vmName := vm.Spec.Name
 		nodeName := vm.Spec.NodeName
-		vmState, err := proxmox.GetVMState(vmName, nodeName)
+		vmState, err := r.ProxmoxClient.GetVMState(vmName, nodeName)
 		if err != nil {
 			return ctrl.Result{Requeue: true}, err
 		}
 		if vmState == "stopped" {
-			startResult, err := proxmox.StartVM(vmName, nodeName)
+			startResult, err := r.ProxmoxClient.StartVM(vmName, nodeName)
 			if err != nil {
 				var taskErr *proxmox.TaskError
 				if errors.As(err, &taskErr) {
@@ -427,7 +440,7 @@ func (r *VirtualMachineReconciler) handleAutoStart(ctx context.Context,
 func (r *VirtualMachineReconciler) UpdateVirtualMachine(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) (*ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	// UpdateVM is checks the delta for CPU and Memory and updates the VM with a restart
-	updateStatus, err := proxmox.UpdateVM(vm)
+	updateStatus, err := r.ProxmoxClient.UpdateVM(vm)
 	if err != nil {
 		logger.Error(err, "Failed to update VirtualMachine")
 		var taskErr *proxmox.TaskError
@@ -444,7 +457,7 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachine(ctx context.Context, vm 
 		return nil, err
 	}
 	// ConfigureVirtualMachine is checks the delta for Disk and Network and updates the VM without a restart
-	err = proxmox.ConfigureVirtualMachine(vm)
+	err = r.ProxmoxClient.ConfigureVirtualMachine(vm)
 	if err != nil {
 		logger.Error(err, "Failed to configure VirtualMachine")
 		var taskErr *proxmox.TaskError
@@ -529,25 +542,26 @@ func (r *VirtualMachineReconciler) handleCloudInitOperations(ctx context.Context
 	vmName := vm.Spec.Name
 	nodeName := vm.Spec.NodeName
 
+	// TODO: ENable later
 	// 1. Add cloud Init CD-ROM drive
-	err := proxmox.AddCloudInitDrive(vmName, nodeName)
+	err := r.ProxmoxClient.AddCloudInitDrive(vmName, nodeName)
 	if err != nil {
 		logger.Error(err, "Failed to add cloud-init drive to VM")
 		return err
 	}
 	// 2. Set cloud-init configuration
-	err = proxmox.SetCloudInitConfig(vmName, nodeName, vm.Spec.VMSpec.CloudInitConfig)
-	if err != nil {
-		logger.Error(err, "Failed to set cloud-init configuration")
-		return err
-	}
+	// err = proxmox.SetCloudInitConfig(vmName, nodeName, vm.Spec.VMSpec.CloudInitConfig)
+	// if err != nil {
+	// logger.Error(err, "Failed to set cloud-init configuration")
+	// return err
+	// }
 	// If the machine is running, reboot it to apply the cloud-init configuration
-	vmState, err := proxmox.GetVMState(vmName, nodeName)
+	vmState, err := r.ProxmoxClient.GetVMState(vmName, nodeName)
 	if err != nil {
 		return err
 	}
 	if vmState == proxmox.VirtualMachineRunningState {
-		err = proxmox.RebootVM(vmName, nodeName)
+		err = r.ProxmoxClient.RebootVM(vmName, nodeName)
 		if err != nil {
 			logger.Error(err, "Failed to reboot VM")
 		}
@@ -558,7 +572,7 @@ func (r *VirtualMachineReconciler) handleCloudInitOperations(ctx context.Context
 
 func (r *VirtualMachineReconciler) handleAdditionalConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine) error {
 	logger := log.FromContext(ctx)
-	err := proxmox.ApplyAdditionalConfiguration(vm)
+	err := r.ProxmoxClient.ApplyAdditionalConfiguration(vm)
 	if err != nil {
 		logger.Error(err, "Failed to apply additional configuration")
 		return err
@@ -582,7 +596,7 @@ func (r *VirtualMachineReconciler) updateStatus(ctx context.Context, obj proxmox
 }
 
 func (r *VirtualMachineReconciler) checkDelta(obj proxmox.Resource) (bool, error) {
-	return proxmox.CheckVirtualMachineDelta(obj.(*proxmoxv1alpha1.VirtualMachine))
+	return r.ProxmoxClient.CheckVirtualMachineDelta(obj.(*proxmoxv1alpha1.VirtualMachine))
 }
 
 func (r *VirtualMachineReconciler) handleAutoStartFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
@@ -594,7 +608,7 @@ func (r *VirtualMachineReconciler) handleReconcileFunc(ctx context.Context, obj 
 }
 
 func (r *VirtualMachineReconciler) IsResourceReady(obj proxmox.Resource) (bool, error) {
-	return proxmox.IsVirtualMachineReady(obj.(*proxmoxv1alpha1.VirtualMachine))
+	return r.ProxmoxClient.IsVirtualMachineReady(obj.(*proxmoxv1alpha1.VirtualMachine))
 }
 
 func (r *VirtualMachineReconciler) StopWatcher(name string) {
