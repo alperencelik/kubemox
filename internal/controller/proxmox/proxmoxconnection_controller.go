@@ -19,6 +19,8 @@ package proxmox
 import (
 	"context"
 
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -65,7 +67,19 @@ func (r *ProxmoxConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if err != nil {
 		logger.Error(err, "unable to get version")
 	}
-	logger.Info("Proxmox version", "version", version)
+	// Update the status with the version
+	proxmoxConnection.Status.Version = *version
+	// Update the status with the connection status
+	meta.SetStatusCondition(&proxmoxConnection.Status.Conditions, metav1.Condition{
+		Type:    "Ready",
+		Status:  metav1.ConditionTrue,
+		Reason:  "ProxmoxConnectionReady",
+		Message: "Proxmox connection is ready",
+	})
+	if err := r.Status().Update(ctx, proxmoxConnection); err != nil {
+		logger.Error(err, "unable to update ProxmoxConnection status")
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }
