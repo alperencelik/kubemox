@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -47,6 +48,8 @@ type VirtualMachineSetSpec struct {
 	// AdditionalConfig is the additional configuration of the VM
 	// +kubebuilder:validation:Optional
 	AdditionalConfig map[string]string `json:"additionalConfig,omitempty"`
+	// +kubebuilder:validation:Optional
+	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 }
 
 // VirtualMachineSetStatus defines the observed state of VirtualMachineSet

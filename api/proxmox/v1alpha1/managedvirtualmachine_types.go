@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -48,6 +49,8 @@ type ManagedVirtualMachineSpec struct {
 	// If not set, it defaults to true.
 	// +kubebuilder:default:=true
 	EnableAutoStart bool `json:"enableAutoStart,omitempty"`
+	// +kubebuilder:validation:Optional
+	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 }
 
 //+kubebuilder:object:root=true

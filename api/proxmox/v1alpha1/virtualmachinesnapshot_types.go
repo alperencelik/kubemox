@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -33,6 +34,8 @@ type VirtualMachineSnapshotSpec struct {
 	SnapshotName string `json:"snapshotName,omitempty"`
 	// Description of the snapshot
 	Timestamp metav1.Time `json:"timestamp,omitempty"`
+	// +kubebuilder:validation:Optional
+	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 }
 
 // VirtualMachineSnapshotStatus defines the observed state of VirtualMachineSnapshot

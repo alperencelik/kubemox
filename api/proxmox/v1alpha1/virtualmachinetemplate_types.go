@@ -47,6 +47,8 @@ type VirtualMachineTemplateSpec struct {
 	// AdditionalConfig is the additional configuration of the VM
 	// +kubebuilder:validation:Optional
 	AdditionalConfig map[string]string `json:"additionalConfig,omitempty"`
+	// +kubebuilder:validation:Optional
+	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 }
 
 type VirtualMachineConfig struct {

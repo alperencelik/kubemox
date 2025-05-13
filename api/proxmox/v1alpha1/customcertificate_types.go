@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -30,6 +31,8 @@ type CustomCertificateSpec struct {
 	NodeName        string          `json:"nodeName,omitempty"`
 	CertManagerSpec CertManagerSpec `json:"certManagerSpec,omitempty"`
 	ProxmoxCertSpec ProxmoxCertSpec `json:"proxmoxCertSpec,omitempty"`
+	// +kubebuilder:validation:Optional
+	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 }
 
 type CertManagerSpec struct {

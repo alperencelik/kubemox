@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -33,6 +34,8 @@ type VirtualMachineSnapshotPolicySpec struct {
 	LabelSelector metav1.LabelSelector `json:"labelSelector,omitempty"`
 
 	SnapshotSchedule string `json:"snapshotSchedule,omitempty"`
+	// +kubebuilder:validation:Optional
+	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 }
 
 type NamespaceSelector struct {

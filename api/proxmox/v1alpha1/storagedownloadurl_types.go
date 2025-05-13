@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -40,6 +41,8 @@ type StorageDownloadURLSpec struct {
 	ChecksumAlgorithm string `json:"checksumAlgorithm,omitempty"`
 	Compression       string `json:"compression,omitempty"`
 	VerifyCertificate bool   `json:"verifyCertificate,omitempty"`
+	// +kubebuilder:validation:Optional
+	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 }
 
 // StorageDownloadURLStatus defines the observed state of StorageDownloadURL
