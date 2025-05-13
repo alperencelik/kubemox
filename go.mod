@@ -4,6 +4,7 @@ go 1.21
 
 require (
 	github.com/carolynvs/magex v0.9.0
+	github.com/google/go-cmp v0.5.9
 	github.com/luthermonson/go-proxmox v0.2.2-0.20250121013250-ebdbadd24d4d
 	github.com/magefile/mage v1.14.0
 	github.com/onsi/ginkgo/v2 v2.9.5
@@ -42,7 +43,6 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golang/snappy v0.0.2 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
-	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/pprof v0.0.0-20210720184732-4bb14d4b1be1 // indirect
 	github.com/google/uuid v1.3.0 // indirect
