@@ -204,7 +204,8 @@ func (r *ContainerReconciler) UpdateContainer(ctx context.Context, pc *proxmox.P
 	return nil
 }
 
-func (r *ContainerReconciler) UpdateContainerStatus(ctx context.Context, pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) error {
+func (r *ContainerReconciler) UpdateContainerStatus(ctx context.Context, pc *proxmox.ProxmoxClient,
+	container *proxmoxv1alpha1.Container) error {
 	containerStatus, err := pc.UpdateContainerStatus(container.Name, container.Spec.NodeName)
 	if err != nil {
 		return err
@@ -276,7 +277,8 @@ func (r *ContainerReconciler) StartOrUpdateContainer(ctx context.Context,
 	return nil
 }
 
-func (r *ContainerReconciler) handleCloneContainer(ctx context.Context, pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) error {
+func (r *ContainerReconciler) handleCloneContainer(ctx context.Context,
+	pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) error {
 	logger := log.FromContext(ctx)
 	// Create Container
 	err := r.CloneContainer(pc, container)
@@ -292,7 +294,8 @@ func (r *ContainerReconciler) handleCloneContainer(ctx context.Context, pc *prox
 	return nil
 }
 
-func (r *ContainerReconciler) handleDelete(ctx context.Context, pc *proxmox.ProxmoxClient, req ctrl.Request, container *proxmoxv1alpha1.Container) (
+func (r *ContainerReconciler) handleDelete(ctx context.Context,
+	pc *proxmox.ProxmoxClient, req ctrl.Request, container *proxmoxv1alpha1.Container) (
 	ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	var err error
@@ -328,7 +331,8 @@ func (r *ContainerReconciler) handleDelete(ctx context.Context, pc *proxmox.Prox
 	return ctrl.Result{}, nil
 }
 
-func (r *ContainerReconciler) handleContainerOperations(ctx context.Context, pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) (ctrl.Result, error) {
+func (r *ContainerReconciler) handleContainerOperations(ctx context.Context,
+	pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	containerExists, err := pc.ContainerExists(container.Spec.Name, container.Spec.NodeName)
 	if err != nil {
@@ -422,7 +426,8 @@ func (r *ContainerReconciler) handleReconcileFunc(ctx context.Context, obj proxm
 	return r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(obj)})
 }
 
-func (r *ContainerReconciler) handleContainerDeletion(ctx context.Context, pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) {
+func (r *ContainerReconciler) handleContainerDeletion(ctx context.Context,
+	pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) {
 	logger := log.FromContext(ctx)
 	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName

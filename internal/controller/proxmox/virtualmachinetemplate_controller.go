@@ -106,7 +106,7 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 
 	// Check if the VirtualMachineTemplate is marked for deleted, which is indicated by the deletion timestamp being set.
 	if vmTemplate.ObjectMeta.DeletionTimestamp.IsZero() {
-		err := r.handleFinalizer(ctx, vmTemplate)
+		err = r.handleFinalizer(ctx, vmTemplate)
 		if err != nil {
 			logger.Error(err, "Failed to handle finalizer")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)

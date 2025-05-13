@@ -169,8 +169,9 @@ func (r *ManagedVirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) err
 		return err
 	}
 	// Loop over ProxmoxClient for each ProxmoxConnection
-	for _, proxmoxConn := range proxmoxConnList.Items {
-		pc := proxmox.NewProxmoxClient(&proxmoxConn)
+	for i := range proxmoxConnList.Items {
+		proxmoxConn := &proxmoxConnList.Items[i]
+		pc := proxmox.NewProxmoxClient(proxmoxConn)
 		// Get list of VMs that tagged with managedVirtualMachineTag
 		managedVMs, err := pc.GetManagedVMs()
 		if err != nil {
@@ -210,7 +211,8 @@ func (r *ManagedVirtualMachineReconciler) handleResourceNotFound(ctx context.Con
 	return err
 }
 
-func (r *ManagedVirtualMachineReconciler) handleManagedVMCreation(ctx context.Context, pc *proxmox.ProxmoxClient, managedVMs []string) error {
+func (r *ManagedVirtualMachineReconciler) handleManagedVMCreation(ctx context.Context,
+	pc *proxmox.ProxmoxClient, managedVMs []string) error {
 	logger := log.FromContext(ctx)
 	for _, managedVM := range managedVMs {
 		// Create ManagedVM that matches with tag of managedVirtualMachineTag value

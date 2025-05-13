@@ -11,6 +11,9 @@ spec:
   deletionProtection: false
   # VM should be started any time found in stopped state
   enableAutoStart: true
+  connectionRef:
+    # Name of the ProxmoxConnection resource
+    name: proxmoxconnection-sample
   template:
     # Name of the template to be cloned
     name: fedora-template 
@@ -32,11 +35,6 @@ spec:
     network:
       - model: virtio
         bridge: vmbr0
-    pciDevices:
-      - deviceID: "0000:03:00.2"
-        type: "raw"
-        primaryGPU: true
-        pcie: true
   # Optional field to add additional features to the VM that doesn't included in the spec
   additionalConfig:                                         
     balloon: "0"                                            

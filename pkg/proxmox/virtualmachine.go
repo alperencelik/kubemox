@@ -1310,7 +1310,7 @@ func getNextVMID(client *proxmox.Client) (int, error) {
 	return vmID, nil
 }
 
-func (pc *ProxmoxClient) getVirtualMachine(vmName string, nodeName string) (*proxmox.VirtualMachine, error) {
+func (pc *ProxmoxClient) getVirtualMachine(vmName, nodeName string) (*proxmox.VirtualMachine, error) {
 	node, err := pc.Client.Node(ctx, nodeName)
 	if err != nil {
 		return nil, err

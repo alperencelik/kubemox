@@ -176,12 +176,6 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *VirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	// logger := log.FromContext(context.Background())
-	// version, err := proxmox.GetProxmoxVersion()
-	// if err != nil {
-	// logger.Error(err, "Error getting Proxmox version")
-	// }
-	// logger.Info(fmt.Sprintf("Connected to the Proxmox, version is: %s", version.Version))
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.VirtualMachine{}).
 		WithEventFilter(predicate.Funcs{
@@ -346,7 +340,8 @@ func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, pc 
 	return ctrl.Result{}, nil
 }
 
-func (r *VirtualMachineReconciler) DeleteVirtualMachine(ctx context.Context, pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine) (ctrl.Result, error) {
+func (r *VirtualMachineReconciler) DeleteVirtualMachine(ctx context.Context,
+	pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	// Delete the VM
 	r.Recorder.Event(vm, "Normal", "Deleting", fmt.Sprintf("VirtualMachine %s is being deleted", vm.Spec.Name))
@@ -374,7 +369,8 @@ func (r *VirtualMachineReconciler) DeleteVirtualMachine(ctx context.Context, pc 
 	return ctrl.Result{}, nil
 }
 
-func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(ctx context.Context, pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine) error {
+func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(ctx context.Context,
+	pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine) error {
 	meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
 		Type:    typeAvailableVirtualMachine,
 		Status:  metav1.ConditionTrue,
@@ -435,7 +431,8 @@ func (r *VirtualMachineReconciler) handleAutoStart(ctx context.Context,
 	return ctrl.Result{}, nil
 }
 
-func (r *VirtualMachineReconciler) UpdateVirtualMachine(ctx context.Context, pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine) (*ctrl.Result, error) {
+func (r *VirtualMachineReconciler) UpdateVirtualMachine(ctx context.Context,
+	pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine) (*ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	// UpdateVM is checks the delta for CPU and Memory and updates the VM with a restart
 	updateStatus, err := pc.UpdateVM(vm)
@@ -576,7 +573,8 @@ func (r *VirtualMachineReconciler) handleCloudInitOperations(ctx context.Context
 	return nil
 }
 
-func (r *VirtualMachineReconciler) handleAdditionalConfig(ctx context.Context, pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine) error {
+func (r *VirtualMachineReconciler) handleAdditionalConfig(ctx context.Context,
+	pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine) error {
 	logger := log.FromContext(ctx)
 	err := pc.ApplyAdditionalConfiguration(vm)
 	if err != nil {

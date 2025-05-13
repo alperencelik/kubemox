@@ -12,7 +12,7 @@ import (
 
 type ProxmoxClient struct {
 	Client *proxmox.Client
-	ctx    context.Context
+	// ctx    context.Context
 }
 
 func NewProxmoxClient(proxmoxConnection *proxmoxv1alpha1.ProxmoxConnection) ProxmoxClient {
@@ -61,5 +61,4 @@ func (pc *ProxmoxClient) GetVersion() (*string, error) {
 		return nil, err
 	}
 	return &version.Version, nil
-
 }
