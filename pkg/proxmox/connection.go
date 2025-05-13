@@ -9,7 +9,7 @@ import (
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/luthermonson/go-proxmox"
 	corev1 "k8s.io/api/core/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	cc "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type ProxmoxClient struct {
@@ -65,9 +65,9 @@ func (pc *ProxmoxClient) GetVersion() (*string, error) {
 	return &version.Version, nil
 }
 
-func NewProxmoxClientFromRef(ctx context.Context, c client.Client, ref corev1.LocalObjectReference) (*ProxmoxClient, error) {
+func NewProxmoxClientFromRef(ctx context.Context, c cc.Client, ref corev1.LocalObjectReference) (*ProxmoxClient, error) {
 	conn := &proxmoxv1alpha1.ProxmoxConnection{}
-	if err := c.Get(ctx, client.ObjectKey{Name: ref.Name}, conn); err != nil {
+	if err := c.Get(ctx, cc.ObjectKey{Name: ref.Name}, conn); err != nil {
 		return nil, fmt.Errorf("getting ProxmoxConnection %q: %w", ref.Name, err)
 	}
 	return NewProxmoxClient(conn), nil
