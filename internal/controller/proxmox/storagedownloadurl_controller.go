@@ -84,15 +84,11 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
 	// Get the Proxmox client reference
-	proxmoxConnectionName := storageDownloadURL.Spec.ConnectionRef.Name
-	// Setup the ProxmoxClient based on the connection name
-	proxmoxConn := &proxmoxv1alpha1.ProxmoxConnection{}
-	err = r.Get(ctx, client.ObjectKey{Name: proxmoxConnectionName}, proxmoxConn)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *storageDownloadURL.Spec.ConnectionRef)
 	if err != nil {
-		logger.Error(err, "Error getting Proxmox connection reference")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		logger.Error(err, "Error getting Proxmox client reference")
+		return ctrl.Result{}, err
 	}
-	pc := proxmox.NewProxmoxClient(proxmoxConn)
 
 	reconcileMode := kubernetes.GetReconcileMode(storageDownloadURL)
 
@@ -121,7 +117,7 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 	} else {
 		if controllerutil.ContainsFinalizer(storageDownloadURL, storageDownloadURLFinalizerName) {
 			// Delete the storage download URL
-			res, delErr := r.handleDelete(ctx, &pc, storageDownloadURL)
+			res, delErr := r.handleDelete(ctx, pc, storageDownloadURL)
 			if delErr != nil {
 				logger.Error(delErr, "unable to delete StorageDownloadURL")
 				return res, delErr
@@ -143,7 +139,7 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// Check if the filename exists in the storage
 	if !proxmox.HasFile(storageContent, &storageDownloadURL.Spec) {
 		logger.Info("File does not exist in the storage, so downloading it")
-		err = r.handleDownloadURL(ctx, &pc, storageDownloadURL)
+		err = r.handleDownloadURL(ctx, pc, storageDownloadURL)
 		if err != nil {
 			logger.Error(err, "unable to download the file")
 			return ctrl.Result{}, err

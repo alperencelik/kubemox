@@ -87,15 +87,11 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
 	// Get the Proxmox client reference
-	proxmoxConnectionName := vm.Spec.ConnectionRef.Name
-	// Setup the ProxmoxClient based on the connection name
-	proxmoxConn := &proxmoxv1alpha1.ProxmoxConnection{}
-	err = r.Get(ctx, client.ObjectKey{Name: proxmoxConnectionName}, proxmoxConn)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *vm.Spec.ConnectionRef)
 	if err != nil {
-		logger.Error(err, "Error getting Proxmox connection reference")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		logger.Error(err, "Error getting Proxmox client reference")
+		return ctrl.Result{}, err
 	}
-	pc := proxmox.NewProxmoxClient(proxmoxConn)
 
 	reconcileMode := kubernetes.GetReconcileMode(vm)
 
@@ -116,7 +112,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			// If not exists, create the VM
 			logger.Info("Creating VirtualMachine", "name", vm.Spec.Name)
 			var result ctrl.Result
-			result, err = r.CreateVirtualMachine(ctx, &pc, vm)
+			result, err = r.CreateVirtualMachine(ctx, pc, vm)
 			if err != nil {
 				logger.Error(err, "Error creating VirtualMachine")
 				return result, err
@@ -148,7 +144,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// The object is being deleted
 		if controllerutil.ContainsFinalizer(vm, virtualMachineFinalizerName) {
 			// Delete the VM
-			res, delErr := r.handleDelete(ctx, req, vm)
+			res, delErr := r.handleDelete(ctx, req, pc, vm)
 			if delErr != nil {
 				logger.Error(delErr, "Error handling VirtualMachine deletion")
 				return res, client.IgnoreNotFound(delErr)
@@ -159,7 +155,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// Handle the VirtualMachine operations, such as create, update
-	result, err := r.handleVirtualMachineOperations(ctx, &pc, vm)
+	result, err := r.handleVirtualMachineOperations(ctx, pc, vm)
 	if err != nil {
 		logger.Error(err, "Error handling VirtualMachine operations")
 		// TODO: If I return err here it goes for requeue and errors out as "Reconciler error" so need to return nil to stop the requeue
@@ -483,7 +479,7 @@ func (r *VirtualMachineReconciler) handleFinalizer(ctx context.Context, vm *prox
 }
 
 func (r *VirtualMachineReconciler) handleDelete(ctx context.Context, req ctrl.Request,
-	vm *proxmoxv1alpha1.VirtualMachine) (ctrl.Result, error) {
+	pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	// Delete the VM
 	logger.Info(fmt.Sprintf("Deleting VirtualMachine %s", vm.Spec.Name))
@@ -505,15 +501,7 @@ func (r *VirtualMachineReconciler) handleDelete(ctx context.Context, req ctrl.Re
 	r.StopWatcher(req.Name)
 	// Perform all operations to delete the VM if the VM is not marked as deleting
 	// TODO: Evaluate the requirement of check mechanism for VM whether it's already deleting
-	proxmoxConnectionName := vm.Spec.ConnectionRef.Name
-	proxmoxConn := &proxmoxv1alpha1.ProxmoxConnection{}
-	err := r.Get(ctx, client.ObjectKey{Name: proxmoxConnectionName}, proxmoxConn)
-	if err != nil {
-		logger.Error(err, "Error getting Proxmox connection reference")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
-	pc := proxmox.NewProxmoxClient(proxmoxConn)
-	res, err := r.DeleteVirtualMachine(ctx, &pc, vm)
+	res, err := r.DeleteVirtualMachine(ctx, pc, vm)
 	if err != nil {
 		logger.Error(err, "Error deleting VirtualMachine")
 		return res, client.IgnoreNotFound(err)
@@ -596,50 +584,47 @@ func (r *VirtualMachineReconciler) fetchResource(ctx context.Context, key client
 }
 
 func (r *VirtualMachineReconciler) updateStatus(ctx context.Context, obj proxmox.Resource) error {
-	proxmoxClientRefName := obj.(*proxmoxv1alpha1.VirtualMachine).Spec.ConnectionRef.Name
-	proxmoxConn := &proxmoxv1alpha1.ProxmoxConnection{}
-	err := r.Get(context.Background(), client.ObjectKey{Name: proxmoxClientRefName}, proxmoxConn)
+	logger := log.FromContext(ctx)
+	// Get the Proxmox client reference
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.VirtualMachine).Spec.ConnectionRef)
 	if err != nil {
+		logger.Error(err, "Error getting Proxmox client reference")
 		return err
 	}
-	pc := proxmox.NewProxmoxClient(proxmoxConn)
-	return r.UpdateVirtualMachineStatus(ctx, &pc, obj.(*proxmoxv1alpha1.VirtualMachine))
+	return r.UpdateVirtualMachineStatus(ctx, pc, obj.(*proxmoxv1alpha1.VirtualMachine))
 }
 
-func (r *VirtualMachineReconciler) checkDelta(obj proxmox.Resource) (bool, error) {
-	proxmoxClientRefName := obj.(*proxmoxv1alpha1.VirtualMachine).Spec.ConnectionRef.Name
-	proxmoxConn := &proxmoxv1alpha1.ProxmoxConnection{}
-	err := r.Get(context.Background(), client.ObjectKey{Name: proxmoxClientRefName}, proxmoxConn)
+func (r *VirtualMachineReconciler) checkDelta(ctx context.Context, obj proxmox.Resource) (bool, error) {
+	logger := log.FromContext(ctx)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.VirtualMachine).Spec.ConnectionRef)
 	if err != nil {
+		logger.Error(err, "Error getting Proxmox client reference")
 		return false, err
 	}
-	pc := proxmox.NewProxmoxClient(proxmoxConn)
 	return pc.CheckVirtualMachineDelta(obj.(*proxmoxv1alpha1.VirtualMachine))
 }
 
 func (r *VirtualMachineReconciler) handleAutoStartFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
-	proxmoxClientRefName := obj.(*proxmoxv1alpha1.VirtualMachine).Spec.ConnectionRef.Name
-	proxmoxConn := &proxmoxv1alpha1.ProxmoxConnection{}
-	err := r.Get(context.Background(), client.ObjectKey{Name: proxmoxClientRefName}, proxmoxConn)
+	logger := log.FromContext(ctx)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.VirtualMachine).Spec.ConnectionRef)
 	if err != nil {
-		return ctrl.Result{}, err
+		logger.Error(err, "Error getting Proxmox client reference")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	pc := proxmox.NewProxmoxClient(proxmoxConn)
-	return r.handleAutoStart(ctx, &pc, obj.(*proxmoxv1alpha1.VirtualMachine))
+	return r.handleAutoStart(ctx, pc, obj.(*proxmoxv1alpha1.VirtualMachine))
 }
 
 func (r *VirtualMachineReconciler) handleReconcileFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
 	return r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Namespace: obj.GetNamespace(), Name: obj.GetName()}})
 }
 
-func (r *VirtualMachineReconciler) IsResourceReady(obj proxmox.Resource) (bool, error) {
-	proxmoxClientRefName := obj.(*proxmoxv1alpha1.VirtualMachine).Spec.ConnectionRef.Name
-	proxmoxConn := &proxmoxv1alpha1.ProxmoxConnection{}
-	err := r.Get(context.Background(), client.ObjectKey{Name: proxmoxClientRefName}, proxmoxConn)
+func (r *VirtualMachineReconciler) IsResourceReady(ctx context.Context, obj proxmox.Resource) (bool, error) {
+	logger := log.FromContext(ctx)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.VirtualMachine).Spec.ConnectionRef)
 	if err != nil {
+		logger.Error(err, "Error getting Proxmox client reference")
 		return false, err
 	}
-	pc := proxmox.NewProxmoxClient(proxmoxConn)
 	return pc.IsVirtualMachineReady(obj.(*proxmoxv1alpha1.VirtualMachine))
 }
 

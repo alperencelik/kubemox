@@ -87,15 +87,11 @@ func (r *CustomCertificateReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
 	// Get the Proxmox client reference
-	proxmoxConnectionName := customCert.Spec.ConnectionRef.Name
-	// Setup the ProxmoxClient based on the connection name
-	proxmoxConn := &proxmoxv1alpha1.ProxmoxConnection{}
-	err = r.Get(ctx, client.ObjectKey{Name: proxmoxConnectionName}, proxmoxConn)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *customCert.Spec.ConnectionRef)
 	if err != nil {
-		logger.Error(err, "Error getting Proxmox connection reference")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		logger.Error(err, "Error getting Proxmox client reference")
+		return ctrl.Result{}, err
 	}
-	pc := proxmox.NewProxmoxClient(proxmoxConn)
 
 	// Check if the CustomCertificate resource is marked for deletion
 	if customCert.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -110,7 +106,7 @@ func (r *CustomCertificateReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		// The object is being deleted
 		if controllerutil.ContainsFinalizer(customCert, customCertificateFinalizerName) {
 			// Delete the custom certificate
-			res, delErr := r.handleDelete(ctx, &pc, customCert)
+			res, delErr := r.handleDelete(ctx, pc, customCert)
 			if delErr != nil {
 				logger.Error(delErr, "unable to delete CustomCertificate")
 				return res, delErr
@@ -123,7 +119,7 @@ func (r *CustomCertificateReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Create a certificate using cert-manager
 	// 1. Create a Certificate resource
 	// Check if the Certificate resource exists
-	result, err := r.handleCreate(ctx, &pc, customCert)
+	result, err := r.handleCreate(ctx, pc, customCert)
 	if err != nil {
 		logger.Error(err, "unable to create CustomCertificate")
 	}

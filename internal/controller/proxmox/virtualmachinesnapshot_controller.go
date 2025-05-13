@@ -78,17 +78,12 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 	}
 	logger.Info("Reconciling VirtualMachineSnapshot", "Name", vmSnapshot.Name)
 
-	// Get Proxmox client
 	// Get the Proxmox client reference
-	proxmoxConnectionName := vmSnapshot.Spec.ConnectionRef.Name
-	// Setup the ProxmoxClient based on the connection name
-	proxmoxConn := &proxmoxv1alpha1.ProxmoxConnection{}
-	err = r.Get(ctx, client.ObjectKey{Name: proxmoxConnectionName}, proxmoxConn)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *vmSnapshot.Spec.ConnectionRef)
 	if err != nil {
-		logger.Error(err, "Error getting Proxmox connection reference")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		logger.Error(err, "unable to get Proxmox client")
+		return ctrl.Result{}, err
 	}
-	pc := proxmox.NewProxmoxClient(proxmoxConn)
 
 	// Get ref vm
 	vm, err := r.getVMreference(ctx, vmSnapshot)
@@ -108,7 +103,7 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	// Handle snapshot creation
-	err = r.handleSnapshotCreation(ctx, &pc, vmSnapshot, snapshotName)
+	err = r.handleSnapshotCreation(ctx, pc, vmSnapshot, snapshotName)
 	if err != nil {
 		return ctrl.Result{Requeue: true, RequeueAfter: VMSnapshotreconcilationPeriod}, client.IgnoreNotFound(err)
 	}

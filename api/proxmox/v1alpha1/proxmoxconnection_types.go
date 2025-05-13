@@ -26,7 +26,7 @@ import (
 type ProxmoxConnectionSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	// Host address of the Proxmox cluster
+	// Endpoint is the address of the Proxmox cluster endpoint
 	Endpoint string `json:"endpoint"`
 	// Username to authenticate with the Proxmox cluster
 	Username string `json:"username,omitempty"`

@@ -91,15 +91,11 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 	logger.Info(fmt.Sprintf("Reconciling VirtualMachineTemplate %s", vmTemplate.Name))
 
 	// Get the Proxmox client reference
-	proxmoxConnectionName := vmTemplate.Spec.ConnectionRef.Name
-	// Setup the ProxmoxClient based on the connection name
-	proxmoxConn := &proxmoxv1alpha1.ProxmoxConnection{}
-	err := r.Get(ctx, client.ObjectKey{Name: proxmoxConnectionName}, proxmoxConn)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *vmTemplate.Spec.ConnectionRef)
 	if err != nil {
-		logger.Error(err, "Error getting Proxmox connection reference")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		logger.Error(err, "Error getting Proxmox client reference")
+		return ctrl.Result{}, err
 	}
-	pc := proxmox.NewProxmoxClient(proxmoxConn)
 
 	// Handle the external watcher for the VirtualMachineTemplate
 	r.handleWatcher(ctx, req, vmTemplate)
@@ -115,7 +111,7 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 		// The object is being deleted
 		if controllerutil.ContainsFinalizer(vmTemplate, virtualMachineTemplateFinalizerName) {
 			// Update the condition for the VirtualMachineTemplate if it's not already deleting
-			res, delErr := r.handleDelete(ctx, req, &pc, vmTemplate)
+			res, delErr := r.handleDelete(ctx, req, pc, vmTemplate)
 			if delErr != nil {
 				logger.Error(delErr, "Failed to delete VirtualMachineTemplate")
 				return res, delErr
@@ -143,12 +139,12 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 		return result, nil
 	}
 	// Create the VM template
-	err = r.handleVMCreation(ctx, &pc, vmTemplate)
+	err = r.handleVMCreation(ctx, pc, vmTemplate)
 	if err != nil {
 		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 	}
 	// Do the CloudInit operations
-	err = r.handleCloudInitOperations(ctx, &pc, vmTemplate)
+	err = r.handleCloudInitOperations(ctx, pc, vmTemplate)
 	if err != nil {
 		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 	}
@@ -483,14 +479,13 @@ func (r *VirtualMachineTemplateReconciler) updateStatus(ctx context.Context, obj
 	return r.Status().Update(ctx, obj.(*proxmoxv1alpha1.VirtualMachineTemplate))
 }
 
-func (r *VirtualMachineTemplateReconciler) checkDelta(obj proxmox.Resource) (bool, error) {
-	proxmoxClientRefName := obj.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.ConnectionRef.Name
-	proxmoxConn := &proxmoxv1alpha1.ProxmoxConnection{}
-	err := r.Get(context.Background(), client.ObjectKey{Name: proxmoxClientRefName}, proxmoxConn)
+func (r *VirtualMachineTemplateReconciler) checkDelta(ctx context.Context, obj proxmox.Resource) (bool, error) {
+	logger := log.FromContext(ctx)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.ConnectionRef)
 	if err != nil {
+		logger.Error(err, "Error getting Proxmox client reference")
 		return false, err
 	}
-	pc := proxmox.NewProxmoxClient(proxmoxConn)
 	return pc.CheckVirtualMachineTemplateDelta(obj.(*proxmoxv1alpha1.VirtualMachineTemplate))
 }
 
@@ -503,14 +498,13 @@ func (r *VirtualMachineTemplateReconciler) handleReconcileFunc(ctx context.Conte
 	return r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Namespace: obj.GetNamespace(), Name: obj.GetName()}})
 }
 
-func (r *VirtualMachineTemplateReconciler) IsResourceReady(obj proxmox.Resource) (bool, error) {
-	proxmoxClientRefName := obj.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.ConnectionRef.Name
-	proxmoxConn := &proxmoxv1alpha1.ProxmoxConnection{}
-	err := r.Get(context.Background(), client.ObjectKey{Name: proxmoxClientRefName}, proxmoxConn)
+func (r *VirtualMachineTemplateReconciler) IsResourceReady(ctx context.Context, obj proxmox.Resource) (bool, error) {
+	logger := log.FromContext(ctx)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.ConnectionRef)
 	if err != nil {
+		logger.Error(err, "Error getting Proxmox client reference")
 		return false, err
 	}
-	pc := proxmox.NewProxmoxClient(proxmoxConn)
 	return pc.IsVirtualMachineReady(obj.(*proxmoxv1alpha1.VirtualMachineTemplate))
 }
 

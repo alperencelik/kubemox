@@ -244,6 +244,7 @@ func (r *VirtualMachineSetReconciler) scaleDownVMs(vmSet *proxmoxv1alpha1.Virtua
 
 func (r *VirtualMachineSetReconciler) updateVMs(ctx context.Context,
 	vmSet *proxmoxv1alpha1.VirtualMachineSet, vmList *proxmoxv1alpha1.VirtualMachineList) error {
+	logger := log.FromContext(ctx)
 	for i := range vmList.Items {
 		vm := &vmList.Items[i]
 		if !reflect.DeepEqual(vm.Spec.Template, vmSet.Spec.Template) ||
@@ -256,16 +257,11 @@ func (r *VirtualMachineSetReconciler) updateVMs(ctx context.Context,
 			vm.Spec.EnableAutoStart = vmSet.Spec.EnableAutoStart
 			vm.Spec.AdditionalConfig = vmSet.Spec.AdditionalConfig
 			// Get the Proxmox client reference
-			proxmoxConnectionName := vm.Spec.ConnectionRef.Name
-			// TODO: Make that a function
-			// Setup the ProxmoxClient based on the connection name
-			proxmoxConn := &proxmoxv1alpha1.ProxmoxConnection{}
-			err := r.Get(ctx, client.ObjectKey{Name: proxmoxConnectionName}, proxmoxConn)
+			pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *vm.Spec.ConnectionRef)
 			if err != nil {
+				logger.Error(err, "Error getting Proxmox client reference")
 				return err
 			}
-			pc := proxmox.NewProxmoxClient(proxmoxConn)
-			//
 			// If vm exists in Proxmox, update it
 			vmExists, err := pc.CheckVM(vm.Spec.Name, vm.Spec.NodeName)
 			if err != nil {
