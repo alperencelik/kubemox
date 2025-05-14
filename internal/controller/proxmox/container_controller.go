@@ -80,7 +80,7 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
 	// Get the Proxmox client reference
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *container.Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, container.Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox client reference")
 		return ctrl.Result{}, err
@@ -389,7 +389,7 @@ func (r *ContainerReconciler) fetchResource(ctx context.Context, key client.Obje
 func (r *ContainerReconciler) updateStatus(ctx context.Context, obj proxmox.Resource) error {
 	logger := log.FromContext(ctx)
 	// Get the Proxmox client reference
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.Container).Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.Container).Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox client reference")
 		return err
@@ -399,7 +399,7 @@ func (r *ContainerReconciler) updateStatus(ctx context.Context, obj proxmox.Reso
 
 func (r *ContainerReconciler) checkDelta(ctx context.Context, obj proxmox.Resource) (bool, error) {
 	logger := log.FromContext(ctx)
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.Container).Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.Container).Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox client reference")
 		return false, err
@@ -408,7 +408,7 @@ func (r *ContainerReconciler) checkDelta(ctx context.Context, obj proxmox.Resour
 }
 
 func (r *ContainerReconciler) handleAutoStartFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.Container).Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.Container).Spec.ConnectionRef)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -439,7 +439,7 @@ func (r *ContainerReconciler) handleContainerDeletion(ctx context.Context,
 
 func (r *ContainerReconciler) IsResourceReady(ctx context.Context, obj proxmox.Resource) (bool, error) {
 	logger := log.FromContext(ctx)
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.Container).Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.Container).Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox client reference")
 		return false, err

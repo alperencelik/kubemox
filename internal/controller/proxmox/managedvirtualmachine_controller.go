@@ -85,7 +85,7 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
 	// Setup the ProxmoxClient based on the connection name
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *managedVM.Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, managedVM.Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox client reference")
 		return ctrl.Result{}, err
@@ -160,28 +160,28 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 // SetupWithManager sets up the controller with the Manager.
 func (r *ManagedVirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Get all ProxmoxConnection objects
-	proxmoxConnList := &proxmoxv1alpha1.ProxmoxConnectionList{}
-	err := r.List(context.Background(), proxmoxConnList)
-	if err != nil {
-		return err
-	}
-	// Loop over ProxmoxClient for each ProxmoxConnection
-	for i := range proxmoxConnList.Items {
-		proxmoxConn := &proxmoxConnList.Items[i]
-		pc := proxmox.NewProxmoxClient(proxmoxConn)
-		// Get list of VMs that tagged with managedVirtualMachineTag
-		managedVMs, err := pc.GetManagedVMs()
-		if err != nil {
-			return err
-		}
-		// Handle ManagedVM creation
-		if err := r.handleManagedVMCreation(context.Background(), pc, managedVMs); err != nil {
-			// This is going down on the init phase since the ManagedVM's needs to be created by the operator
-			// Can't requeue since it's not involved in reconcile loop
-			// TODO: Review here to make a retry if possible
-			return err
-		}
-	}
+	// proxmoxConnList := &proxmoxv1alpha1.ProxmoxConnectionList{}
+	// err := r.List(context.Background(), proxmoxConnList)
+	// if err != nil {
+	// 	return err
+	// }
+	// // Loop over ProxmoxClient for each ProxmoxConnection
+	// for i := range proxmoxConnList.Items {
+	// 	proxmoxConn := &proxmoxConnList.Items[i]
+	// 	pc := proxmox.NewProxmoxClient(proxmoxConn)
+	// 	// Get list of VMs that tagged with managedVirtualMachineTag
+	// 	managedVMs, err := pc.GetManagedVMs()
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	// Handle ManagedVM creation
+	// 	if err := r.handleManagedVMCreation(context.Background(), pc, managedVMs); err != nil {
+	// 		// This is going down on the init phase since the ManagedVM's needs to be created by the operator
+	// 		// Can't requeue since it's not involved in reconcile loop
+	// 		// TODO: Review here to make a retry if possible
+	// 		return err
+	// 	}
+	// }
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.ManagedVirtualMachine{}).
@@ -284,7 +284,7 @@ func (r *ManagedVirtualMachineReconciler) fetchResource(ctx context.Context, key
 
 func (r *ManagedVirtualMachineReconciler) updateStatus(ctx context.Context, obj proxmox.Resource) error {
 	logger := log.FromContext(ctx)
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.ManagedVirtualMachine).Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.ManagedVirtualMachine).Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox client reference")
 		return err
@@ -294,7 +294,7 @@ func (r *ManagedVirtualMachineReconciler) updateStatus(ctx context.Context, obj 
 
 func (r *ManagedVirtualMachineReconciler) checkDelta(ctx context.Context, obj proxmox.Resource) (bool, error) {
 	logger := log.FromContext(ctx)
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.ManagedVirtualMachine).Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.ManagedVirtualMachine).Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox client reference")
 		return false, err
@@ -304,7 +304,7 @@ func (r *ManagedVirtualMachineReconciler) checkDelta(ctx context.Context, obj pr
 
 func (r *ManagedVirtualMachineReconciler) handleAutoStartFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.ManagedVirtualMachine).Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.ManagedVirtualMachine).Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox client reference")
 		return ctrl.Result{}, err
@@ -344,7 +344,7 @@ func (r *ManagedVirtualMachineReconciler) UpdateManagedVirtualMachineStatus(ctx 
 
 func (r *ManagedVirtualMachineReconciler) IsResourceReady(ctx context.Context, obj proxmox.Resource) (bool, error) {
 	logger := log.FromContext(ctx)
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.ManagedVirtualMachine).Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.ManagedVirtualMachine).Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox client reference")
 		return false, err

@@ -79,7 +79,7 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 	logger.Info("Reconciling VirtualMachineSnapshot", "Name", vmSnapshot.Name)
 
 	// Get the Proxmox client reference
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *vmSnapshot.Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, vmSnapshot.Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "unable to get Proxmox client")
 		return ctrl.Result{}, err

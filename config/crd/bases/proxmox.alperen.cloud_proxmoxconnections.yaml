@@ -45,7 +45,7 @@ spec:
                 description: |-
                   INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                   Important: Run "make" to regenerate code after modifying this file
-                  Host address of the Proxmox cluster
+                  Endpoint is the address of the Proxmox cluster endpoint
                 type: string
               insecureSkipVerify:
                 default: false

@@ -65,7 +65,10 @@ func (pc *ProxmoxClient) GetVersion() (*string, error) {
 	return &version.Version, nil
 }
 
-func NewProxmoxClientFromRef(ctx context.Context, c cc.Client, ref corev1.LocalObjectReference) (*ProxmoxClient, error) {
+func NewProxmoxClientFromRef(ctx context.Context, c cc.Client, ref *corev1.LocalObjectReference) (*ProxmoxClient, error) {
+	if ref == nil || ref.Name == "" {
+		return nil, fmt.Errorf("ProxmoxConnection reference is nil or empty")
+	}
 	conn := &proxmoxv1alpha1.ProxmoxConnection{}
 	if err := c.Get(ctx, cc.ObjectKey{Name: ref.Name}, conn); err != nil {
 		return nil, fmt.Errorf("getting ProxmoxConnection %q: %w", ref.Name, err)

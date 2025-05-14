@@ -257,7 +257,7 @@ func (r *VirtualMachineSetReconciler) updateVMs(ctx context.Context,
 			vm.Spec.EnableAutoStart = vmSet.Spec.EnableAutoStart
 			vm.Spec.AdditionalConfig = vmSet.Spec.AdditionalConfig
 			// Get the Proxmox client reference
-			pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *vm.Spec.ConnectionRef)
+			pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, vm.Spec.ConnectionRef)
 			if err != nil {
 				logger.Error(err, "Error getting Proxmox client reference")
 				return err

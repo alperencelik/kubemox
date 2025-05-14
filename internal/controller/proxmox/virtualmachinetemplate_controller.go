@@ -91,7 +91,7 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 	logger.Info(fmt.Sprintf("Reconciling VirtualMachineTemplate %s", vmTemplate.Name))
 
 	// Get the Proxmox client reference
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *vmTemplate.Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, vmTemplate.Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox client reference")
 		return ctrl.Result{}, err
@@ -481,7 +481,7 @@ func (r *VirtualMachineTemplateReconciler) updateStatus(ctx context.Context, obj
 
 func (r *VirtualMachineTemplateReconciler) checkDelta(ctx context.Context, obj proxmox.Resource) (bool, error) {
 	logger := log.FromContext(ctx)
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox client reference")
 		return false, err
@@ -500,7 +500,7 @@ func (r *VirtualMachineTemplateReconciler) handleReconcileFunc(ctx context.Conte
 
 func (r *VirtualMachineTemplateReconciler) IsResourceReady(ctx context.Context, obj proxmox.Resource) (bool, error) {
 	logger := log.FromContext(ctx)
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox client reference")
 		return false, err

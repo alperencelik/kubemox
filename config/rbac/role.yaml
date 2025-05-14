@@ -17,11 +17,26 @@ rules:
   - update
   - watch
 - apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - proxmox.alperen.cloud
   resources:
+  - containers
+  - customcertificates
+  - managedvirtualmachines
   - proxmoxconnections
+  - storagedownloadurls
   - virtualmachines
+  - virtualmachinesets
   - virtualmachinesnapshotpolicies
+  - virtualmachinesnapshots
+  - virtualmachinetemplates
   verbs:
   - create
   - delete
@@ -33,17 +48,31 @@ rules:
 - apiGroups:
   - proxmox.alperen.cloud
   resources:
+  - containers/finalizers
+  - customcertificates/finalizers
+  - managedvirtualmachines/finalizers
   - proxmoxconnections/finalizers
+  - storagedownloadurls/finalizers
   - virtualmachines/finalizers
+  - virtualmachinesets/finalizers
   - virtualmachinesnapshotpolicies/finalizers
+  - virtualmachinesnapshots/finalizers
+  - virtualmachinetemplates/finalizers
   verbs:
   - update
 - apiGroups:
   - proxmox.alperen.cloud
   resources:
+  - containers/status
+  - customcertificates/status
+  - managedvirtualmachines/status
   - proxmoxconnections/status
+  - storagedownloadurls/status
   - virtualmachines/status
+  - virtualmachinesets/status
   - virtualmachinesnapshotpolicies/status
+  - virtualmachinesnapshots/status
+  - virtualmachinetemplates/status
   verbs:
   - get
   - patch

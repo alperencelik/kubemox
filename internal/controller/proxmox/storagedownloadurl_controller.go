@@ -84,7 +84,7 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
 	// Get the Proxmox client reference
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *storageDownloadURL.Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, storageDownloadURL.Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox client reference")
 		return ctrl.Result{}, err

@@ -87,7 +87,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
 	// Get the Proxmox client reference
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *vm.Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, vm.Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox client reference")
 		return ctrl.Result{}, err
@@ -586,7 +586,7 @@ func (r *VirtualMachineReconciler) fetchResource(ctx context.Context, key client
 func (r *VirtualMachineReconciler) updateStatus(ctx context.Context, obj proxmox.Resource) error {
 	logger := log.FromContext(ctx)
 	// Get the Proxmox client reference
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.VirtualMachine).Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.VirtualMachine).Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox client reference")
 		return err
@@ -596,7 +596,7 @@ func (r *VirtualMachineReconciler) updateStatus(ctx context.Context, obj proxmox
 
 func (r *VirtualMachineReconciler) checkDelta(ctx context.Context, obj proxmox.Resource) (bool, error) {
 	logger := log.FromContext(ctx)
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.VirtualMachine).Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.VirtualMachine).Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox client reference")
 		return false, err
@@ -606,7 +606,7 @@ func (r *VirtualMachineReconciler) checkDelta(ctx context.Context, obj proxmox.R
 
 func (r *VirtualMachineReconciler) handleAutoStartFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.VirtualMachine).Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.VirtualMachine).Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox client reference")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -620,7 +620,7 @@ func (r *VirtualMachineReconciler) handleReconcileFunc(ctx context.Context, obj 
 
 func (r *VirtualMachineReconciler) IsResourceReady(ctx context.Context, obj proxmox.Resource) (bool, error) {
 	logger := log.FromContext(ctx)
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, *obj.(*proxmoxv1alpha1.VirtualMachine).Spec.ConnectionRef)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.VirtualMachine).Spec.ConnectionRef)
 	if err != nil {
 		logger.Error(err, "Error getting Proxmox client reference")
 		return false, err
