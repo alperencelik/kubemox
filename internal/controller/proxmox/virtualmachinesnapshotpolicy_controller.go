@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -105,7 +106,7 @@ func GetMatchingVirtualMachines(vmSnapshotPolicy *proxmoxv1alpha1.VirtualMachine
 	return MatchingVirtualMachines
 }
 
-func VMSnapshotCR(vmName, snapshotName, namespace string) *proxmoxv1alpha1.VirtualMachineSnapshot {
+func VMSnapshotCR(vmName, snapshotName, namespace, connectionName string) *proxmoxv1alpha1.VirtualMachineSnapshot {
 	return &proxmoxv1alpha1.VirtualMachineSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-%s", vmName, time.Now().Format("2006-01-2t15-040-5z07-00")),
@@ -114,6 +115,9 @@ func VMSnapshotCR(vmName, snapshotName, namespace string) *proxmoxv1alpha1.Virtu
 		Spec: proxmoxv1alpha1.VirtualMachineSnapshotSpec{
 			VirtualMachineName: vmName,
 			SnapshotName:       snapshotName,
+			ConnectionRef: &corev1.LocalObjectReference{
+				Name: connectionName,
+			},
 		},
 	}
 }
@@ -124,6 +128,8 @@ func (r *VirtualMachineSnapshotPolicyReconciler) StartSnapshotCronJobs(ctx conte
 	cronSpec := vmSnapshotPolicy.Spec.SnapshotSchedule
 	// Get matching VirtualMachines
 	MatchingVirtualMachines := GetMatchingVirtualMachines(vmSnapshotPolicy, r, ctx)
+	// Get connection name
+	connectionName := vmSnapshotPolicy.Spec.ConnectionRef.Name
 
 	// Iterate over matching VirtualMachines to create snapshot
 	c := cron.New()
@@ -135,7 +141,7 @@ func (r *VirtualMachineSnapshotPolicyReconciler) StartSnapshotCronJobs(ctx conte
 			snapshotName := fmt.Sprintf("snapshot_%s", time.Now().Format("2006_01_02T15_04_05"))
 			namespace := vm.Namespace
 			// Create VirtualMachineSnapshot object
-			vmSnapshot := VMSnapshotCR(vmName, snapshotName, namespace)
+			vmSnapshot := VMSnapshotCR(vmName, snapshotName, namespace, connectionName)
 			// Get VirtualMachineSnapshot object and if it does not exist, create it
 			// If it exists, do nothing
 			foundvmSnapshot := &proxmoxv1alpha1.VirtualMachineSnapshot{}

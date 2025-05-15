@@ -12,9 +12,9 @@ func (e *TaskError) Error() string {
 	return e.ExitStatus
 }
 
-func GetTask(taskUPID string) *proxmox.Task {
+func (pc *ProxmoxClient) GetTask(taskUPID string) *proxmox.Task {
 	taskID := proxmox.UPID(
 		taskUPID,
 	)
-	return proxmox.NewTask(taskID, Client)
+	return proxmox.NewTask(taskID, pc.Client)
 }

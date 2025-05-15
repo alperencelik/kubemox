@@ -4,22 +4,22 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.0
-  name: customcertificates.proxmox.alperen.cloud
+  name: proxmoxconnections.proxmox.alperen.cloud
 spec:
   group: proxmox.alperen.cloud
   names:
-    kind: CustomCertificate
-    listKind: CustomCertificateList
-    plural: customcertificates
+    kind: ProxmoxConnection
+    listKind: ProxmoxConnectionList
+    plural: proxmoxconnections
     shortNames:
-    - cc
-    singular: customcertificate
+    - pxc
+    singular: proxmoxconnection
   scope: Cluster
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: CustomCertificate is the Schema for the customcertificates API
+        description: ProxmoxConnection is the Schema for the proxmoxconnections API.
         properties:
           apiVersion:
             description: |-
@@ -39,65 +39,36 @@ spec:
           metadata:
             type: object
           spec:
-            description: CustomCertificateSpec defines the desired state of CustomCertificate
+            description: ProxmoxConnectionSpec defines the desired state of ProxmoxConnection.
             properties:
-              certManagerSpec:
-                properties:
-                  commonName:
-                    type: string
-                  dnsNames:
-                    items:
-                      type: string
-                    type: array
-                  issuerRef:
-                    properties:
-                      group:
-                        type: string
-                      kind:
-                        type: string
-                      name:
-                        type: string
-                    type: object
-                  secretName:
-                    type: string
-                  usages:
-                    items:
-                      type: string
-                    type: array
-                type: object
-              connectionRef:
-                description: |-
-                  LocalObjectReference contains enough information to let you locate the
-                  referenced object inside the same namespace.
-                properties:
-                  name:
-                    description: |-
-                      Name of the referent.
-                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                    type: string
-                type: object
-                x-kubernetes-map-type: atomic
-              nodeName:
+              endpoint:
                 description: |-
                   INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                   Important: Run "make" to regenerate code after modifying this file
+                  Endpoint is the address of the Proxmox cluster endpoint
                 type: string
-              proxmoxCertSpec:
-                properties:
-                  certificate:
-                    type: string
-                  force:
-                    type: boolean
-                  nodeName:
-                    type: string
-                  privateKey:
-                    type: string
-                  restartProxy:
-                    type: boolean
-                type: object
+              insecureSkipVerify:
+                default: false
+                description: InsecureSkipVerify skips the verification of the server's
+                  certificate chain and host name
+                type: boolean
+              password:
+                description: Password to authenticate with the Proxmox cluster
+                type: string
+              secret:
+                description: Secret to authenticate with the Proxmox cluster
+                type: string
+              tokenID:
+                description: TokenID to authenticate with the Proxmox cluster
+                type: string
+              username:
+                description: Username to authenticate with the Proxmox cluster
+                type: string
+            required:
+            - endpoint
             type: object
           status:
-            description: CustomCertificateStatus defines the observed state of CustomCertificate
+            description: ProxmoxConnectionStatus defines the observed state of ProxmoxConnection.
             properties:
               conditions:
                 description: |-
@@ -158,6 +129,10 @@ spec:
                   - type
                   type: object
                 type: array
+              connectionStatus:
+                type: string
+              version:
+                type: string
             type: object
         type: object
     served: true

@@ -8,9 +8,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func StorageDownloadURL(node string, storageDownloadURLSpec *proxmoxv1alpha1.StorageDownloadURLSpec) (string, error) {
+func (pc *ProxmoxClient) StorageDownloadURL(node string, storageDownloadURLSpec *proxmoxv1alpha1.StorageDownloadURLSpec) (string, error) {
 	// Get node
-	Node, err := Client.Node(ctx, node)
+	Node, err := pc.Client.Node(ctx, node)
 	if err != nil {
 		log.Log.Error(err, "unable to get node")
 	}
@@ -33,9 +33,9 @@ func StorageDownloadURL(node string, storageDownloadURLSpec *proxmoxv1alpha1.Sto
 	return response, err
 }
 
-func GetStorageContent(node, storageName string) ([]*proxmox.StorageContent, error) {
+func (pc *ProxmoxClient) GetStorageContent(node, storageName string) ([]*proxmox.StorageContent, error) {
 	// Get node
-	Node, err := Client.Node(ctx, node)
+	Node, err := pc.Client.Node(ctx, node)
 	if err != nil {
 		log.Log.Error(err, "unable to get node")
 	}
@@ -58,10 +58,10 @@ func HasFile(storageContent []*proxmox.StorageContent, storageDownloadSpec *prox
 	return false
 }
 
-func DeleteStorageContent(storageName string, spec *proxmoxv1alpha1.StorageDownloadURLSpec) error {
+func (pc *ProxmoxClient) DeleteStorageContent(storageName string, spec *proxmoxv1alpha1.StorageDownloadURLSpec) error {
 	// Get node
 	node := spec.Node
-	Node, err := Client.Node(ctx, node)
+	Node, err := pc.Client.Node(ctx, node)
 	if err != nil {
 		log.Log.Error(err, "unable to get node")
 	}
@@ -83,8 +83,8 @@ func DeleteStorageContent(storageName string, spec *proxmoxv1alpha1.StorageDownl
 	return err
 }
 
-func GetStorage(storageName string) (*proxmox.ClusterStorage, error) {
-	storage, err := Client.ClusterStorage(ctx, storageName)
+func (pc *ProxmoxClient) GetStorage(storageName string) (*proxmox.ClusterStorage, error) {
+	storage, err := pc.Client.ClusterStorage(ctx, storageName)
 	if err != nil {
 		log.Log.Error(err, "unable to get storage")
 	}

@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -24,12 +25,20 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // CustomCertificateSpec defines the desired state of CustomCertificate
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.connectionRef) || has(self.connectionRef)", message="ConnectionRef is required once set"
+//
+//nolint:lll // CEL validation rule is too long
 type CustomCertificateSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	NodeName        string          `json:"nodeName,omitempty"`
 	CertManagerSpec CertManagerSpec `json:"certManagerSpec,omitempty"`
 	ProxmoxCertSpec ProxmoxCertSpec `json:"proxmoxCertSpec,omitempty"`
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:XValidation:rule="!has(oldSelf.connectionRef) || has(self.connectionRef)", message="ConnectionRef is required once set"
+	//
+	//nolint:lll // CEL validation rule is too long
+	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 }
 
 type CertManagerSpec struct {

@@ -11,6 +11,7 @@ resources:
 - bases/proxmox.alperen.cloud_customcertificates.yaml
 - bases/proxmox.alperen.cloud_storagedownloadurls.yaml
 - bases/proxmox.alperen.cloud_virtualmachinetemplates.yaml
+- bases/proxmox.alperen.cloud_proxmoxconnections.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:

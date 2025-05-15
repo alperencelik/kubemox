@@ -86,6 +86,12 @@ func (r *CustomCertificateReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if err != nil {
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
+	// Get the Proxmox client reference
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, customCert.Spec.ConnectionRef)
+	if err != nil {
+		logger.Error(err, "Error getting Proxmox client reference")
+		return ctrl.Result{}, err
+	}
 
 	// Check if the CustomCertificate resource is marked for deletion
 	if customCert.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -100,7 +106,7 @@ func (r *CustomCertificateReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		// The object is being deleted
 		if controllerutil.ContainsFinalizer(customCert, customCertificateFinalizerName) {
 			// Delete the custom certificate
-			res, delErr := r.handleDelete(ctx, customCert)
+			res, delErr := r.handleDelete(ctx, pc, customCert)
 			if delErr != nil {
 				logger.Error(delErr, "unable to delete CustomCertificate")
 				return res, delErr
@@ -113,56 +119,13 @@ func (r *CustomCertificateReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Create a certificate using cert-manager
 	// 1. Create a Certificate resource
 	// Check if the Certificate resource exists
-	certExists, err := kubernetes.CheckCertificateExists(customCert.Name, customCert.Namespace)
+	result, err := r.handleCreate(ctx, pc, customCert)
 	if err != nil {
-		logger.Error(err, "unable to check if Certificate resource exists")
-		return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
+		logger.Error(err, "unable to create CustomCertificate")
 	}
-	if !certExists {
-		// Create a Certificate resource
-		logger.Info("Creating a Certificate resource", "Certificate", customCert.Spec.CertManagerSpec)
-		cert, certErr := kubernetes.CreateCertificate(customCert)
-		if certErr != nil {
-			logger.Error(certErr, "unable to create Certificate resource")
-			r.Recorder.Event(customCert, "Warning", "Error", fmt.Sprintf("Failed to create Certificate resource: %v", certErr))
-			return ctrl.Result{}, err
-		}
-		logger.Info("Certificate is created", "Certificate", cert)
-		// Requeue the request to update the proxmoxCertSpec with the new certificate
-		return ctrl.Result{Requeue: true}, nil
-	} else {
-		// Get the Certificate resource
-		var certManagerCertificate *unstructured.Unstructured
-		certManagerCertificate, err = kubernetes.GetCertificate(customCert)
-		if err != nil {
-			logger.Error(err, "unable to get Certificate resource")
-			return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
-		}
-		if err = kubernetes.UpdateCertificate(&customCert.Spec.CertManagerSpec, certManagerCertificate); err != nil {
-			logger.Error(err, "unable to update Certificate resource")
-			return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
-		}
-		// Retrieve the certificate and private key
-		var tlsCrt, tlsKey []byte
-		tlsCrt, tlsKey, err = kubernetes.GetCertificateSecretKeys(certManagerCertificate)
-		if err != nil {
-			logger.Error(err, "unable to get certificate and private key")
-			r.Recorder.Event(customCert, "Warning", "Error", fmt.Sprintf("Failed to get certificate and private key: %v", err))
-			return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
-		}
-		// Update the CustomCertificate resource
-		customCert.Spec.ProxmoxCertSpec.Certificate = string(tlsCrt)
-		customCert.Spec.ProxmoxCertSpec.PrivateKey = string(tlsKey)
-		if err = r.Update(ctx, customCert); err != nil {
-			logger.Error(err, "unable to update CustomCertificate")
-			return ctrl.Result{}, err
-		}
-		// TODO: Diff the key in Proxmox and the key in the secret
-		// Upload the certificate to the Proxmox node
-		if err = proxmox.CreateCustomCertificate(customCert.Spec.NodeName, &customCert.Spec.ProxmoxCertSpec); err != nil {
-			logger.Error(err, "unable to create CustomCertificate in Proxmox")
-			return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
-		}
+	if result.Requeue {
+		logger.Info("Requeuing the request")
+		return result, client.IgnoreNotFound(err)
 	}
 
 	return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -209,7 +172,7 @@ func (r *CustomCertificateReconciler) handleResourceNotFound(ctx context.Context
 }
 
 func (r *CustomCertificateReconciler) handleDelete(ctx context.Context,
-	customCert *proxmoxv1alpha1.CustomCertificate) (ctrl.Result, error) {
+	pc *proxmox.ProxmoxClient, customCert *proxmoxv1alpha1.CustomCertificate) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	var err error
 	logger.Info("Deleting the CustomCertificate")
@@ -230,7 +193,7 @@ func (r *CustomCertificateReconciler) handleDelete(ctx context.Context,
 		return ctrl.Result{}, nil
 	}
 	// Delete the custom certificate from Proxmox
-	err = proxmox.DeleteCustomCertificate(customCert.Spec.NodeName)
+	err = pc.DeleteCustomCertificate(customCert.Spec.NodeName)
 	if err != nil {
 		logger.Error(err, "unable to delete CustomCertificate from Proxmox")
 		return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
@@ -242,6 +205,63 @@ func (r *CustomCertificateReconciler) handleDelete(ctx context.Context,
 	if err = r.Update(ctx, customCert); err != nil {
 		log.Log.Error(err, "Error updating CustomCertificate")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r *CustomCertificateReconciler) handleCreate(ctx context.Context,
+	pc *proxmox.ProxmoxClient, customCert *proxmoxv1alpha1.CustomCertificate) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	certExists, err := kubernetes.CheckCertificateExists(customCert.Name, customCert.Namespace)
+	if err != nil {
+		logger.Error(err, "unable to check if Certificate resource exists")
+		return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
+	}
+	if !certExists {
+		// Create a Certificate resource
+		logger.Info("Creating a Certificate resource", "Certificate", customCert.Spec.CertManagerSpec)
+		cert, certErr := kubernetes.CreateCertificate(customCert)
+		if certErr != nil {
+			logger.Error(certErr, "unable to create Certificate resource")
+			r.Recorder.Event(customCert, "Warning", "Error", fmt.Sprintf("Failed to create Certificate resource: %v", certErr))
+			return ctrl.Result{}, err
+		}
+		logger.Info("Certificate is created", "Certificate", cert)
+		// Requeue the request to update the proxmoxCertSpec with the new certificate
+		return ctrl.Result{Requeue: true}, nil
+	} else {
+		// Get the Certificate resource
+		var certManagerCertificate *unstructured.Unstructured
+		certManagerCertificate, err = kubernetes.GetCertificate(customCert)
+		if err != nil {
+			logger.Error(err, "unable to get Certificate resource")
+			return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
+		}
+		if err = kubernetes.UpdateCertificate(&customCert.Spec.CertManagerSpec, certManagerCertificate); err != nil {
+			logger.Error(err, "unable to update Certificate resource")
+			return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
+		}
+		// Retrieve the certificate and private key
+		var tlsCrt, tlsKey []byte
+		tlsCrt, tlsKey, err = kubernetes.GetCertificateSecretKeys(certManagerCertificate)
+		if err != nil {
+			logger.Error(err, "unable to get certificate and private key")
+			r.Recorder.Event(customCert, "Warning", "Error", fmt.Sprintf("Failed to get certificate and private key: %v", err))
+			return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
+		}
+		// Update the CustomCertificate resource
+		customCert.Spec.ProxmoxCertSpec.Certificate = string(tlsCrt)
+		customCert.Spec.ProxmoxCertSpec.PrivateKey = string(tlsKey)
+		if err = r.Update(ctx, customCert); err != nil {
+			logger.Error(err, "unable to update CustomCertificate")
+			return ctrl.Result{}, err
+		}
+		// TODO: Diff the key in Proxmox and the key in the secret
+		// Upload the certificate to the Proxmox node
+		if err = pc.CreateCustomCertificate(customCert.Spec.NodeName, &customCert.Spec.ProxmoxCertSpec); err != nil {
+			logger.Error(err, "unable to create CustomCertificate in Proxmox")
+			return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
+		}
 	}
 	return ctrl.Result{}, nil
 }

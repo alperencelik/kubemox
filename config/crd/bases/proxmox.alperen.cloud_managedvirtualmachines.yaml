@@ -70,6 +70,18 @@ spec:
           spec:
             description: ManagedVirtualMachineSpec defines the desired state of ManagedVirtualMachine
             properties:
+              connectionRef:
+                description: |-
+                  LocalObjectReference contains enough information to let you locate the
+                  referenced object inside the same namespace.
+                properties:
+                  name:
+                    description: |-
+                      Name of the referent.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    type: string
+                type: object
+                x-kubernetes-map-type: atomic
               cores:
                 description: Cores is the number of cores of the ManagedVirtualMachine
                 type: integer

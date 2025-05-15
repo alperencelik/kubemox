@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -24,6 +25,10 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // VirtualMachineSpec defines the desired state of VirtualMachine
+
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.connectionRef) || has(self.connectionRef)", message="ConnectionRef is required once set"
+//
+//nolint:lll // CEL validation rule is too long
 type VirtualMachineSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -49,7 +54,16 @@ type VirtualMachineSpec struct {
 	// AdditionalConfig is the additional configuration of the VM
 	// +kubebuilder:validation:Optional
 	AdditionalConfig map[string]string `json:"additionalConfig,omitempty"`
+
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="ConnectionRef is immutable"
+	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
+	// *corev1.TypedLocalObjectReference `json:"connectionRef,omitempty"`
 }
+
+// type connRef struct {
+// *corev1.TypedLocalObjectReference `json:"connectionRef,omitempty"`
+// }
 
 type NewVMSpec struct {
 	// Cores is the number of CPU cores
