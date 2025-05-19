@@ -15,24 +15,9 @@
 
 ```bash
 helm repo add kubemox https://alperencelik.github.io/helm-charts/
-
-helm install kubemox alperencelik/kubemox --set \
-    proxmox.endpoint="https://<PROXMOX_HOSTNAME" \
-    proxmox.insecureSkipTLSVerify=false \
-    proxmox.username="<PROXMOX_USERNAME>" \
-    proxmox.password="<PROXMOX_PASSWORD>"
+helm repo update kubemox
+helm install kubemox alperencelik/kubemox
 ```
-
-!!! tip
-    You can use also tokenID and secret instead of username and password.
-        proxmox.tokenID="<PROXMOX_TOKEN_ID>" \
-        proxmox.secret="<PROXMOX_SECRET>"
-
-!!! warning
-    If you are using self-signed certificates, you should set `proxmox.insecureSkipTLSVerify` to `true`.
-
-!!! warning
-    Make sure that the user you specified has the necessary permissions to create Proxmox VE resources.
 
 ### Clone from the source
 
@@ -41,10 +26,6 @@ helm install kubemox alperencelik/kubemox --set \
 ```bash
 git clone https://github.com/alperencelik/kubemox.git
 make install ## Install CRDs
-export PROXMOX_ENDPOINT="https://<PROXMOX_HOSTNAME>"
-export PROXMOX_USERNAME="<PROXMOX_USERNAME>"
-export PROXMOX_PASSWORD="<PROXMOX_PASSWORD>"
-export PROXMOX_INSECURE_SKIP_TLS_VERIFY=false
 make run ## Run the operator locally with the current kubeconfig
 ```
 
@@ -57,4 +38,4 @@ tilt up
 ## Creating your first Proxmox resource
 
 
-You can create different Proxmox resources using the Kubemox CRDs. For more information, you can check the [Custom Resources](crds/virtualmachine.md). Example resource manifests can be found in the [examples](https://github.com/alperencelik/kubemox/tree/main/examples) directory.
+You can create different Proxmox resources using the Kubemox CRDs. For more information, you can check the [Custom Resources](crds/proxmoxconnection.md). Example resource manifests can be found in the [examples](https://github.com/alperencelik/kubemox/tree/main/examples) directory.

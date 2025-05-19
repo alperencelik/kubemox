@@ -15,6 +15,8 @@ kind: CustomCertificate
 metadata:
   name: customcertificate-sample
 spec:
+  connectionRef:
+    name: proxmox-connection-sample
   nodeName: "lowtower"
   certManagerSpec:
     commonName: "proxmox.alperen.cloud"

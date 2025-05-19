@@ -19,6 +19,8 @@ kind: VirtualMachineTemplate
 metadata:
   name: virtualmachinetemplate-sample
 spec:
+  connectionRef:
+    name: proxmox-connection-sample
   name: virtualmachinetemplate-sample
   node: lowtower
   cloudInitConfig:

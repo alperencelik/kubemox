@@ -20,6 +20,8 @@ metadata:
     app.kubernetes.io/created-by: kubemox
   name: virtualmachinesnapshot-sample
 spec:
+  connectionRef:
+    name: proxmox-connection-sample
   virtualMachineName: "virtualmachine-sample-clone"
   snapshotName: "test-snapshot"
 EOF

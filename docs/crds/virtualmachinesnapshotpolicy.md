@@ -20,6 +20,8 @@ metadata:
     app.kubernetes.io/created-by: kubemox
   name: virtualmachinesnapshotpolicy-sample
 spec:
+  connectionRef:
+    name: proxmox-connection-sample
   snapshotSchedule: "*/30 * * * *" # Every 30 minutes
   namespaceSelector:
     namespaces: ["default", "my-namespace"]

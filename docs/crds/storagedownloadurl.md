@@ -13,6 +13,8 @@ kind: StorageDownloadURL
 metadata:
   name: storagedownloadurl-sample
 spec:
+  connectionRef:
+    name: proxmox-connection-sample
   content: "iso" 
   filename: "ubuntu-20.04-server-cloudimg-amd64.img"
   node: "lowtower"

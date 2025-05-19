@@ -20,6 +20,8 @@ metadata:
     app.kubernetes.io/created-by: kubemox
   name: virtualmachineset-test
 spec:
+  connectionRef:
+    name: proxmox-connection-sample
   # Number of VMs to be created
   replicas: 3
   nodeName: lowtower

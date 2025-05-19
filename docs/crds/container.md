@@ -13,6 +13,8 @@ kind: Container
 metadata:
   name: container-new
 spec:
+  connectionRef:
+    name: proxmox-connection-sample
   name: container-new
   nodeName: lowtower
   # Deletion protection is whether to delete VM from Proxmox or not
