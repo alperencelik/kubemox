@@ -9,4 +9,5 @@ resources:
 - proxmox_v1alpha1_customcertificate.yaml
 - proxmox_v1alpha1_storagedownloadurl.yaml
 - proxmox_v1alpha1_virtualmachinetemplate.yaml
+- proxmox_v1alpha1_proxmoxconnection.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples

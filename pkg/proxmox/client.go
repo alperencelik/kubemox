@@ -12,8 +12,7 @@ import (
 
 var (
 	// Create Proxmox client
-	Client = CreateProxmoxClient()
-	ctx    = context.Background()
+	ctx = context.Background()
 )
 
 type ProxmoxConfig struct {
@@ -26,6 +25,7 @@ type ProxmoxConfig struct {
 	Secret                string
 }
 
+// Deprecated: Use NewProxmoxClient instead
 func CreateProxmoxClient() *proxmox.Client {
 	// Create a new client
 	endpoint := os.Getenv("PROXMOX_ENDPOINT")
@@ -70,9 +70,10 @@ func CreateProxmoxClient() *proxmox.Client {
 	return client
 }
 
-func GetProxmoxVersion() (*proxmox.Version, error) {
+// Deprecated: Use NewProxmoxClient instead
+func (pc *ProxmoxClient) GetProxmoxVersion() (*proxmox.Version, error) {
 	// Get the version of the Proxmox server
-	version, err := Client.Version(ctx)
+	version, err := pc.Client.Version(ctx)
 	if err != nil {
 		return nil, err
 	}

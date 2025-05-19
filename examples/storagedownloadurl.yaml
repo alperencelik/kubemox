@@ -9,6 +9,9 @@ metadata:
     app.kubernetes.io/created-by: kubemox
   name: storagedownloadurl-sample
 spec:
+  connectionRef:
+    # Name of the ProxmoxConnection resource
+    name: proxmoxconnection-sample
   content: "iso" 
   filename: "ubuntu-20.04-server-cloudimg-amd64.img"
   node: "lowtower"

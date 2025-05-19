@@ -6,18 +6,19 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/luthermonson/go-proxmox"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/luthermonson/go-proxmox"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func CheckVirtualMachineTemplateDelta(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (bool, error) {
+func (pc *ProxmoxClient) CheckVirtualMachineTemplateDelta(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (bool, error) {
 	// Compare the actual state of the VM with the desired state
 	// If there is a difference, return true
-	VirtualMachine, err := getVirtualMachine(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
+	VirtualMachine, err := pc.getVirtualMachine(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for watching")
 	}
@@ -33,7 +34,7 @@ func CheckVirtualMachineTemplateDelta(vmTemplate *proxmoxv1alpha1.VirtualMachine
 		Sockets: vmTemplate.Spec.VirtualMachineConfig.Sockets,
 		Memory:  vmTemplate.Spec.VirtualMachineConfig.Memory,
 	}
-	cloudInitDiff, err := CheckVirtualMachineTemplateCIConfig(vmTemplate)
+	cloudInitDiff, err := pc.CheckVirtualMachineTemplateCIConfig(vmTemplate)
 	if err != nil {
 		log.Log.Error(err, "Error checking cloud-init config")
 	}
@@ -44,8 +45,8 @@ func CheckVirtualMachineTemplateDelta(vmTemplate *proxmoxv1alpha1.VirtualMachine
 	return false, nil
 }
 
-func ConvertVMToTemplate(vmName, nodeName string) error {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pc *ProxmoxClient) ConvertVMToTemplate(vmName, nodeName string) error {
+	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for converting to template")
 	}
@@ -65,13 +66,13 @@ func ConvertVMToTemplate(vmName, nodeName string) error {
 	return nil
 }
 
-func SetCloudInitConfig(vmName, nodeName string, ciConfig *proxmoxv1alpha1.CloudInitConfig) error {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pc *ProxmoxClient) SetCloudInitConfig(vmName, nodeName string, ciConfig *proxmoxv1alpha1.CloudInitConfig) error {
+	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for updating cloud-init config")
 	}
 	// Get cloud-init configuration and compare with the desired state
-	actualCloudInitConfig, err := GetCloudInitConfig(vmName, nodeName)
+	actualCloudInitConfig, err := pc.GetCloudInitConfig(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting cloud-init config")
 	}
@@ -81,7 +82,7 @@ func SetCloudInitConfig(vmName, nodeName string, ciConfig *proxmoxv1alpha1.Cloud
 		log.Log.Info(fmt.Sprintf("Cloud-init config is updating with new values for VM %s", vmName))
 		CloudInitOptions := constructCloudInitOptions(ciConfig)
 		// Empty the current cloud-init config
-		err := EmptyCloudInitConfig(vmName, nodeName)
+		err := pc.EmptyCloudInitConfig(vmName, nodeName)
 		if err != nil {
 			log.Log.Error(err, "Error emptying cloud-init config")
 		}
@@ -122,8 +123,8 @@ func SetCloudInitConfig(vmName, nodeName string, ciConfig *proxmoxv1alpha1.Cloud
 	return nil
 }
 
-func ImportDiskToVM(vmName, nodeName, diskName string) error {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pc *ProxmoxClient) ImportDiskToVM(vmName, nodeName, diskName string) error {
+	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for importing disk")
 		return err
@@ -133,7 +134,7 @@ func ImportDiskToVM(vmName, nodeName, diskName string) error {
 	if scsi0 != "" {
 		return nil
 	}
-	localStorage, err := GetStorage("local")
+	localStorage, err := pc.GetStorage("local")
 	if err != nil {
 		log.Log.Error(err, "Error getting local storage")
 		return err
@@ -161,8 +162,8 @@ func ImportDiskToVM(vmName, nodeName, diskName string) error {
 	return nil
 }
 
-func AddCloudInitDrive(vmName, nodeName string) error {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pc *ProxmoxClient) AddCloudInitDrive(vmName, nodeName string) error {
+	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for adding cloud-init drive")
 	}
@@ -193,8 +194,8 @@ func AddCloudInitDrive(vmName, nodeName string) error {
 	return nil
 }
 
-func SetBootOrder(vmName, nodeName string) error {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pc *ProxmoxClient) SetBootOrder(vmName, nodeName string) error {
+	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for setting boot order")
 	}
@@ -214,8 +215,8 @@ func SetBootOrder(vmName, nodeName string) error {
 	return nil
 }
 
-func IsVMTemplate(vmName, nodeName string) bool {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pc *ProxmoxClient) IsVMTemplate(vmName, nodeName string) bool {
+	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for checking if it's a template")
 	}
@@ -226,15 +227,15 @@ func IsVMTemplate(vmName, nodeName string) bool {
 	}
 }
 
-func CreateVMTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (*proxmox.Task, error) {
+func (pc *ProxmoxClient) CreateVMTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (*proxmox.Task, error) {
 	vmTemplateName := vmTemplate.Spec.Name
 	nodeName := vmTemplate.Spec.NodeName
-	node, err := Client.Node(ctx, nodeName)
+	node, err := pc.Client.Node(ctx, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting node for creating VM template")
 		return nil, err
 	}
-	vmID, err := getNextVMID(Client)
+	vmID, err := getNextVMID(pc.Client)
 	if err != nil {
 		log.Log.Error(err, "Error getting next VMID")
 		return nil, err
@@ -278,8 +279,8 @@ func CreateVMTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (*prox
 	return task, err
 }
 
-func AddTagToVMTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (*proxmox.Task, error) {
-	virtualMachine, err := getVirtualMachine(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
+func (pc *ProxmoxClient) AddTagToVMTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (*proxmox.Task, error) {
+	virtualMachine, err := pc.getVirtualMachine(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for adding tag")
 		return nil, err
@@ -293,8 +294,8 @@ func AddTagToVMTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (*pr
 	return task, err
 }
 
-func UpdateVirtualMachineTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) error {
-	VirtualMachine, err := getVirtualMachine(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
+func (pc *ProxmoxClient) UpdateVirtualMachineTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) error {
+	VirtualMachine, err := pc.getVirtualMachine(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for watching")
 	}
@@ -317,8 +318,8 @@ func UpdateVirtualMachineTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemp
 		log.Log.Error(taskErr, "Can't update VM")
 	}
 	// Update cloud-init config
-	if reconfigureCloudInit, _ := CheckVirtualMachineTemplateCIConfig(vmTemplate); reconfigureCloudInit {
-		err := SetCloudInitConfig(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName, &vmTemplate.Spec.CloudInitConfig)
+	if reconfigureCloudInit, _ := pc.CheckVirtualMachineTemplateCIConfig(vmTemplate); reconfigureCloudInit {
+		err := pc.SetCloudInitConfig(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName, &vmTemplate.Spec.CloudInitConfig)
 		if err != nil {
 			log.Log.Error(err, "Error updating cloud-init config")
 		}
@@ -327,9 +328,9 @@ func UpdateVirtualMachineTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemp
 	return nil
 }
 
-func CheckVirtualMachineTemplateCIConfig(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (bool, error) {
+func (pc *ProxmoxClient) CheckVirtualMachineTemplateCIConfig(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (bool, error) {
 	desiredCloudInitConfig := vmTemplate.Spec.CloudInitConfig
-	actualCloudInitConfig, err := GetCloudInitConfig(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
+	actualCloudInitConfig, err := pc.GetCloudInitConfig(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting cloud-init config")
 	}
@@ -422,8 +423,8 @@ func constructCloudInitOptions(cloudInitConfig *proxmoxv1alpha1.CloudInitConfig)
 	return CloudInitOptions
 }
 
-func GetCloudInitConfig(vmName, nodeName string) (proxmoxv1alpha1.CloudInitConfig, error) {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pc *ProxmoxClient) GetCloudInitConfig(vmName, nodeName string) (proxmoxv1alpha1.CloudInitConfig, error) {
+	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for getting cloud-init config")
 	}
@@ -440,8 +441,8 @@ func GetCloudInitConfig(vmName, nodeName string) (proxmoxv1alpha1.CloudInitConfi
 	return *cloudInitConfig, nil
 }
 
-func EmptyCloudInitConfig(vmName, nodeName string) error {
-	VirtualMachine, err := getVirtualMachine(vmName, nodeName)
+func (pc *ProxmoxClient) EmptyCloudInitConfig(vmName, nodeName string) error {
+	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for emptying cloud-init config")
 	}

@@ -3,6 +3,9 @@ kind: VirtualMachineTemplate
 metadata:
   name: talos-template 
 spec:
+  connectionRef:
+    # Name of the ProxmoxConnection resource
+    name: proxmoxconnection-sample
   name: talos-template 
   node: NODE_NAME
   imageConfig:

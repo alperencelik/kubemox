@@ -90,12 +90,19 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 	}
 	logger.Info(fmt.Sprintf("Reconciling VirtualMachineTemplate %s", vmTemplate.Name))
 
+	// Get the Proxmox client reference
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, vmTemplate.Spec.ConnectionRef)
+	if err != nil {
+		logger.Error(err, "Error getting Proxmox client reference")
+		return ctrl.Result{}, err
+	}
+
 	// Handle the external watcher for the VirtualMachineTemplate
 	r.handleWatcher(ctx, req, vmTemplate)
 
 	// Check if the VirtualMachineTemplate is marked for deleted, which is indicated by the deletion timestamp being set.
 	if vmTemplate.ObjectMeta.DeletionTimestamp.IsZero() {
-		err := r.handleFinalizer(ctx, vmTemplate)
+		err = r.handleFinalizer(ctx, vmTemplate)
 		if err != nil {
 			logger.Error(err, "Failed to handle finalizer")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
@@ -104,7 +111,7 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 		// The object is being deleted
 		if controllerutil.ContainsFinalizer(vmTemplate, virtualMachineTemplateFinalizerName) {
 			// Update the condition for the VirtualMachineTemplate if it's not already deleting
-			res, delErr := r.handleDelete(ctx, req, vmTemplate)
+			res, delErr := r.handleDelete(ctx, req, pc, vmTemplate)
 			if delErr != nil {
 				logger.Error(delErr, "Failed to delete VirtualMachineTemplate")
 				return res, delErr
@@ -118,7 +125,7 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	// Handle the image operations and make sure the image is available
-	err := r.handleImageOperations(ctx, vmTemplate)
+	err = r.handleImageOperations(ctx, vmTemplate)
 	if err != nil {
 		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 	}
@@ -132,12 +139,12 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 		return result, nil
 	}
 	// Create the VM template
-	err = r.handleVMCreation(ctx, vmTemplate)
+	err = r.handleVMCreation(ctx, pc, vmTemplate)
 	if err != nil {
 		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 	}
 	// Do the CloudInit operations
-	err = r.handleCloudInitOperations(ctx, vmTemplate)
+	err = r.handleCloudInitOperations(ctx, pc, vmTemplate)
 	if err != nil {
 		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 	}
@@ -202,23 +209,23 @@ func (r *VirtualMachineTemplateReconciler) handleImageOperations(ctx context.Con
 
 // Return true if the request should be requeued
 func (r *VirtualMachineTemplateReconciler) handleVMCreation(ctx context.Context,
-	vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) error {
+	pc *proxmox.ProxmoxClient, vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) error {
 	logger := log.FromContext(ctx)
 	// Check if the VM is already exists and
 	templateVMName := vmTemplate.Spec.Name
 	nodeName := vmTemplate.Spec.NodeName
 
 	// Check if the VM template is already exists
-	vmExists, err := proxmox.CheckVM(templateVMName, nodeName)
+	vmExists, err := pc.CheckVM(templateVMName, nodeName)
 	if err != nil {
 		logger.Error(err, "Failed to check VM template")
 		return err
 	}
 	if vmExists {
 		// Check if VM template is on desired state
-		if result, err := proxmox.CheckVirtualMachineTemplateDelta(vmTemplate); err == nil && result {
+		if result, err := pc.CheckVirtualMachineTemplateDelta(vmTemplate); err == nil && result {
 			// Update VirtualMachineTemplate resource
-			err = proxmox.UpdateVirtualMachineTemplate(vmTemplate)
+			err = pc.UpdateVirtualMachineTemplate(vmTemplate)
 			if err != nil {
 				logger.Error(err, "Failed to update VM template")
 				return err
@@ -232,7 +239,7 @@ func (r *VirtualMachineTemplateReconciler) handleVMCreation(ctx context.Context,
 		// Even if the VM is exists, it may not be a template but we will create a new one no matter what
 		logger.Info(fmt.Sprintf("VirtualMachine template %s does not exists, creating a new one", templateVMName))
 		// Create the VM first
-		task, err := proxmox.CreateVMTemplate(vmTemplate)
+		task, err := pc.CreateVMTemplate(vmTemplate)
 		if err != nil {
 			logger.Error(err, "Failed to create VM for template")
 			return err
@@ -244,13 +251,13 @@ func (r *VirtualMachineTemplateReconciler) handleVMCreation(ctx context.Context,
 			return err
 		}
 		// Handle additional configuration
-		err = r.handleAdditionalConfig(ctx, vmTemplate)
+		err = r.handleAdditionalConfig(ctx, pc, vmTemplate)
 		if err != nil {
 			logger.Error(err, "Error handling additional configuration")
 			return err
 		}
 		// Add tag to the VM
-		task, err = proxmox.AddTagToVMTemplate(vmTemplate)
+		task, err = pc.AddTagToVMTemplate(vmTemplate)
 		if err != nil {
 			logger.Error(err, "Failed to add tag to VM template")
 			return err
@@ -286,7 +293,7 @@ func (r *VirtualMachineTemplateReconciler) handleFinalizer(ctx context.Context,
 }
 
 func (r *VirtualMachineTemplateReconciler) deleteVirtualMachineTemplate(ctx context.Context,
-	vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) error {
+	pc *proxmox.ProxmoxClient, vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) error {
 	logger := log.FromContext(ctx)
 	logger.Info(fmt.Sprintf("Deleting VirtualMachineTemplate %s", vmTemplate.Name))
 	// Delete the VM
@@ -295,7 +302,7 @@ func (r *VirtualMachineTemplateReconciler) deleteVirtualMachineTemplate(ctx cont
 		logger.Info("Deletion protection is enabled, skipping the deletion of VM")
 		return nil
 	} else {
-		err := proxmox.DeleteVM(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
+		err := pc.DeleteVM(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
 		if err != nil {
 			var taskErr *proxmox.TaskError
 			if errors.As(err, &taskErr) {
@@ -337,7 +344,7 @@ func (r *VirtualMachineTemplateReconciler) createStorageDownloadURLCR(ctx contex
 }
 
 func (r *VirtualMachineTemplateReconciler) handleCloudInitOperations(ctx context.Context,
-	vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) error {
+	pc *proxmox.ProxmoxClient, vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) error {
 	logger := log.FromContext(ctx)
 	templateVMName := vmTemplate.Spec.Name
 	nodeName := vmTemplate.Spec.NodeName
@@ -352,7 +359,7 @@ func (r *VirtualMachineTemplateReconciler) handleCloudInitOperations(ctx context
 	}
 	// Continue with the VM template operations
 	// 1. Import Disk
-	err = proxmox.ImportDiskToVM(templateVMName, nodeName, storageDownloadURL.Spec.Filename)
+	err = pc.ImportDiskToVM(templateVMName, nodeName, storageDownloadURL.Spec.Filename)
 	if err != nil {
 		var taskErr *proxmox.TaskError
 		if errors.As(err, &taskErr) {
@@ -363,7 +370,7 @@ func (r *VirtualMachineTemplateReconciler) handleCloudInitOperations(ctx context
 		return err
 	}
 	// 2. Add cloud Init CD-ROM drive
-	err = proxmox.AddCloudInitDrive(templateVMName, nodeName)
+	err = pc.AddCloudInitDrive(templateVMName, nodeName)
 	if err != nil {
 		var taskErr *proxmox.TaskError
 		if errors.As(err, &taskErr) {
@@ -374,19 +381,19 @@ func (r *VirtualMachineTemplateReconciler) handleCloudInitOperations(ctx context
 		return err
 	}
 	// 3. Set cloud-init configuration
-	err = proxmox.SetCloudInitConfig(templateVMName, nodeName, &vmTemplate.Spec.CloudInitConfig)
+	err = pc.SetCloudInitConfig(templateVMName, nodeName, &vmTemplate.Spec.CloudInitConfig)
 	if err != nil {
 		logger.Error(err, "Failed to set cloud-init configuration")
 		return err
 	}
 	// 4. Set boot order to boot from imported disk
-	err = proxmox.SetBootOrder(templateVMName, nodeName)
+	err = pc.SetBootOrder(templateVMName, nodeName)
 	if err != nil {
 		logger.Error(err, "Failed to set boot order")
 		return err
 	}
 	// 5. Convert VM to template
-	err = proxmox.ConvertVMToTemplate(templateVMName, nodeName)
+	err = pc.ConvertVMToTemplate(templateVMName, nodeName)
 	if err != nil {
 		logger.Error(err, "Failed to convert VM to template")
 		return err
@@ -428,9 +435,9 @@ func (r *VirtualMachineTemplateReconciler) handleStorageDownloadURL(ctx context.
 }
 
 func (r *VirtualMachineTemplateReconciler) handleAdditionalConfig(ctx context.Context,
-	vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) error {
+	pc *proxmox.ProxmoxClient, vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) error {
 	logger := log.FromContext(ctx)
-	err := proxmox.ApplyAdditionalConfiguration(vmTemplate)
+	err := pc.ApplyAdditionalConfiguration(vmTemplate)
 	if err != nil {
 		logger.Error(err, "Failed to apply additional configuration")
 		return err
@@ -472,8 +479,14 @@ func (r *VirtualMachineTemplateReconciler) updateStatus(ctx context.Context, obj
 	return r.Status().Update(ctx, obj.(*proxmoxv1alpha1.VirtualMachineTemplate))
 }
 
-func (r *VirtualMachineTemplateReconciler) checkDelta(obj proxmox.Resource) (bool, error) {
-	return proxmox.CheckVirtualMachineTemplateDelta(obj.(*proxmoxv1alpha1.VirtualMachineTemplate))
+func (r *VirtualMachineTemplateReconciler) checkDelta(ctx context.Context, obj proxmox.Resource) (bool, error) {
+	logger := log.FromContext(ctx)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.ConnectionRef)
+	if err != nil {
+		logger.Error(err, "Error getting Proxmox client reference")
+		return false, err
+	}
+	return pc.CheckVirtualMachineTemplateDelta(obj.(*proxmoxv1alpha1.VirtualMachineTemplate))
 }
 
 // TODO: Try to remove the requirement of handleAutoStartFunc
@@ -485,12 +498,18 @@ func (r *VirtualMachineTemplateReconciler) handleReconcileFunc(ctx context.Conte
 	return r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Namespace: obj.GetNamespace(), Name: obj.GetName()}})
 }
 
-func (r *VirtualMachineTemplateReconciler) IsResourceReady(obj proxmox.Resource) (bool, error) {
-	return proxmox.IsVirtualMachineReady(obj.(*proxmoxv1alpha1.VirtualMachineTemplate))
+func (r *VirtualMachineTemplateReconciler) IsResourceReady(ctx context.Context, obj proxmox.Resource) (bool, error) {
+	logger := log.FromContext(ctx)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.ConnectionRef)
+	if err != nil {
+		logger.Error(err, "Error getting Proxmox client reference")
+		return false, err
+	}
+	return pc.IsVirtualMachineReady(obj.(*proxmoxv1alpha1.VirtualMachineTemplate))
 }
 
 func (r *VirtualMachineTemplateReconciler) handleDelete(ctx context.Context,
-	req ctrl.Request, vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (ctrl.Result, error) {
+	req ctrl.Request, pc *proxmox.ProxmoxClient, vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	if !meta.IsStatusConditionPresentAndEqual(vmTemplate.Status.Conditions, typeDeletingVirtualMachineTemplate, metav1.ConditionUnknown) {
 		meta.SetStatusCondition(&vmTemplate.Status.Conditions, metav1.Condition{
@@ -511,7 +530,7 @@ func (r *VirtualMachineTemplateReconciler) handleDelete(ctx context.Context,
 		delete(r.Watchers.Watchers, req.Name)
 	}
 	// Delete the VirtualMachineTemplate
-	if err := r.deleteVirtualMachineTemplate(ctx, vmTemplate); err != nil {
+	if err := r.deleteVirtualMachineTemplate(ctx, pc, vmTemplate); err != nil {
 		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 	}
 	// Remove the finalizer

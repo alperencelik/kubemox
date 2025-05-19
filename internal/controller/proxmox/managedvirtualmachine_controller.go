@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -84,6 +83,12 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 	if err != nil {
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
+	// Setup the ProxmoxClient based on the connection name
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, managedVM.Spec.ConnectionRef)
+	if err != nil {
+		logger.Error(err, "Error getting Proxmox client reference")
+		return ctrl.Result{}, err
+	}
 
 	reconcileMode := kubernetes.GetReconcileMode(managedVM)
 
@@ -119,7 +124,7 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 		if controllerutil.ContainsFinalizer(managedVM, managedvirtualMachineFinalizerName) {
 			logger.Info(fmt.Sprintf("Deleting ManagedVirtualMachine %s", managedVM.Name))
 			// Delete ManagedVM
-			res, delErr := r.handleDelete(ctx, req, managedVM)
+			res, delErr := r.handleDelete(ctx, req, pc, managedVM)
 			if delErr != nil {
 				logger.Error(delErr, "unable to delete ManagedVirtualMachine")
 				return res, delErr
@@ -129,13 +134,13 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, nil
 	}
 	// If EnableAutoStart is true, start the VM if it's stopped
-	_, err = r.handleAutoStart(ctx, managedVM)
+	_, err = r.handleAutoStart(ctx, pc, managedVM)
 	if err != nil {
 		logger.Error(err, "Error handling auto start")
 		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 	}
 	// Update ManagedVM
-	if err = proxmox.UpdateManagedVM(ctx, managedVM); err != nil {
+	if err = pc.UpdateManagedVM(ctx, managedVM); err != nil {
 		var taskErr *proxmox.TaskError
 		if errors.As(err, &taskErr) {
 			r.Recorder.Event(managedVM, "Warning", "Error",
@@ -153,28 +158,13 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ManagedVirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	// Get list of VMs that tagged with managedVirtualMachineTag
-	managedVMs, err := proxmox.GetManagedVMs()
-	if err != nil {
-		return err
-	}
-	// Handle ManagedVM creation
-	if err := r.handleManagedVMCreation(context.Background(), managedVMs); err != nil {
-		// This is going down on the init phase since the ManagedVM's needs to be created by the operator
-		// Can't requeue since it's not involved in reconcile loop
-		// TODO: Review here to make a retry if possible
-		return err
-	}
+	// Get all ProxmoxConnection objects
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.ManagedVirtualMachine{}).
 		WithEventFilter(predicate.Funcs{
 			UpdateFunc: func(e event.UpdateEvent) bool {
-				oldManagedVM := e.ObjectOld.(*proxmoxv1alpha1.ManagedVirtualMachine)
-				newManagedVM := e.ObjectNew.(*proxmoxv1alpha1.ManagedVirtualMachine)
-				condition1 := !reflect.DeepEqual(oldManagedVM.Spec, newManagedVM.Spec)
-				condition2 := newManagedVM.ObjectMeta.GetDeletionTimestamp().IsZero()
-				return condition1 || !condition2
+				return e.ObjectNew.GetGeneration() != e.ObjectOld.GetGeneration()
 			},
 		}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: ManagedVMmaxConcurrentReconciles}).
@@ -191,49 +181,51 @@ func (r *ManagedVirtualMachineReconciler) handleResourceNotFound(ctx context.Con
 	return err
 }
 
-func (r *ManagedVirtualMachineReconciler) handleManagedVMCreation(ctx context.Context, managedVMs []string) error {
-	logger := log.FromContext(ctx)
-	for _, managedVM := range managedVMs {
-		// Create ManagedVM that matches with tag of managedVirtualMachineTag value
-		logger.Info(fmt.Sprintf("ManagedVM %v found!", managedVM))
-		managedVMExists, err := proxmox.CheckManagedVMExists(managedVM)
-		if err != nil {
-			return err
-		}
-		if !managedVMExists {
-			logger.Info(fmt.Sprintf("ManagedVM %v does not exist so creating it", managedVM))
-			managedVM, err := proxmox.CreateManagedVM(managedVM)
-			if err != nil {
-				return err
-			}
-			err = r.Create(context.Background(), managedVM)
-			r.Recorder.Event(managedVM, "Normal", "Creating", fmt.Sprintf("Creating ManagedVirtualMachine %s", managedVM.Name))
-			if err != nil {
-				logger.Error(err, fmt.Sprintf("ManagedVM %v could not be created", managedVM.Name))
-				return err
-			}
-			// Add metrics and events
-			r.Recorder.Event(managedVM, "Normal", "Created", fmt.Sprintf("ManagedVirtualMachine %s created", managedVM.Name))
-		} else {
-			logger.Info(fmt.Sprintf("ManagedVM %v already exists", managedVM))
-		}
-	}
-	return nil
-}
+// Deprecated: This function is not used anymore
+// func (r *ManagedVirtualMachineReconciler) handleManagedVMCreation(ctx context.Context,
+// pc *proxmox.ProxmoxClient, managedVMs []string) error {
+// logger := log.FromContext(ctx)
+// for _, managedVM := range managedVMs {
+// // Create ManagedVM that matches with tag of managedVirtualMachineTag value
+// logger.Info(fmt.Sprintf("ManagedVM %v found!", managedVM))
+// managedVMExists, err := proxmox.CheckManagedVMExists(managedVM)
+// if err != nil {
+// return err
+// }
+// if !managedVMExists {
+// logger.Info(fmt.Sprintf("ManagedVM %v does not exist so creating it", managedVM))
+// managedVM, err := pc.CreateManagedVM(managedVM)
+// if err != nil {
+// return err
+// }
+// err = r.Create(context.Background(), managedVM)
+// r.Recorder.Event(managedVM, "Normal", "Creating", fmt.Sprintf("Creating ManagedVirtualMachine %s", managedVM.Name))
+// if err != nil {
+// logger.Error(err, fmt.Sprintf("ManagedVM %v could not be created", managedVM.Name))
+// return err
+// }
+// // Add metrics and events
+// r.Recorder.Event(managedVM, "Normal", "Created", fmt.Sprintf("ManagedVirtualMachine %s created", managedVM.Name))
+// } else {
+// logger.Info(fmt.Sprintf("ManagedVM %v already exists", managedVM))
+// }
+// }
+// return nil
+// }
 
 func (r *ManagedVirtualMachineReconciler) handleAutoStart(ctx context.Context,
-	managedVM *proxmoxv1alpha1.ManagedVirtualMachine) (ctrl.Result, error) {
+	pc *proxmox.ProxmoxClient, managedVM *proxmoxv1alpha1.ManagedVirtualMachine) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	if managedVM.Spec.EnableAutoStart {
 		vmName := managedVM.Name
 		nodeName := managedVM.Spec.NodeName
-		vmState, err := proxmox.GetVMState(vmName, nodeName)
+		vmState, err := pc.GetVMState(vmName, nodeName)
 		if err != nil {
 			logger.Info(fmt.Sprintf("Couldn't get the state of the managed Virtual Machine %s", vmName))
 			return ctrl.Result{Requeue: true}, err
 		}
 		if vmState == proxmox.VirtualMachineStoppedState {
-			startResult, err := proxmox.StartVM(vmName, nodeName)
+			startResult, err := pc.StartVM(vmName, nodeName)
 			if err != nil {
 				var taskErr *proxmox.TaskError
 				if errors.As(err, &taskErr) {
@@ -265,15 +257,33 @@ func (r *ManagedVirtualMachineReconciler) fetchResource(ctx context.Context, key
 }
 
 func (r *ManagedVirtualMachineReconciler) updateStatus(ctx context.Context, obj proxmox.Resource) error {
-	return r.UpdateManagedVirtualMachineStatus(ctx, obj.(*proxmoxv1alpha1.ManagedVirtualMachine))
+	logger := log.FromContext(ctx)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.ManagedVirtualMachine).Spec.ConnectionRef)
+	if err != nil {
+		logger.Error(err, "Error getting Proxmox client reference")
+		return err
+	}
+	return r.UpdateManagedVirtualMachineStatus(ctx, pc, obj.(*proxmoxv1alpha1.ManagedVirtualMachine))
 }
 
-func (r *ManagedVirtualMachineReconciler) checkDelta(obj proxmox.Resource) (bool, error) {
-	return proxmox.CheckManagedVMDelta(obj.(*proxmoxv1alpha1.ManagedVirtualMachine))
+func (r *ManagedVirtualMachineReconciler) checkDelta(ctx context.Context, obj proxmox.Resource) (bool, error) {
+	logger := log.FromContext(ctx)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.ManagedVirtualMachine).Spec.ConnectionRef)
+	if err != nil {
+		logger.Error(err, "Error getting Proxmox client reference")
+		return false, err
+	}
+	return pc.CheckManagedVMDelta(obj.(*proxmoxv1alpha1.ManagedVirtualMachine))
 }
 
 func (r *ManagedVirtualMachineReconciler) handleAutoStartFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
-	return r.handleAutoStart(ctx, obj.(*proxmoxv1alpha1.ManagedVirtualMachine))
+	logger := log.FromContext(ctx)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.ManagedVirtualMachine).Spec.ConnectionRef)
+	if err != nil {
+		logger.Error(err, "Error getting Proxmox client reference")
+		return ctrl.Result{}, err
+	}
+	return r.handleAutoStart(ctx, pc, obj.(*proxmoxv1alpha1.ManagedVirtualMachine))
 }
 
 func (r *ManagedVirtualMachineReconciler) handleReconcileFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
@@ -281,7 +291,7 @@ func (r *ManagedVirtualMachineReconciler) handleReconcileFunc(ctx context.Contex
 }
 
 func (r *ManagedVirtualMachineReconciler) UpdateManagedVirtualMachineStatus(ctx context.Context,
-	managedVM *proxmoxv1alpha1.ManagedVirtualMachine) error {
+	pc *proxmox.ProxmoxClient, managedVM *proxmoxv1alpha1.ManagedVirtualMachine) error {
 	// Update ManagedVMStatus
 	meta.SetStatusCondition(&managedVM.Status.Conditions, metav1.Condition{
 		Type:    typeAvailableVirtualMachine,
@@ -290,12 +300,12 @@ func (r *ManagedVirtualMachineReconciler) UpdateManagedVirtualMachineStatus(ctx 
 		Message: "VirtualMachine status is updated",
 	})
 	managedVMName := managedVM.Name
-	nodeName, err := proxmox.GetNodeOfVM(managedVMName)
+	nodeName, err := pc.GetNodeOfVM(managedVMName)
 	if err != nil {
 		return err
 	}
 	// Update the QEMU status of the ManagedVirtualMachine
-	ManagedVMStatus, err := proxmox.UpdateVMStatus(managedVMName, nodeName)
+	ManagedVMStatus, err := pc.UpdateVMStatus(managedVMName, nodeName)
 	if err != nil {
 		return err
 	}
@@ -306,12 +316,18 @@ func (r *ManagedVirtualMachineReconciler) UpdateManagedVirtualMachineStatus(ctx 
 	return nil
 }
 
-func (r *ManagedVirtualMachineReconciler) IsResourceReady(obj proxmox.Resource) (bool, error) {
-	return proxmox.IsVirtualMachineReady(obj.(*proxmoxv1alpha1.ManagedVirtualMachine))
+func (r *ManagedVirtualMachineReconciler) IsResourceReady(ctx context.Context, obj proxmox.Resource) (bool, error) {
+	logger := log.FromContext(ctx)
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.ManagedVirtualMachine).Spec.ConnectionRef)
+	if err != nil {
+		logger.Error(err, "Error getting Proxmox client reference")
+		return false, err
+	}
+	return pc.IsVirtualMachineReady(obj.(*proxmoxv1alpha1.ManagedVirtualMachine))
 }
 
 func (r *ManagedVirtualMachineReconciler) handleDelete(ctx context.Context, req ctrl.Request,
-	managedVM *proxmoxv1alpha1.ManagedVirtualMachine) (
+	pc *proxmox.ProxmoxClient, managedVM *proxmoxv1alpha1.ManagedVirtualMachine) (
 	ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	var err error
@@ -337,7 +353,7 @@ func (r *ManagedVirtualMachineReconciler) handleDelete(ctx context.Context, req 
 	// Delete the VM
 	r.Recorder.Event(managedVM, "Normal", "Deleting", fmt.Sprintf("Deleting ManagedVirtualMachine %s", managedVM.Name))
 	if !managedVM.Spec.DeletionProtection {
-		err = proxmox.DeleteVM(managedVM.Name, managedVM.Spec.NodeName)
+		err = pc.DeleteVM(managedVM.Name, managedVM.Spec.NodeName)
 		if err != nil {
 			var taskErr *proxmox.TaskError
 			if errors.As(err, &taskErr) {
@@ -348,7 +364,7 @@ func (r *ManagedVirtualMachineReconciler) handleDelete(ctx context.Context, req 
 		}
 	} else {
 		// Remove managedVirtualMachineTag from Managed Virtual Machine to not manage it anymore
-		err = proxmox.RemoveVirtualMachineTag(managedVM.Name, managedVM.Spec.NodeName, proxmox.ManagedVirtualMachineTag)
+		err = pc.RemoveVirtualMachineTag(managedVM.Name, managedVM.Spec.NodeName, proxmox.ManagedVirtualMachineTag)
 		if err != nil {
 			logger.Error(err, "Error removing managedVirtualMachineTag from Managed Virtual Machine")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)

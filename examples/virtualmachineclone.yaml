@@ -11,6 +11,9 @@ spec:
   deletionProtection: false
   # VM should be started any time found in stopped state
   enableAutoStart: true
+  connectionRef:
+    # Name of the ProxmoxConnection resource
+    name: proxmoxconnection-sample
   template:
     # Name of the template to be cloned
     name: fedora-template 

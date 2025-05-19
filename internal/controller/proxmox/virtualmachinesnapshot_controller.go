@@ -78,6 +78,13 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 	}
 	logger.Info("Reconciling VirtualMachineSnapshot", "Name", vmSnapshot.Name)
 
+	// Get the Proxmox client reference
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, vmSnapshot.Spec.ConnectionRef)
+	if err != nil {
+		logger.Error(err, "unable to get Proxmox client")
+		return ctrl.Result{}, err
+	}
+
 	// Get ref vm
 	vm, err := r.getVMreference(ctx, vmSnapshot)
 	if err != nil {
@@ -96,7 +103,7 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	// Handle snapshot creation
-	err = r.handleSnapshotCreation(ctx, vmSnapshot, snapshotName)
+	err = r.handleSnapshotCreation(ctx, pc, vmSnapshot, snapshotName)
 	if err != nil {
 		return ctrl.Result{Requeue: true, RequeueAfter: VMSnapshotreconcilationPeriod}, client.IgnoreNotFound(err)
 	}
@@ -150,11 +157,11 @@ func (r *VirtualMachineSnapshotReconciler) getVMreference(ctx context.Context,
 }
 
 func (r *VirtualMachineSnapshotReconciler) handleSnapshotCreation(ctx context.Context,
-	vmSnapshot *proxmoxv1alpha1.VirtualMachineSnapshot, snapshotName string) error {
+	pc *proxmox.ProxmoxClient, vmSnapshot *proxmoxv1alpha1.VirtualMachineSnapshot, snapshotName string) error {
 	logger := log.FromContext(ctx)
 	vmName := vmSnapshot.Spec.VirtualMachineName
 	// Get all the snapshots of the VM
-	snapshots, err := proxmox.GetVMSnapshots(vmName)
+	snapshots, err := pc.GetVMSnapshots(vmName)
 	if err != nil {
 		logger.Error(err, "Failed to get VM snapshots")
 		return err
@@ -170,7 +177,7 @@ func (r *VirtualMachineSnapshotReconciler) handleSnapshotCreation(ctx context.Co
 		return nil
 	} else if vmSnapshot.Status.Status != snapshotCreatedStatus {
 		// Create the snapshot
-		StatusCode, err = proxmox.CreateVMSnapshot(vmName, snapshotName)
+		StatusCode, err = pc.CreateVMSnapshot(vmName, snapshotName)
 		if err != nil {
 			logger.Error(err, "Failed to create VM snapshot")
 			return client.IgnoreNotFound(err)

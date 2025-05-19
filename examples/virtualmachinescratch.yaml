@@ -5,6 +5,9 @@ metadata:
   labels:
   name: virtualmachine-sample-scratch
 spec:
+  connectionRef:
+    # Name of the ProxmoxConnection resource
+    name: proxmoxconnection-sample
   name: virtualmachine-sample-scratch
   # Name of the node where the VM will be created
   nodeName: lowtower

@@ -182,6 +182,7 @@ func (r *VirtualMachineSetReconciler) CreateVirtualMachineCR(vmSet *proxmoxv1alp
 			DeletionProtection: vmSet.Spec.DeletionProtection,
 			EnableAutoStart:    vmSet.Spec.EnableAutoStart,
 			AdditionalConfig:   vmSet.Spec.AdditionalConfig,
+			ConnectionRef:      vmSet.Spec.ConnectionRef,
 		},
 	}
 	// Set VirtualMachineSet instance as the owner and controller
@@ -243,6 +244,7 @@ func (r *VirtualMachineSetReconciler) scaleDownVMs(vmSet *proxmoxv1alpha1.Virtua
 
 func (r *VirtualMachineSetReconciler) updateVMs(ctx context.Context,
 	vmSet *proxmoxv1alpha1.VirtualMachineSet, vmList *proxmoxv1alpha1.VirtualMachineList) error {
+	logger := log.FromContext(ctx)
 	for i := range vmList.Items {
 		vm := &vmList.Items[i]
 		if !reflect.DeepEqual(vm.Spec.Template, vmSet.Spec.Template) ||
@@ -254,8 +256,14 @@ func (r *VirtualMachineSetReconciler) updateVMs(ctx context.Context,
 			vm.Spec.DeletionProtection = vmSet.Spec.DeletionProtection
 			vm.Spec.EnableAutoStart = vmSet.Spec.EnableAutoStart
 			vm.Spec.AdditionalConfig = vmSet.Spec.AdditionalConfig
+			// Get the Proxmox client reference
+			pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, vm.Spec.ConnectionRef)
+			if err != nil {
+				logger.Error(err, "Error getting Proxmox client reference")
+				return err
+			}
 			// If vm exists in Proxmox, update it
-			vmExists, err := proxmox.CheckVM(vm.Spec.Name, vm.Spec.NodeName)
+			vmExists, err := pc.CheckVM(vm.Spec.Name, vm.Spec.NodeName)
 			if err != nil {
 				return fmt.Errorf("unable to check VirtualMachine: %w", err)
 			}

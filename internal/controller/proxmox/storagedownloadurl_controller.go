@@ -83,6 +83,13 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err != nil {
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
+	// Get the Proxmox client reference
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, storageDownloadURL.Spec.ConnectionRef)
+	if err != nil {
+		logger.Error(err, "Error getting Proxmox client reference")
+		return ctrl.Result{}, err
+	}
+
 	reconcileMode := kubernetes.GetReconcileMode(storageDownloadURL)
 
 	switch reconcileMode {
@@ -110,7 +117,7 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 	} else {
 		if controllerutil.ContainsFinalizer(storageDownloadURL, storageDownloadURLFinalizerName) {
 			// Delete the storage download URL
-			res, delErr := r.handleDelete(ctx, storageDownloadURL)
+			res, delErr := r.handleDelete(ctx, pc, storageDownloadURL)
 			if delErr != nil {
 				logger.Error(delErr, "unable to delete StorageDownloadURL")
 				return res, delErr
@@ -124,7 +131,7 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	// Check if the filename exists in the storage
-	storageContent, err := proxmox.GetStorageContent(node, storage)
+	storageContent, err := pc.GetStorageContent(node, storage)
 	if err != nil {
 		logger.Error(err, "unable to get storage content")
 		return ctrl.Result{}, err
@@ -132,7 +139,7 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// Check if the filename exists in the storage
 	if !proxmox.HasFile(storageContent, &storageDownloadURL.Spec) {
 		logger.Info("File does not exist in the storage, so downloading it")
-		err = r.handleDownloadURL(ctx, storageDownloadURL)
+		err = r.handleDownloadURL(ctx, pc, storageDownloadURL)
 		if err != nil {
 			logger.Error(err, "unable to download the file")
 			return ctrl.Result{}, err
@@ -186,17 +193,17 @@ func (r *StorageDownloadURLReconciler) handleResourceNotFound(ctx context.Contex
 }
 
 func (r *StorageDownloadURLReconciler) handleDownloadURL(ctx context.Context,
-	storageDownloadURL *proxmoxv1alpha1.StorageDownloadURL) error {
+	pc *proxmox.ProxmoxClient, storageDownloadURL *proxmoxv1alpha1.StorageDownloadURL) error {
 	// Download the file
 	logger := log.FromContext(ctx)
 
-	taskUPID, taskErr := proxmox.StorageDownloadURL(storageDownloadURL.Spec.Node, &storageDownloadURL.Spec)
+	taskUPID, taskErr := pc.StorageDownloadURL(storageDownloadURL.Spec.Node, &storageDownloadURL.Spec)
 	if taskErr != nil {
 		logger.Error(taskErr, "unable to download the file")
 		return taskErr
 	}
 	// Get the task
-	task := proxmox.GetTask(taskUPID)
+	task := pc.GetTask(taskUPID)
 	var logChannel <-chan string
 	logChannel, err := task.Watch(ctx, 5)
 	if err != nil {
@@ -236,7 +243,7 @@ func (r *StorageDownloadURLReconciler) handleDownloadURL(ctx context.Context,
 }
 
 func (r *StorageDownloadURLReconciler) handleDelete(ctx context.Context,
-	storageDownloadURL *proxmoxv1alpha1.StorageDownloadURL) (ctrl.Result, error) {
+	pc *proxmox.ProxmoxClient, storageDownloadURL *proxmoxv1alpha1.StorageDownloadURL) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	var err error
 	if !meta.IsStatusConditionPresentAndEqual(storageDownloadURL.Status.Conditions, typeDeletingStorageDownloadURL, metav1.ConditionTrue) {
@@ -252,7 +259,7 @@ func (r *StorageDownloadURLReconciler) handleDelete(ctx context.Context,
 		}
 	}
 	// Delete the file from the storage
-	err = proxmox.DeleteStorageContent(storageDownloadURL.Spec.Storage, &storageDownloadURL.Spec)
+	err = pc.DeleteStorageContent(storageDownloadURL.Spec.Storage, &storageDownloadURL.Spec)
 	if err != nil {
 		logger.Error(err, "unable to delete the file")
 		return ctrl.Result{}, client.IgnoreNotFound(err)

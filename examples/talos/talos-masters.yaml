@@ -3,6 +3,9 @@ kind: VirtualMachineSet
 metadata:
   name: talos-master 
 spec:
+  connectionRef:
+    # Name of the ProxmoxConnection resource
+    name: proxmoxconnection-sample
   deletionProtection: false 
   enableAutoStart: false
   # Number of VMs to be created
