@@ -3,6 +3,9 @@ kind: Container
 metadata:
   name: container-new
 spec:
+  connectionRef:
+    # Name of the ProxmoxConnection resource
+    name: proxmoxconnection-sample
   name: container-new
   nodeName: lowtower
   deletionProtection: false

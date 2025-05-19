@@ -9,6 +9,9 @@ metadata:
     app.kubernetes.io/created-by: kubemox
   name: kubernetes-master
 spec:
+  connectionRef:
+    # Name of the ProxmoxConnection resource
+    name: proxmoxconnection-sample
   # Number of VMs to be created
   replicas: 1
   nodeName: lowtower
