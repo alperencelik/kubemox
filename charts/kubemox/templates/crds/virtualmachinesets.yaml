@@ -68,6 +68,18 @@ spec:
                 description: AdditionalConfig is the additional configuration of the
                   VM
                 type: object
+              connectionRef:
+                description: |-
+                  LocalObjectReference contains enough information to let you locate the
+                  referenced object inside the same namespace.
+                properties:
+                  name:
+                    description: |-
+                      Name of the referent.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    type: string
+                type: object
+                x-kubernetes-map-type: atomic
               deletionProtection:
                 default: false
                 description: |-

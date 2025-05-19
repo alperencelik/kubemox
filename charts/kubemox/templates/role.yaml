@@ -34,6 +34,9 @@ rules:
   - "storagedownloadurls"
   - "storagedownloadurls/finalizers"
   - "storagedownloadurls/status"
+  - "proxmoxconnections"
+  - "proxmoxconnections/finalizers"
+  - "proxmoxconnections/status"
   verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
 # Events
 - apiGroups: [""]

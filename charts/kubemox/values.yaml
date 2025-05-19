@@ -4,32 +4,33 @@
 # -- Define how many replicas of the Kubemox to run
 replicaCount: 1
 
-proxmox:
-  # -- Proxmox VE endpoint
-  endpoint: "10.0.0.99" 
-  # -- Proxmox VE skip hostname verification for SSL
-  insecureSkipTLSVerify: true
-  # Either tokenID/secret or username/password must be set
-  # -- Proxmox VE token ID
-  tokenID: ""
-  # -- Proxmox VE token secret
-  secret: ""
-  # Both username and password must be set if tokenID/secret is not set
-  # -- Proxmox VE username
-  username: "root@pam"
-  # -- Proxmox VE password
-  password: "PROXMOX_PASSWORD"
+# Deprecated: Use ProxmoxConnection instead
+# proxmox:
+#   # -- Proxmox VE endpoint
+#   endpoint: "10.0.0.99" 
+#   # -- Proxmox VE skip hostname verification for SSL
+#   insecureSkipTLSVerify: true
+#   # Either tokenID/secret or username/password must be set
+#   # -- Proxmox VE token ID
+#   tokenID: ""
+#   # -- Proxmox VE token secret
+#   secret: ""
+#   # Both username and password must be set if tokenID/secret is not set
+#   # -- Proxmox VE username
+#   username: "root@pam"
+#   # -- Proxmox VE password
+#   password: "PROXMOX_PASSWORD"
 
-  # # Existing secret containing credentials
-  # existingSecret:
-  # # Key in the secret containing the Proxmox token id
-  # tokenIdKey: tokenID
-  # # Key in the secret containing the Proxmox token secret
-  # secretKey: secret
-  # # Key in the secret containing the Proxmox username
-  # usernameKey: username
-  # # Key in the secret containing the Proxmox password
-  # passwordKey: password
+# # Existing secret containing credentials
+# existingSecret:
+# # Key in the secret containing the Proxmox token id
+# tokenIdKey: tokenID
+# # Key in the secret containing the Proxmox token secret
+# secretKey: secret
+# # Key in the secret containing the Proxmox username
+# usernameKey: username
+# # Key in the secret containing the Proxmox password
+# passwordKey: password
 
 image:
   # -- Kubemox image repository
