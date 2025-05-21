@@ -9,8 +9,9 @@ To create a new `ProxmoxConnection` resource, you need to provide the connection
 ```yaml
 cat <<EOF | kubectl apply -f -
 apiVersion: proxmox.alperen.cloud/v1alpha1
-kind: ProxmoxConnectioon
-name: proxmox-connection-sample
+kind: ProxmoxConnection
+metadata:
+  name: proxmox-connection-sample
 spec:
   endpoint: "PROXMOX_ENDPOINT"
   username: "PROXMOX_USERNAME"
@@ -18,6 +19,8 @@ spec:
   insecureSkipVerify: true
 EOF
 ```
+
+In the above example, replace `PROXMOX_ENDPOINT`, `PROXMOX_USERNAME`, and `PROXMOX_PASSWORD` with your Proxmox server's endpoint, username, and password. The `insecureSkipVerify` field is optional and can be set to `true` if you want to skip SSL verification. For more information about the fields, you can check the examples/ directory.
 
 ## Referencing your ProxmoxConnection
 

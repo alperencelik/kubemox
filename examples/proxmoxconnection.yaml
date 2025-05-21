@@ -1,0 +1,16 @@
+# This manifest is used to create a ProxmoxConnection resource that you can refer to create other resources.
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: ProxmoxConnection
+metadata:
+  # Name of the ProxmoxConnection resource
+  name: proxmoxconnection-sample
+spec:
+  # Endpoint of the Proxmox server, formatted as https://ENDPOINT:8006/api2/json
+  endpoint: "PROXMOX_ENDPOINT"
+  # Username and password to connect to the Proxmox server
+  username: "PROXMOX_USERNAME"
+  password: "PROXMOX_PASSWORD"
+  # Alternatively, you can use a token for authentication
+  # tokenId: "PROXMOX_TOKEN_ID"
+  # secret: "PROXMOX_TOKEN_SECRET"
+  insecureSkipVerify: true
