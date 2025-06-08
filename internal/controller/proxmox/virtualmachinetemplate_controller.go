@@ -325,11 +325,12 @@ func (r *VirtualMachineTemplateReconciler) createStorageDownloadURLCR(ctx contex
 			Namespace: vmTemplate.Namespace,
 		},
 		Spec: proxmoxv1alpha1.StorageDownloadURLSpec{
-			Content:  "iso",
-			Filename: vmTemplate.Spec.ImageConfig.Filename,
-			Node:     vmTemplate.Spec.ImageConfig.Node,
-			Storage:  vmTemplate.Spec.ImageConfig.Storage,
-			URL:      vmTemplate.Spec.ImageConfig.URL,
+			ConnectionRef: vmTemplate.Spec.ConnectionRef,
+			Content:       "iso",
+			Filename:      vmTemplate.Spec.ImageConfig.Filename,
+			Node:          vmTemplate.Spec.ImageConfig.Node,
+			Storage:       vmTemplate.Spec.ImageConfig.Storage,
+			URL:           vmTemplate.Spec.ImageConfig.URL,
 		},
 	}
 	// Set VirtualMachineTemplate object as the owner and controller
