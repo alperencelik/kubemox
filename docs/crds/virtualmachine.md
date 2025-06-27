@@ -16,6 +16,8 @@ kind: VirtualMachine
 metadata:
   name: virtualmachine-sample-clone
 spec:
+  connectionRef:
+    name: proxmox-connection-sample
   name: virtualmachine-sample-clone
   # Name of the node where the VM will be created
   nodeName: lowtower
@@ -55,6 +57,8 @@ metadata:
   labels:
   name: virtualmachine-sample-scratch
 spec:
+  connectionRef:
+    name: proxmox-connection-sample
   name: virtualmachine-sample-scratch
   # Name of the node where the VM will be created
   nodeName: lowtower
@@ -89,6 +93,8 @@ metadata:
   name: virtualmachine-sample-clone-new
   namespace: default
 spec:
+  connectionRef:
+    name: proxmox-connection-sample
   name: virtualmachine-sample-clone-new
   nodeName: lowtower
   deletionProtection: false
@@ -133,6 +139,8 @@ metadata:
   labels:
   name: virtualmachine-sample-scratch
 spec:
+  connectionRef:
+    name: proxmox-connection-sample
   name: virtualmachine-sample-scratch
   # Name of the node where the VM will be created
   nodeName: lowtower 
