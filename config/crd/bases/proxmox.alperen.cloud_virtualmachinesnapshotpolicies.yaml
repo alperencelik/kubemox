@@ -109,7 +109,12 @@ spec:
                 type: object
               snapshotSchedule:
                 type: string
+            required:
+            - connectionRef
             type: object
+            x-kubernetes-validations:
+            - message: ConnectionRef is required once set
+              rule: '!has(oldSelf.connectionRef) || has(self.connectionRef)'
           status:
             description: VirtualMachineSnapshotPolicyStatus defines the observed state
               of VirtualMachineSnapshotPolicy

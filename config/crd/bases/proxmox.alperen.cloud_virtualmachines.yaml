@@ -133,9 +133,6 @@ spec:
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
-                x-kubernetes-validations:
-                - message: ConnectionRef is immutable
-                  rule: self == oldSelf
               deletionProtection:
                 default: false
                 description: |-
@@ -404,6 +401,7 @@ spec:
                     type: integer
                 type: object
             required:
+            - connectionRef
             - name
             - nodeName
             type: object

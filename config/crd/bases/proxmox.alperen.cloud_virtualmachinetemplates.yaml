@@ -218,11 +218,15 @@ spec:
                   verifyCertificate:
                     type: boolean
                 required:
+                - connectionRef
                 - content
                 - filename
                 - node
                 - url
                 type: object
+                x-kubernetes-validations:
+                - message: ConnectionRef is required once set
+                  rule: '!has(oldSelf.connectionRef) || has(self.connectionRef)'
               name:
                 description: Name is the name of the VM
                 type: string
@@ -255,10 +259,14 @@ spec:
                     type: integer
                 type: object
             required:
+            - connectionRef
             - imageConfig
             - name
             - node
             type: object
+            x-kubernetes-validations:
+            - message: ConnectionRef is required once set
+              rule: '!has(oldSelf.connectionRef) || has(self.connectionRef)'
           status:
             description: VirtualMachineTemplateStatus defines the observed state of
               VirtualMachineTemplate

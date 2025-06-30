@@ -34,10 +34,7 @@ type CustomCertificateSpec struct {
 	NodeName        string          `json:"nodeName,omitempty"`
 	CertManagerSpec CertManagerSpec `json:"certManagerSpec,omitempty"`
 	ProxmoxCertSpec ProxmoxCertSpec `json:"proxmoxCertSpec,omitempty"`
-	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:XValidation:rule="!has(oldSelf.connectionRef) || has(self.connectionRef)", message="ConnectionRef is required once set"
-	//
-	//nolint:lll // CEL validation rule is too long
+	// +kubebuilder:validation:Required
 	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 }
 

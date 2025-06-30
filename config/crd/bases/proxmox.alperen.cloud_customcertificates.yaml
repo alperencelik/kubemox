@@ -95,7 +95,12 @@ spec:
                   restartProxy:
                     type: boolean
                 type: object
+            required:
+            - connectionRef
             type: object
+            x-kubernetes-validations:
+            - message: ConnectionRef is required once set
+              rule: '!has(oldSelf.connectionRef) || has(self.connectionRef)'
           status:
             description: CustomCertificateStatus defines the observed state of CustomCertificate
             properties:

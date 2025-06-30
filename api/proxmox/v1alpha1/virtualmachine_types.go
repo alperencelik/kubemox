@@ -55,10 +55,8 @@ type VirtualMachineSpec struct {
 	// +kubebuilder:validation:Optional
 	AdditionalConfig map[string]string `json:"additionalConfig,omitempty"`
 
-	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="ConnectionRef is immutable"
+	// +kubebuilder:validation:Required
 	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
-	// *corev1.TypedLocalObjectReference `json:"connectionRef,omitempty"`
 }
 
 // type connRef struct {

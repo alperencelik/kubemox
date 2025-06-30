@@ -38,7 +38,6 @@ spec:
           metadata:
             type: object
           spec:
-            description: VirtualMachineSnapshotSpec defines the desired state of VirtualMachineSnapshot
             properties:
               connectionRef:
                 description: |-
@@ -66,8 +65,12 @@ spec:
                   Name of the virtual machine to take snapshot of
                 type: string
             required:
+            - connectionRef
             - virtualMachineName
             type: object
+            x-kubernetes-validations:
+            - message: ConnectionRef is required once set
+              rule: '!has(oldSelf.connectionRef) || has(self.connectionRef)'
           status:
             description: VirtualMachineSnapshotStatus defines the observed state of
               VirtualMachineSnapshot

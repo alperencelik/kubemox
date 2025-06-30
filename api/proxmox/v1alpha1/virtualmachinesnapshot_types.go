@@ -38,8 +38,7 @@ type VirtualMachineSnapshotSpec struct {
 	SnapshotName string `json:"snapshotName,omitempty"`
 	// Description of the snapshot
 	Timestamp metav1.Time `json:"timestamp,omitempty"`
-	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="ConnectionRef is immutable"
+	// +kubebuilder:validation:Required
 	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 }
 

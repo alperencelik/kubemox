@@ -44,10 +44,7 @@ type StorageDownloadURLSpec struct {
 	ChecksumAlgorithm string `json:"checksumAlgorithm,omitempty"`
 	Compression       string `json:"compression,omitempty"`
 	VerifyCertificate bool   `json:"verifyCertificate,omitempty"`
-	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:XValidation:rule="!has(oldSelf.connectionRef) || has(self.connectionRef)", message="ConnectionRef is required once set"
-	//
-	//nolint:lll // CEL validation rule is too long
+	// +kubebuilder:validation:Required
 	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 }
 

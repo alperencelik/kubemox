@@ -113,12 +113,16 @@ spec:
                   has exists
                 type: string
             required:
+            - connectionRef
             - cores
             - disk
             - memory
             - name
             - nodeName
             type: object
+            x-kubernetes-validations:
+            - message: ConnectionRef is required once set
+              rule: '!has(oldSelf.connectionRef) || has(self.connectionRef)'
           status:
             description: VirtualMachineStatus defines the observed state of VirtualMachine
             properties:

@@ -48,8 +48,7 @@ type ContainerSpec struct {
 	// If not set, it defaults to true.
 	// +kubebuilder:default:=true
 	EnableAutoStart bool `json:"enableAutoStart,omitempty"`
-	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:XValidation:rule="!has(oldSelf.connectionRef) || has(self.connectionRef)", message="ConnectionRef is required once set"
+	// +kubebuilder:validation:Required
 	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 }
 
