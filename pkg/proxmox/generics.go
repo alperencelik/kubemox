@@ -63,12 +63,8 @@ func applyChanges[I any](
 	}
 
 	for _, item := range itemsToUpdate {
-		deviceID := getDeviceID(item)
-
 		if err := updateConfig(ctx, vm, item); err != nil {
 			return err
-		} else {
-			log.Log.Info(fmt.Sprintf("%s %s of VirtualMachine %s has been updated", operationName, deviceID, vm.Name))
 		}
 	}
 

@@ -165,3 +165,8 @@ $(ENVTEST): $(LOCALBIN)
 .PHONY: custom-dashboard
 custom-dashboard: ## Run the custom dashboard generator. For more information check out https://kubebuilder.io/plugins/available/grafana-v1-alpha
 	kubebuilder edit --plugins grafana.kubebuilder.io/v1-alpha
+
+.PHONY: chart
+chart: manifests ## Copies and cleans CRDs for the Helm chart.
+	@echo "--- Helm: Cleaning and copying CRDs"
+	@./scripts/clean_crds.sh config/crd/bases charts/kubemox/templates/crds

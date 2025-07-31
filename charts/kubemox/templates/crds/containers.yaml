@@ -139,9 +139,13 @@ spec:
                     type: array
                 type: object
             required:
+            - connectionRef
             - name
             - nodeName
             type: object
+            x-kubernetes-validations:
+            - message: ConnectionRef is required once set
+              rule: '!has(oldSelf.connectionRef) || has(self.connectionRef)'
           status:
             description: ContainerStatus defines the observed state of Container
             properties:

@@ -1186,15 +1186,46 @@ func parseDiskConfiguration(disks map[string]string) ([]proxmoxv1alpha1.VirtualM
 
 func (pc *ProxmoxClient) updateDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
 	disk proxmoxv1alpha1.VirtualMachineDisk) error {
+	logger := log.FromContext(ctx)
+	// Get actual disk config to compare storage
+	actualDisksMap, err := pc.GetDiskConfiguration(vm)
+	if err != nil {
+		logger.Error(err, "Error getting actual disk configuration")
+		return err
+	}
+	actualDisks, err := parseDiskConfiguration(actualDisksMap)
+	if err != nil {
+		logger.Error(err, "Error parsing actual disk configuration")
+		return err
+	}
+
+	var actualDiskStorage string
+	for _, actualDisk := range actualDisks {
+		if actualDisk.Device == disk.Device {
+			actualDiskStorage = actualDisk.Storage
+			break
+		}
+	}
+
+	// If storage is different, log it and do not update the disk
+	if actualDiskStorage != "" && actualDiskStorage != disk.Storage {
+		logger.Info(fmt.Sprintf("Storage for disk %s cannot be changed from %s to %s, skipping update for this disk",
+			disk.Device, actualDiskStorage, disk.Storage))
+		return nil
+	}
+
 	virtualMachine, err := pc.getVirtualMachine(vm.Name, vm.Spec.NodeName)
 	if err != nil {
-		log.Log.Error(err, "Error getting VM for updating disk configuration")
+		logger.Error(err, "Error getting VM for updating disk configuration")
+		return err
 	}
 	err = virtualMachine.ResizeDisk(ctx, disk.Device, strconv.Itoa(disk.Size)+"G")
 	if err != nil {
 		log.Log.Error(err, "Error updating disk configuration for VirtualMachine")
+		return err
 	}
-	return err
+	logger.Info(fmt.Sprintf("Disk %s updated to size %dG on storage %s", disk.Device, disk.Size, disk.Storage))
+	return nil
 }
 
 func (pc *ProxmoxClient) addDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
@@ -1202,6 +1233,7 @@ func (pc *ProxmoxClient) addDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.
 	virtualMachine, err := pc.getVirtualMachine(vm.Name, vm.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for updating disk configuration")
+		return err
 	}
 	taskID, err := virtualMachine.Config(ctx, proxmox.VirtualMachineOption{
 		Name:  disk.Device,

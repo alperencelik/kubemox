@@ -179,9 +179,13 @@ spec:
                     type: integer
                 type: object
             required:
+            - connectionRef
             - nodeName
             - replicas
             type: object
+            x-kubernetes-validations:
+            - message: ConnectionRef is required once set
+              rule: '!has(oldSelf.connectionRef) || has(self.connectionRef)'
           status:
             description: VirtualMachineSetStatus defines the observed state of VirtualMachineSet
             properties:
