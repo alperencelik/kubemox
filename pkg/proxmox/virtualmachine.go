@@ -1209,7 +1209,8 @@ func (pc *ProxmoxClient) updateDiskConfig(ctx context.Context, vm *proxmoxv1alph
 
 	// If storage is different, log it and do not update the disk
 	if actualDiskStorage != "" && actualDiskStorage != disk.Storage {
-		logger.Info(fmt.Sprintf("Storage for disk %s cannot be changed from %s to %s, skipping update for this disk", disk.Device, actualDiskStorage, disk.Storage))
+		logger.Info(fmt.Sprintf("Storage for disk %s cannot be changed from %s to %s, skipping update for this disk",
+			disk.Device, actualDiskStorage, disk.Storage))
 		return nil
 	}
 
