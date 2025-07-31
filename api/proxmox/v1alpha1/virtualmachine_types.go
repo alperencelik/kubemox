@@ -122,6 +122,7 @@ type PciDevice struct {
 
 type VirtualMachineDisk struct {
 	// Storage is the name of the storage
+	// +kubebuilder:validation:XValidation:rule="self.storage == oldSelf.storage",message="storage is immutable"
 	Storage string `json:"storage"`
 	// Size is the size of the disk in GB
 	Size int `json:"size"`

@@ -172,6 +172,9 @@ spec:
                         storage:
                           description: Storage is the name of the storage
                           type: string
+                          x-kubernetes-validations:
+                          - message: storage is immutable
+                            rule: self.storage == oldSelf.storage
                       required:
                       - device
                       - size
@@ -336,6 +339,9 @@ spec:
                         storage:
                           description: Storage is the name of the storage
                           type: string
+                          x-kubernetes-validations:
+                          - message: storage is immutable
+                            rule: self.storage == oldSelf.storage
                       required:
                       - device
                       - size

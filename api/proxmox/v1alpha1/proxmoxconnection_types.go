@@ -64,6 +64,7 @@ type ProxmoxConnection struct {
 }
 
 // ProxmoxConnectionList contains a list of ProxmoxConnection.
+// +kubebuilder:object:root=true
 type ProxmoxConnectionList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
