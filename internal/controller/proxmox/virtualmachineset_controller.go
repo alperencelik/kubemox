@@ -268,6 +268,13 @@ func (r *VirtualMachineSetReconciler) updateVMs(ctx context.Context,
 				return fmt.Errorf("unable to check VirtualMachine: %w", err)
 			}
 			if vmExists {
+				// Get the vm object before updating it
+				if err := r.Get(ctx, client.ObjectKey{
+					Namespace: vm.Namespace,
+					Name:      vm.Name,
+				}, vm); err != nil {
+					return fmt.Errorf("unable to get VirtualMachine: %w", err)
+				}
 				// Update the VM
 				if err := r.Update(ctx, vm); err != nil {
 					return fmt.Errorf("unable to update VirtualMachine: %w", err)
