@@ -43,7 +43,7 @@ type VirtualMachineTemplateSpec struct {
 	VirtualMachineConfig VirtualMachineConfig `json:"virtualMachineConfig,omitempty"`
 
 	// Image config
-	ImageConfig StorageDownloadURLSpec `json:"imageConfig"`
+	ImageConfig SDUSpec `json:"imageConfig"`
 
 	// Cloud Init Config
 	CloudInitConfig CloudInitConfig `json:"cloudInitConfig,omitempty"`

@@ -48,6 +48,21 @@ type StorageDownloadURLSpec struct {
 	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 }
 
+type SDUSpec struct {
+	// +kubebuilder:validation:Pattern=\b(iso|vztmpl)\b
+	Content  string `json:"content"`
+	Filename string `json:"filename"`
+	Node     string `json:"node"`
+	// +kubebuilder:default:=local
+	Storage string `json:"storage,omitempty"`
+	URL     string `json:"url"`
+	// Optional fields
+	Checksum          string `json:"checksum,omitempty"`
+	ChecksumAlgorithm string `json:"checksumAlgorithm,omitempty"`
+	Compression       string `json:"compression,omitempty"`
+	VerifyCertificate bool   `json:"verifyCertificate,omitempty"`
+}
+
 // StorageDownloadURLStatus defines the observed state of StorageDownloadURL
 type StorageDownloadURLStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster

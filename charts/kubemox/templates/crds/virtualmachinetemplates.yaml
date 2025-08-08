@@ -188,18 +188,6 @@ spec:
                     type: string
                   compression:
                     type: string
-                  connectionRef:
-                    description: |-
-                      LocalObjectReference contains enough information to let you locate the
-                      referenced object inside the same namespace.
-                    properties:
-                      name:
-                        description: |-
-                          Name of the referent.
-                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                        type: string
-                    type: object
-                    x-kubernetes-map-type: atomic
                   content:
                     pattern: \b(iso|vztmpl)\b
                     type: string
@@ -215,15 +203,11 @@ spec:
                   verifyCertificate:
                     type: boolean
                 required:
-                - connectionRef
                 - content
                 - filename
                 - node
                 - url
                 type: object
-                x-kubernetes-validations:
-                - message: ConnectionRef is required once set
-                  rule: '!has(oldSelf.connectionRef) || has(self.connectionRef)'
               name:
                 description: Name is the name of the VM
                 type: string
