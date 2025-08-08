@@ -257,6 +257,11 @@ spec:
                     default: 1
                     description: Sockets
                     type: integer
+                  storage:
+                    default: local-lvm
+                    description: Storage is the name of storage where the VM will
+                      be created
+                    type: string
                 type: object
             required:
             - connectionRef

@@ -65,6 +65,10 @@ type VirtualMachineConfig struct {
 	// +kubebuilder:default:=2048
 	Memory  int               `json:"memory,omitempty"`
 	Network VMTemplateNetwork `json:"network,omitempty"`
+	// Storage is the name of storage where the VM will be created
+	// +kubebuilder:default:="local-lvm"
+	// +kubebuilder:validation:Optional
+	Storage *string `json:"storage,omitempty"`
 }
 
 type VMTemplateNetwork struct {

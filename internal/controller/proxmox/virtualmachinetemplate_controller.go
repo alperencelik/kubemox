@@ -360,7 +360,7 @@ func (r *VirtualMachineTemplateReconciler) handleCloudInitOperations(ctx context
 	}
 	// Continue with the VM template operations
 	// 1. Import Disk
-	err = pc.ImportDiskToVM(templateVMName, nodeName, storageDownloadURL.Spec.Filename)
+	err = pc.ImportDiskToVM(templateVMName, nodeName, storageDownloadURL.Spec.Filename, *vmTemplate.Spec.VirtualMachineConfig.Storage)
 	if err != nil {
 		var taskErr *proxmox.TaskError
 		if errors.As(err, &taskErr) {

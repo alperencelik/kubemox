@@ -123,7 +123,7 @@ func (pc *ProxmoxClient) SetCloudInitConfig(vmName, nodeName string, ciConfig *p
 	return nil
 }
 
-func (pc *ProxmoxClient) ImportDiskToVM(vmName, nodeName, diskName string) error {
+func (pc *ProxmoxClient) ImportDiskToVM(vmName, nodeName, diskName, storageName string) error {
 	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for importing disk")
@@ -142,10 +142,10 @@ func (pc *ProxmoxClient) ImportDiskToVM(vmName, nodeName, diskName string) error
 	diskLocation := localStorage.Path + "/template/iso/" + diskName
 
 	// Import disk
-	// TODO: SCSI0 and local-lvm:0 should be retrieved from external resource
+	// TODO: SCSI0  should be retrieved from external resource
 	task, err := VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{
 		Name:  "scsi0",
-		Value: "local-lvm:0,import-from=" + diskLocation,
+		Value: fmt.Sprintf("%s:0,import-from=%s", storageName, diskLocation),
 	})
 	if err != nil {
 		return err
