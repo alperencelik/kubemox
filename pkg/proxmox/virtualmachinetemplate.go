@@ -21,6 +21,7 @@ func (pc *ProxmoxClient) CheckVirtualMachineTemplateDelta(vmTemplate *proxmoxv1a
 	VirtualMachine, err := pc.getVirtualMachine(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for watching")
+		return false, err
 	}
 	virtualMachineConfig := VirtualMachine.VirtualMachineConfig
 	// Compare with the desired VM
@@ -298,6 +299,7 @@ func (pc *ProxmoxClient) UpdateVirtualMachineTemplate(vmTemplate *proxmoxv1alpha
 	VirtualMachine, err := pc.getVirtualMachine(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for watching")
+		return err
 	}
 	// Update VirtualMachineTemplate with the desired state
 	task, err := VirtualMachine.Config(ctx, proxmox.VirtualMachineOption{

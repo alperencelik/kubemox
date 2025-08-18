@@ -360,16 +360,17 @@ func (pc *ProxmoxClient) GetVMState(vmName, nodeName string) (state string, err 
 	}
 }
 
-func (pc *ProxmoxClient) AgentIsRunning(vmName, nodeName string) bool {
+func (pc *ProxmoxClient) AgentIsRunning(vmName, nodeName string) (bool, error) {
 	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for agent check")
+		return false, err
 	}
 	err = VirtualMachine.WaitForAgent(ctx, AgentTimeoutSeconds)
 	if err != nil {
-		return false
+		return false, err
 	} else {
-		return true
+		return true, nil
 	}
 }
 
@@ -539,7 +540,12 @@ func (pc *ProxmoxClient) UpdateVMStatus(vmName, nodeName string) (*proxmoxv1alph
 		if err != nil {
 			return nil, err
 		}
-		if pc.AgentIsRunning(vmName, nodeName) {
+		agentRunning, err := pc.AgentIsRunning(vmName, nodeName)
+		if err != nil {
+			log.Log.Error(err, "Error checking if agent is running")
+			return nil, err
+		}
+		if agentRunning {
 			VirtualMachineIP = pc.GetVMIPAddress(vmName, nodeName)
 			VirtualMachineOS = pc.GetOSInfo(vmName, nodeName)
 		} else {
@@ -1261,6 +1267,8 @@ func (pc *ProxmoxClient) CheckVirtualMachineDelta(vm *proxmoxv1alpha1.VirtualMac
 	VirtualMachine, err := pc.getVirtualMachine(vm.Name, vm.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for watching")
+		// Return here to avoid further processing if VM is not found
+		return false, err
 	}
 	// Get actual VM's network configuration
 	virtualMachineNetworks, err := pc.GetNetworkConfiguration(vm)
@@ -1320,6 +1328,7 @@ func (pc *ProxmoxClient) CheckManagedVMDelta(managedVM *proxmoxv1alpha1.ManagedV
 	VirtualMachine, err := pc.getVirtualMachine(managedVM.Spec.Name, managedVM.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for watching")
+		return false, err
 	}
 	VirtualMachineConfig := VirtualMachine.VirtualMachineConfig
 
