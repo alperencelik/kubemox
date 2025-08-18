@@ -2,6 +2,7 @@ package proxmox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -198,6 +199,7 @@ func (pc *ProxmoxClient) GetVMIPAddress(vmName, nodeName string) string {
 	VirtualMachineIfaces, err := VirtualMachine.AgentGetNetworkIFaces(ctx)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM IP")
+		return ""
 	}
 	for _, iface := range VirtualMachineIfaces {
 		for _, ip := range iface.IPAddresses {
@@ -211,11 +213,13 @@ func (pc *ProxmoxClient) GetOSInfo(vmName, nodeName string) string {
 	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
+		return ""
 	}
 	// Get VM OS
 	VirtualMachineOS, err := VirtualMachine.AgentOsInfo(ctx)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM OS")
+		return ""
 	}
 	// Check either the OS name or pretty name is empty
 	switch {
@@ -368,6 +372,9 @@ func (pc *ProxmoxClient) AgentIsRunning(vmName, nodeName string) (bool, error) {
 	}
 	err = VirtualMachine.WaitForAgent(ctx, AgentTimeoutSeconds)
 	if err != nil {
+		if errors.Is(err, proxmox.ErrTimeout) {
+			return false, nil
+		}
 		return false, err
 	} else {
 		return true, nil
@@ -1621,6 +1628,7 @@ func (pc *ProxmoxClient) ApplyAdditionalConfiguration(vm Resource) error {
 	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for applying additional configuration")
+		return err
 	}
 	// Apply additional configuration
 	for key, value := range additionalConfig {

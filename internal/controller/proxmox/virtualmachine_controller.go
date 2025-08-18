@@ -445,7 +445,7 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachine(ctx context.Context,
 	}
 	err = r.UpdateVirtualMachineStatus(ctx, pc, vm)
 	if err != nil {
-		return nil, err
+		return &dontRequeue, err
 	}
 	// ConfigureVirtualMachine is checks the delta for Disk and Network and updates the VM without a restart
 	err = pc.ConfigureVirtualMachine(vm)
