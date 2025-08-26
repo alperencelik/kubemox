@@ -186,11 +186,28 @@ func (r *VirtualMachineSetReconciler) createOrUpdateVirtualMachineCRs(vmSet *pro
 			// Set the labels
 			virtualMachine.Labels = labelsSetter(vmSet)
 
+			// Deep copy the template from the vmSet
+			template := vmSet.Spec.Template.DeepCopy()
+
+			// Assign PCI devices
+			if vmSet.Spec.PCIDevices != nil {
+				switch vmSet.Spec.PCIDevices.Mode {
+				case "shared":
+					template.PciDevices = vmSet.Spec.PCIDevices.Devices
+				case "dedicated":
+					if i < len(vmSet.Spec.PCIDevices.Devices) {
+						template.PciDevices = []proxmoxv1alpha1.PciDevice{vmSet.Spec.PCIDevices.Devices[i]}
+					} else {
+						template.PciDevices = nil
+					}
+				}
+			}
+
 			// Set the spec
 			virtualMachine.Spec = proxmoxv1alpha1.VirtualMachineSpec{
 				Name:               vmSet.Name + "-" + index,
 				NodeName:           vmSet.Spec.NodeName,
-				Template:           &vmSet.Spec.Template,
+				Template:           template,
 				DeletionProtection: vmSet.Spec.DeletionProtection,
 				EnableAutoStart:    vmSet.Spec.EnableAutoStart,
 				AdditionalConfig:   vmSet.Spec.AdditionalConfig,

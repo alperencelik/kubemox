@@ -1545,7 +1545,7 @@ func (pc *ProxmoxClient) getIndexOfPCIConfig(vmName, nodeName string, pciDevice 
 		}
 	}
 	// If device ID is not found, return the 0th index to create it
-	return "0", err
+	return "hostpci0", err
 }
 
 func buildPCIOptions(pci proxmoxv1alpha1.PciDevice) string {

@@ -24,6 +24,16 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// PCIDevicesSpec defines the desired state of PCIDevices
+
+type PCIDevicesSpec struct {
+	// Mode is the mode of the PCI devices, either shared or per-machine
+	// +kubebuilder:validation:Enum=shared;dedicated
+	Mode string `json:"mode"`
+	// Devices is the list of PCI devices
+	Devices []PciDevice `json:"devices"`
+}
+
 // VirtualMachineSetSpec defines the desired state of VirtualMachineSet
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.connectionRef) || has(self.connectionRef)", message="ConnectionRef is required once set"
 //
@@ -53,6 +63,8 @@ type VirtualMachineSetSpec struct {
 	AdditionalConfig map[string]string `json:"additionalConfig,omitempty"`
 	// +kubebuilder:validation:Required
 	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
+	// PCIDevices is the PCI devices configuration
+	PCIDevices *PCIDevicesSpec `json:"pciDevices,omitempty"`
 }
 
 // VirtualMachineSetStatus defines the observed state of VirtualMachineSet
