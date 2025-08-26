@@ -19,7 +19,6 @@ package proxmox
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strconv"
 	"time"
 
@@ -36,7 +35,6 @@ import (
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
-	"github.com/alperencelik/kubemox/pkg/proxmox"
 )
 
 // VirtualMachineSetReconciler reconciles a VirtualMachineSet object
@@ -167,31 +165,42 @@ func (r *VirtualMachineSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		})
 }
 
-func (r *VirtualMachineSetReconciler) CreateVirtualMachineCR(vmSet *proxmoxv1alpha1.VirtualMachineSet, index string) error {
-	// Define a new VirtualMachine object
-	virtualMachine := &proxmoxv1alpha1.VirtualMachine{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      vmSet.Name + "-" + index,
-			Namespace: vmSet.Namespace,
-			Labels:    labelsSetter(vmSet),
-		},
-		Spec: proxmoxv1alpha1.VirtualMachineSpec{
-			Name:               vmSet.Name + "-" + index,
-			NodeName:           vmSet.Spec.NodeName,
-			Template:           &vmSet.Spec.Template,
-			DeletionProtection: vmSet.Spec.DeletionProtection,
-			EnableAutoStart:    vmSet.Spec.EnableAutoStart,
-			AdditionalConfig:   vmSet.Spec.AdditionalConfig,
-			ConnectionRef:      vmSet.Spec.ConnectionRef,
-		},
-	}
-	// Set VirtualMachineSet instance as the owner and controller
-	if err := controllerutil.SetControllerReference(vmSet, virtualMachine, r.Scheme); err != nil {
-		return err
-	}
-	// Create the VirtualMachine instance
-	if err := r.Create(context.Background(), virtualMachine); err != nil {
-		return err
+func (r *VirtualMachineSetReconciler) createOrUpdateVirtualMachineCRs(vmSet *proxmoxv1alpha1.VirtualMachineSet) error {
+	for i := 0; i < vmSet.Spec.Replicas; i++ {
+		index := strconv.Itoa(i)
+		// Define a new VirtualMachine object
+		virtualMachine := &proxmoxv1alpha1.VirtualMachine{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      vmSet.Name + "-" + index,
+				Namespace: vmSet.Namespace,
+			},
+		}
+
+		// Create or update the VirtualMachine instance
+		_, err := controllerutil.CreateOrUpdate(context.Background(), r.Client, virtualMachine, func() error {
+			// Set the owner and controller reference
+			if err := controllerutil.SetControllerReference(vmSet, virtualMachine, r.Scheme); err != nil {
+				return err
+			}
+
+			// Set the labels
+			virtualMachine.Labels = labelsSetter(vmSet)
+
+			// Set the spec
+			virtualMachine.Spec = proxmoxv1alpha1.VirtualMachineSpec{
+				Name:               vmSet.Name + "-" + index,
+				NodeName:           vmSet.Spec.NodeName,
+				Template:           &vmSet.Spec.Template,
+				DeletionProtection: vmSet.Spec.DeletionProtection,
+				EnableAutoStart:    vmSet.Spec.EnableAutoStart,
+				AdditionalConfig:   vmSet.Spec.AdditionalConfig,
+				ConnectionRef:      vmSet.Spec.ConnectionRef,
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -200,26 +209,6 @@ func labelsSetter(vmSet *proxmoxv1alpha1.VirtualMachineSet) map[string]string {
 	labels := make(map[string]string)
 	labels["owner"] = vmSet.Name
 	return labels
-}
-
-func (r *VirtualMachineSetReconciler) scaleUpVMs(vmSet *proxmoxv1alpha1.VirtualMachineSet,
-	replicas int, vmList *proxmoxv1alpha1.VirtualMachineList) error {
-	// Create a map of existing VirtualMachines for quick lookup
-	vmMap := make(map[string]bool)
-	for i := range vmList.Items {
-		vm := &vmList.Items[i]
-		vmMap[vm.Name] = true
-	}
-	// Loop from 0 to replicas and also create any missing VirtualMachines
-	for i := 0; i < replicas; i++ {
-		vmName := fmt.Sprintf("%s-%d", vmSet.Name, i)
-		if _, exists := vmMap[vmName]; !exists {
-			if err := r.CreateVirtualMachineCR(vmSet, strconv.Itoa(i)); err != nil {
-				return fmt.Errorf("unable to create VirtualMachine: %w", err)
-			}
-		}
-	}
-	return nil
 }
 
 func (r *VirtualMachineSetReconciler) scaleDownVMs(vmSet *proxmoxv1alpha1.VirtualMachineSet,
@@ -242,49 +231,6 @@ func (r *VirtualMachineSetReconciler) scaleDownVMs(vmSet *proxmoxv1alpha1.Virtua
 	return nil
 }
 
-func (r *VirtualMachineSetReconciler) updateVMs(ctx context.Context,
-	vmSet *proxmoxv1alpha1.VirtualMachineSet, vmList *proxmoxv1alpha1.VirtualMachineList) error {
-	logger := log.FromContext(ctx)
-	for i := range vmList.Items {
-		vm := &vmList.Items[i]
-		if !reflect.DeepEqual(vm.Spec.Template, vmSet.Spec.Template) ||
-			vmSet.Spec.DeletionProtection != vm.Spec.DeletionProtection ||
-			vmSet.Spec.EnableAutoStart != vm.Spec.EnableAutoStart ||
-			!reflect.DeepEqual(vmSet.Spec.AdditionalConfig, vm.Spec.AdditionalConfig) {
-			// Update the VM
-			vm.Spec.Template = &vmSet.Spec.Template
-			vm.Spec.DeletionProtection = vmSet.Spec.DeletionProtection
-			vm.Spec.EnableAutoStart = vmSet.Spec.EnableAutoStart
-			vm.Spec.AdditionalConfig = vmSet.Spec.AdditionalConfig
-			// Get the Proxmox client reference
-			pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, vm.Spec.ConnectionRef)
-			if err != nil {
-				logger.Error(err, "Error getting Proxmox client reference")
-				return err
-			}
-			// If vm exists in Proxmox, update it
-			vmExists, err := pc.CheckVM(vm.Spec.Name, vm.Spec.NodeName)
-			if err != nil {
-				return fmt.Errorf("unable to check VirtualMachine: %w", err)
-			}
-			if vmExists {
-				// Get the vm object before updating it
-				if err := r.Get(ctx, client.ObjectKey{
-					Namespace: vm.Namespace,
-					Name:      vm.Name,
-				}, vm); err != nil {
-					return fmt.Errorf("unable to get VirtualMachine: %w", err)
-				}
-				// Update the VM
-				if err := r.Update(ctx, vm); err != nil {
-					return fmt.Errorf("unable to update VirtualMachine: %w", err)
-				}
-			}
-		}
-	}
-	return nil
-}
-
 func (r *VirtualMachineSetReconciler) handleResourceNotFound(ctx context.Context, err error) error {
 	logger := log.FromContext(ctx)
 	if errors.IsNotFound(err) {
@@ -299,23 +245,6 @@ func (r *VirtualMachineSetReconciler) handleVMsetOperations(ctx context.Context,
 	vmList *proxmoxv1alpha1.VirtualMachineList) error {
 	logger := log.FromContext(ctx)
 	replicas := vmSet.Spec.Replicas
-
-	if len(vmList.Items) < replicas && vmSet.ObjectMeta.DeletionTimestamp.IsZero() {
-		if err := r.scaleUpVMs(vmSet, replicas, vmList); err != nil {
-			logger.Error(err, "unable to scale up VirtualMachines")
-			return err
-		}
-		meta.SetStatusCondition(&vmSet.Status.Conditions, metav1.Condition{
-			Type:    typeScalingUpVirtualMachineSet,
-			Status:  metav1.ConditionTrue,
-			Reason:  "ScaledUp",
-			Message: "VirtualMachines scaled up",
-		})
-		if err := r.Status().Update(ctx, vmSet); err != nil {
-			logger.Error(err, "Error updating VirtualMachineSet status")
-			return err
-		}
-	}
 
 	// If the number of the VirtualMachines is more than the desired number of replicas
 	if len(vmList.Items) > replicas {
@@ -334,11 +263,10 @@ func (r *VirtualMachineSetReconciler) handleVMsetOperations(ctx context.Context,
 			logger.Error(err, "Error updating VirtualMachineSet status")
 			return err
 		}
-	}
-
-	if err := r.updateVMs(ctx, vmSet, vmList); err != nil {
-		logger.Error(err, "unable to update VirtualMachines")
-		return err
+	} else {
+		if err := r.createOrUpdateVirtualMachineCRs(vmSet); err != nil {
+			return err
+		}
 	}
 	return nil
 }

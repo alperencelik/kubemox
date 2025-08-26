@@ -14,6 +14,7 @@ import (
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/utils"
+	"github.com/google/go-cmp/cmp"
 	proxmox "github.com/luthermonson/go-proxmox"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -1031,11 +1032,11 @@ func (pc *ProxmoxClient) configureVirtualMachineNetwork(vm *proxmoxv1alpha1.Virt
 		return err
 	}
 	// Check if network configuration is different
-	if !reflect.DeepEqual(*networks, virtualMachineNetworksParsed) {
+	if !cmp.Equal(networks, virtualMachineNetworksParsed) {
 		// The desired network configuration is different than the actual one
 		log.Log.Info(fmt.Sprintf("Updating network configuration for VirtualMachine %s", vm.Name))
 		// Update the network configuration
-		for i := len(*networks); i < len(virtualMachineNetworksParsed); i++ {
+		for i := len(networks); i < len(virtualMachineNetworksParsed); i++ {
 			// Remove the network configuration
 			log.Log.Info(fmt.Sprintf("Removing the network configuration for net%d of VM %s", i, vm.Spec.Name))
 			var taskID proxmox.Task
@@ -1052,21 +1053,21 @@ func (pc *ProxmoxClient) configureVirtualMachineNetwork(vm *proxmoxv1alpha1.Virt
 				log.Log.Error(taskErr, "Error removing network configuration from VirtualMachine")
 			}
 		}
-		for i := len(virtualMachineNetworksParsed); i < len(*networks); i++ {
+		for i := len(virtualMachineNetworksParsed); i < len(networks); i++ {
 			// Add the network configuration
 			log.Log.Info(fmt.Sprintf("Adding the network configuration for net%d of VM %s", i, vm.Spec.Name))
-			err = pc.updateNetworkConfig(ctx, vm, i, *networks)
+			err = pc.updateNetworkConfig(ctx, vm, i, networks)
 			if err != nil {
 				return err
 			}
 		}
 		for i := 0; i < len(virtualMachineNetworksParsed); i++ {
 			// Check if the network configuration is different
-			if len(*networks) != 0 && !reflect.DeepEqual((*networks)[i], virtualMachineNetworksParsed[i]) {
+			if len(networks) != 0 && !cmp.Equal(networks[i], virtualMachineNetworksParsed[i]) {
 				// Update the network configuration
 				log.Log.Info(fmt.Sprintf("Updating the network configuration for net%d of VM %s", i, vm.Spec.Name))
 				// Get the network model&bridge name
-				err = pc.updateNetworkConfig(ctx, vm, i, *networks)
+				err = pc.updateNetworkConfig(ctx, vm, i, networks)
 				if err != nil {
 					return err
 				}
@@ -1308,11 +1309,11 @@ func (pc *ProxmoxClient) CheckVirtualMachineDelta(vm *proxmoxv1alpha1.VirtualMac
 		Cores:    GetCores(vm),
 		Sockets:  getSockets(vm),
 		Memory:   GetMemory(vm),
-		Networks: *getNetworks(vm),
+		Networks: getNetworks(vm),
 		Disks:    sortDisks(getDisks(vm)),
 	}
 	// Compare the actual VM with the desired VM
-	if !reflect.DeepEqual(actualVM, desiredVM) {
+	if !cmp.Equal(actualVM, desiredVM) {
 		return true, nil
 	}
 	return false, nil
@@ -1740,11 +1741,18 @@ func getDisks(vm *proxmoxv1alpha1.VirtualMachine) []proxmoxv1alpha1.VirtualMachi
 	return vm.Spec.VMSpec.Disk
 }
 
-func getNetworks(vm *proxmoxv1alpha1.VirtualMachine) *[]proxmoxv1alpha1.VirtualMachineNetwork {
+func getNetworks(vm *proxmoxv1alpha1.VirtualMachine) []proxmoxv1alpha1.VirtualMachineNetwork {
+	var networks *[]proxmoxv1alpha1.VirtualMachineNetwork
 	if CheckVMType(vm) == VirtualMachineTemplateType {
-		return vm.Spec.Template.Network
+		networks = vm.Spec.Template.Network
+	} else {
+		networks = vm.Spec.VMSpec.Network
 	}
-	return vm.Spec.VMSpec.Network
+
+	if networks == nil {
+		return nil
+	}
+	return *networks
 }
 
 func getPciDevices(vm *proxmoxv1alpha1.VirtualMachine) []proxmoxv1alpha1.PciDevice {
