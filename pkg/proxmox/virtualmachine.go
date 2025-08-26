@@ -1123,15 +1123,6 @@ func classifyDisks(desiredDisks, actualDisks []proxmoxv1alpha1.VirtualMachineDis
 	return classifyItems(desiredDisks, actualDisks, getKey)
 }
 
-func classifyPCIs(desiredPcis, actualPcis []proxmoxv1alpha1.PciDevice) (
-	pcisToAdd, pcisToUpdate, pcisToDelete []proxmoxv1alpha1.PciDevice) {
-	getKey := func(pci proxmoxv1alpha1.PciDevice) string {
-		return pci.DeviceID
-	}
-
-	return classifyItems(desiredPcis, actualPcis, getKey)
-}
-
 func (pc *ProxmoxClient) applyDiskChanges(
 	ctx context.Context,
 	vm *proxmoxv1alpha1.VirtualMachine,
@@ -1376,24 +1367,61 @@ func (pc *ProxmoxClient) getVirtualMachine(vmName, nodeName string) (*proxmox.Vi
 }
 
 func (pc *ProxmoxClient) configureVirtualMachinePCI(vm *proxmoxv1alpha1.VirtualMachine) error {
-	// Get VM PCI spec and actual PCI configuration
-	PCIs := getPciDevices(vm)
-	virtualMachinePCIs, err := pc.GetPCIConfiguration(vm.Name, vm.Spec.NodeName)
+	desiredPCIs := getPciDevices(vm)
+	actualPCIsMap, err := pc.GetPCIConfiguration(vm.Name, vm.Spec.NodeName)
 	if err != nil {
 		return err
 	}
-	virtualMachinePCIsParsed, err := parsePCIConfiguration(virtualMachinePCIs)
-	if err != nil {
-		return err
+	actualPCIs := make(map[string]proxmoxv1alpha1.PciDevice)
+	for key, pciString := range actualPCIsMap {
+		pci, err := parseSinglePCIConfiguration(pciString)
+		if err != nil {
+			log.Log.Error(err, "error parsing PCI configuration, skipping", "pciString", pciString)
+			continue
+		}
+		actualPCIs[key] = pci
 	}
-
-	// Classify PCI configurations
-	PcisToadd, PCIsToUpdate, PcisToDelete := classifyPCIs(PCIs, virtualMachinePCIsParsed)
-
 	// Apply PCI changes
-	if err := pc.applyPCIChanges(ctx, vm, PcisToadd, PCIsToUpdate, PcisToDelete); err != nil {
-		return err
+	if len(desiredPCIs) > 0 {
+		reboot, err := pc.ApplyPCIChanges(vm, desiredPCIs, actualPCIs)
+		if err != nil {
+			return err
+		}
+		if reboot {
+			// Rebooting VM spawns two different tasks, one for stopping and one for starting and unfortunately you can't track the start so
+			// here we should do stop and start separately
+			// Stop VM
+			err = pc.StopVM(vm.Name, vm.Spec.NodeName)
+			if err != nil {
+				log.Log.Error(err, "Error stopping VirtualMachine")
+				return err
+			}
+			// TODO: Implement something more logical
+			// Start VM
+			VirtualMachine, err := pc.getVirtualMachine(vm.Name, vm.Spec.NodeName)
+			if err != nil {
+				log.Log.Error(err, "Error getting VM")
+				return err
+			}
+			task, err := VirtualMachine.Start(ctx)
+			if err != nil {
+				log.Log.Error(err, "Error starting VirtualMachine")
+				return err
+			}
+			taskStatus, taskCompleted, err := task.WaitForCompleteStatus(ctx, 5, 3)
+			if err != nil {
+				log.Log.Error(err, "Error starting VirtualMachine")
+				return err
+			}
+			if !taskStatus {
+				return &TaskError{ExitStatus: task.ExitStatus}
+			}
+			if !taskCompleted {
+				return err
+			}
+		}
 	}
+
 	return nil
 }
 
@@ -1406,81 +1434,54 @@ func (pc *ProxmoxClient) GetPCIConfiguration(vmName, nodeName string) (map[strin
 	return PCIs, nil
 }
 
-func parsePCIConfiguration(pcis map[string]string) ([]proxmoxv1alpha1.PciDevice, error) {
-	PCIConfigurations := make([]proxmoxv1alpha1.PciDevice, len(pcis))
-	var PCIConfiguration proxmoxv1alpha1.PciDevice
-	// Parse PCI devices to use as PCI devices
-	for i, pci := range pcis {
-		pciSplit := strings.Split(pci, ",")
-		PCIConfiguration.DeviceID = pciSplit[0]
-		for _, pciSplit := range pciSplit[1:] {
-			kv := strings.SplitN(pciSplit, "=", 2)
-			if len(kv) != 2 {
-				return nil, fmt.Errorf("invalid format for PCI configuration: %s", pciSplit)
-			}
-			key := kv[0]
-
-			// Check for the PCIE and x-vga keys
-			switch key {
-			case "pcie":
-				PCIConfiguration.PCIE = true
-			case "x-vga":
-				PCIConfiguration.PrimaryGPU = true
-			}
-		}
-		index, _ := strconv.Atoi(i)
-		PCIConfigurations[index] = PCIConfiguration
-	}
-	return PCIConfigurations, nil
-}
-
-func (pc *ProxmoxClient) applyPCIChanges(
-	ctx context.Context,
-	vm *proxmoxv1alpha1.VirtualMachine,
-	pcisToAdd, pcisToUpdate, pcisToDelete []proxmoxv1alpha1.PciDevice,
-) error {
-	getDeviceID := func(pci proxmoxv1alpha1.PciDevice) string {
-		// Use hostpci[N] when deleting; for add/update, use the raw DeviceID
-		for _, del := range pcisToDelete {
-			if del.DeviceID == pci.DeviceID {
-				index, err := pc.getIndexOfPCIConfig(vm.Spec.Name, vm.Spec.NodeName, pci)
-				if err != nil {
-					log.Log.Error(err, "Error getting PCI config index for deletion")
-					return pci.DeviceID
+func (pc *ProxmoxClient) ApplyPCIChanges(vm *proxmoxv1alpha1.VirtualMachine, desiredPCIs []proxmoxv1alpha1.PciDevice, actualPCIs map[string]proxmoxv1alpha1.PciDevice) (bool, error) {
+	reboot := false
+	for i, desiredPCI := range desiredPCIs {
+		indexStr := fmt.Sprintf("hostpci%d", i)
+		if actualPCI, ok := actualPCIs[indexStr]; ok {
+			// Device exists, check if it needs update
+			if !reflect.DeepEqual(actualPCI, desiredPCI) {
+				log.Log.Info(fmt.Sprintf("Updating PCI device %s for VirtualMachine %s", indexStr, vm.Name))
+				if err := pc.updatePCIConfig(vm, indexStr, desiredPCI); err != nil {
+					return false, err
 				}
-				return index
+				reboot = true
 			}
+			delete(actualPCIs, indexStr)
+		} else {
+			// Device does not exist, add it
+			log.Log.Info(fmt.Sprintf("Adding PCI device %s to VirtualMachine %s", desiredPCI.DeviceID, vm.Name))
+			if err := pc.updatePCIConfig(vm, indexStr, desiredPCI); err != nil {
+				return false, err
+			}
+			reboot = true
 		}
-		return pci.DeviceID
 	}
 
-	return applyChanges(
-		pc,
-		ctx,
-		vm,
-		pcisToAdd,
-		pcisToUpdate,
-		pcisToDelete,
-		getDeviceID,
-		pc.updatePCIConfig,
-		pc.updatePCIConfig,
-		"PCI device",
-	)
+	// Delete any remaining actual PCI devices that are not in the desired spec
+	for indexStr := range actualPCIs {
+		log.Log.Info(fmt.Sprintf("Deleting PCI device %s of VirtualMachine %s", indexStr, vm.Name))
+		task, err := pc.deleteVirtualMachineOption(vm, indexStr)
+		if err != nil {
+			return false, err
+		}
+		taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 3)
+		if !taskStatus {
+			return false, &TaskError{ExitStatus: task.ExitStatus}
+		}
+		if !taskCompleted {
+			return false, taskErr
+		}
+		reboot = true
+	}
+	return reboot, nil
 }
 
-func (pc *ProxmoxClient) updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha1.VirtualMachine,
-	pci proxmoxv1alpha1.PciDevice) error {
+func (pc *ProxmoxClient) updatePCIConfig(vm *proxmoxv1alpha1.VirtualMachine, index string, pci proxmoxv1alpha1.PciDevice) error {
 	vmName, nodeName := vm.Name, vm.Spec.NodeName
-
 	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
-		return err
-	}
-	// Index returns as hostpci[n]
-	index, err := pc.getIndexOfPCIConfig(vmName, nodeName, pci)
-	if err != nil {
-		log.Log.Error(err, "Error getting index of PCI configuration")
 		return err
 	}
 
@@ -1494,58 +1495,43 @@ func (pc *ProxmoxClient) updatePCIConfig(ctx context.Context, vm *proxmoxv1alpha
 	}
 	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 3)
 	if !taskStatus {
-		// Return the task.ExitStatus as error
 		return &TaskError{ExitStatus: task.ExitStatus}
 	}
 	if !taskCompleted {
 		return taskErr
 	}
-	// Rebooting VM spawns two different tasks, one for stopping and one for starting and unfortunately you can't track the start so
-	// here we should do stop and start separately
-	// Stop VM
-	err = pc.StopVM(vmName, nodeName)
-	if err != nil {
-		log.Log.Error(err, "Error stopping VirtualMachine")
-		return err
-	}
-	// TODO: Implement something more logical
-	// Start VM
-	task, err = VirtualMachine.Start(ctx)
-	if err != nil {
-		log.Log.Error(err, "Error starting VirtualMachine")
-		return err
-	}
-	taskStatus, taskCompleted, err = task.WaitForCompleteStatus(ctx, 5, 3)
-	if err != nil {
-		log.Log.Error(err, "Error starting VirtualMachine")
-		return err
-	}
-	if !taskStatus {
-		// Return the task.ExitStatus as error
-		return &TaskError{ExitStatus: task.ExitStatus}
-	}
-	if !taskCompleted {
-		return err
-	}
 	return nil
 }
 
-// getIndexOfPCIConfig returns the index of the PCI device in the VM configuration
-// Returns as hostpci0, hostpci1, etc.
-func (pc *ProxmoxClient) getIndexOfPCIConfig(vmName, nodeName string, pciDevice proxmoxv1alpha1.PciDevice) (string, error) {
-	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
-	if err != nil {
-		log.Log.Error(err, "Error getting VM")
-	}
-	hostPCIs := VirtualMachine.VirtualMachineConfig.MergeHostPCIs()
+func parseSinglePCIConfiguration(pci string) (proxmoxv1alpha1.PciDevice, error) {
+	var pciConfig proxmoxv1alpha1.PciDevice
+	pciSplit := strings.Split(pci, ",")
 
-	for i, hostPCI := range hostPCIs {
-		if strings.Split(hostPCI, ",")[0] == pciDevice.DeviceID {
-			return i, nil
+	// Check for mapped device
+	if strings.HasPrefix(pciSplit[0], "mapping=") {
+		pciConfig.Type = "mapped"
+		pciConfig.DeviceID = strings.TrimPrefix(pciSplit[0], "mapping=")
+	} else {
+		pciConfig.Type = "raw"
+		pciConfig.DeviceID = pciSplit[0]
+	}
+
+	for _, pciSplit := range pciSplit[1:] {
+		kv := strings.SplitN(pciSplit, "=", 2)
+		if len(kv) != 2 {
+			return proxmoxv1alpha1.PciDevice{}, fmt.Errorf("invalid format for PCI configuration: %s", pciSplit)
+		}
+		key := kv[0]
+
+		// Check for the PCIE and x-vga keys
+		switch key {
+		case "pcie":
+			pciConfig.PCIE = true
+		case "x-vga":
+			pciConfig.PrimaryGPU = true
 		}
 	}
-	// If device ID is not found, return the 0th index to create it
-	return "hostpci0", err
+	return pciConfig, nil
 }
 
 func buildPCIOptions(pci proxmoxv1alpha1.PciDevice) string {
