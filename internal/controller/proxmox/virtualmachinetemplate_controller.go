@@ -68,9 +68,9 @@ const (
 
 var imageNameFormat string = "%s-image"
 
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinetemplates,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinetemplates/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinetemplates/finalizers,verbs=update
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinetemplates,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinetemplates/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinetemplates/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -101,7 +101,7 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 	r.handleWatcher(ctx, req, vmTemplate)
 
 	// Check if the VirtualMachineTemplate is marked for deleted, which is indicated by the deletion timestamp being set.
-	if vmTemplate.ObjectMeta.DeletionTimestamp.IsZero() {
+	if vmTemplate.DeletionTimestamp.IsZero() {
 		err = r.handleFinalizer(ctx, vmTemplate)
 		if err != nil {
 			logger.Error(err, "Failed to handle finalizer")
@@ -116,7 +116,7 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 				logger.Error(delErr, "Failed to delete VirtualMachineTemplate")
 				return res, delErr
 			}
-			if res.Requeue {
+			if res != (ctrl.Result{}) {
 				return res, nil
 			}
 		}
@@ -135,7 +135,7 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 	if err != nil {
 		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 	}
-	if result.Requeue {
+	if result != (ctrl.Result{}) {
 		return result, nil
 	}
 	// Create the VM template
@@ -152,6 +152,9 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 	result, err = r.handleStatus(ctx, vmTemplate)
 	if err != nil {
 		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+	}
+	if result != (ctrl.Result{}) {
+		return result, nil
 	}
 
 	return ctrl.Result{}, nil

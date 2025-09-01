@@ -15,7 +15,8 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
-func (pc *ProxmoxClient) CheckVirtualMachineTemplateDelta(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (bool, error) {
+func (pc *ProxmoxClient) CheckVirtualMachineTemplateDelta(
+	vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (bool, error) {
 	// Compare the actual state of the VM with the desired state
 	// If there is a difference, return true
 	VirtualMachine, err := pc.getVirtualMachine(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
@@ -330,14 +331,16 @@ func (pc *ProxmoxClient) UpdateVirtualMachineTemplate(vmTemplate *proxmoxv1alpha
 	return nil
 }
 
-func (pc *ProxmoxClient) CheckVirtualMachineTemplateCIConfig(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (bool, error) {
+func (pc *ProxmoxClient) CheckVirtualMachineTemplateCIConfig(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (
+	bool, error) {
 	desiredCloudInitConfig := vmTemplate.Spec.CloudInitConfig
 	actualCloudInitConfig, err := pc.GetCloudInitConfig(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting cloud-init config")
 	}
 	// Compare with the desired cloud-init config
-	if !cmp.Equal(desiredCloudInitConfig, actualCloudInitConfig, cloudInitcompareOptions(&vmTemplate.Spec.CloudInitConfig)...) {
+	if !cmp.Equal(desiredCloudInitConfig, actualCloudInitConfig,
+		cloudInitcompareOptions(&vmTemplate.Spec.CloudInitConfig)...) {
 		return true, nil
 	}
 	return false, nil

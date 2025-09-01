@@ -28,7 +28,8 @@ func ListCRDs() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list CRDs: %w", err)
 	}
-	var crdNames []string
+	crdNames := []string{}
+
 	for i := range crds.Items {
 		crdNames = append(crdNames, crds.Items[i].Name)
 	}

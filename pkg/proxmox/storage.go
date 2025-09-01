@@ -8,7 +8,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func (pc *ProxmoxClient) StorageDownloadURL(node string, storageDownloadURLSpec *proxmoxv1alpha1.StorageDownloadURLSpec) (string, error) {
+func (pc *ProxmoxClient) StorageDownloadURL(node string,
+	storageDownloadURLSpec *proxmoxv1alpha1.StorageDownloadURLSpec) (string, error) {
 	// Get node
 	Node, err := pc.Client.Node(ctx, node)
 	if err != nil {
@@ -48,8 +49,10 @@ func (pc *ProxmoxClient) GetStorageContent(node, storageName string) ([]*proxmox
 	return content, err
 }
 
-func HasFile(storageContent []*proxmox.StorageContent, storageDownloadSpec *proxmoxv1alpha1.StorageDownloadURLSpec) bool {
-	targetFile := fmt.Sprintf("%s:%s/%s", storageDownloadSpec.Storage, storageDownloadSpec.Content, storageDownloadSpec.Filename)
+func HasFile(storageContent []*proxmox.StorageContent,
+	storageDownloadSpec *proxmoxv1alpha1.StorageDownloadURLSpec) bool {
+	targetFile := fmt.Sprintf("%s:%s/%s", storageDownloadSpec.Storage,
+		storageDownloadSpec.Content, storageDownloadSpec.Filename)
 	for _, item := range storageContent {
 		if item.Volid == targetFile {
 			return true

@@ -53,8 +53,8 @@ type VirtualMachineSnapshotStatus struct {
 	ErrorMessage string `json:"errorMessage,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
 
 // VirtualMachineSnapshot is the Schema for the virtualmachinesnapshots API
 type VirtualMachineSnapshot struct {
@@ -65,7 +65,7 @@ type VirtualMachineSnapshot struct {
 	Status VirtualMachineSnapshotStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // VirtualMachineSnapshotList contains a list of VirtualMachineSnapshot
 type VirtualMachineSnapshotList struct {

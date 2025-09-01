@@ -71,10 +71,10 @@ type VirtualMachineReconciler struct {
 	Recorder record.EventRecorder
 }
 
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachines,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachines/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachines/finalizers,verbs=update
-//+kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachines,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachines/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachines/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -134,7 +134,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	r.handleWatcher(ctx, req, vm)
 
 	// Check if the VirtualMachine instance is marked to be deleted, which is indicated by the deletion timestamp being set.
-	if vm.ObjectMeta.DeletionTimestamp.IsZero() {
+	if vm.DeletionTimestamp.IsZero() {
 		err = r.handleFinalizer(ctx, vm)
 		if err != nil {
 			logger.Error(err, "Error handling finalizer")
@@ -161,7 +161,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// TODO: If I return err here it goes for requeue and errors out as "Reconciler error" so need to return nil to stop the requeue
 		return ctrl.Result{}, nil
 	}
-	if result.Requeue {
+	if result != (ctrl.Result{}) {
 		return result, nil
 	}
 
@@ -506,7 +506,7 @@ func (r *VirtualMachineReconciler) handleDelete(ctx context.Context, req ctrl.Re
 		logger.Error(err, "Error deleting VirtualMachine")
 		return res, client.IgnoreNotFound(err)
 	}
-	if res.Requeue {
+	if res != (ctrl.Result{}) {
 		return res, nil
 	}
 

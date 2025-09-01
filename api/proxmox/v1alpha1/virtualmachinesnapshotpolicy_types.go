@@ -51,8 +51,8 @@ type VirtualMachineSnapshotPolicyStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
 
 // VirtualMachineSnapshotPolicy is the Schema for the virtualmachinesnapshotpolicies API
 type VirtualMachineSnapshotPolicy struct {
@@ -63,7 +63,7 @@ type VirtualMachineSnapshotPolicy struct {
 	Status VirtualMachineSnapshotPolicyStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // VirtualMachineSnapshotPolicyList contains a list of VirtualMachineSnapshotPolicy
 type VirtualMachineSnapshotPolicyList struct {

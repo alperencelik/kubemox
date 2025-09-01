@@ -153,17 +153,17 @@ type VirtualMachineTemplateStatus struct {
 	Status     string             `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-//+kubebuilder:resource:scope="Cluster",shortName="vmt"
-//+kubebuilder:printcolumn:name="Node",type="string",JSONPath=".spec.node",description="The node name"
-//+kubebuilder:printcolumn:name="Cores",type="string",JSONPath=".spec.virtualMachineConfig.cores",description="The number of cores"
-//+kubebuilder:printcolumn:name="Memory",type="string",JSONPath=".spec.virtualMachineConfig.memory",description="The amount of memory"
-//+kubebuilder:printcolumn:name="Image",type="string",JSONPath=".spec.imageConfig.filename",description="The name of the image"
-//+kubebuilder:printcolumn:name="Username",type="string",JSONPath=".spec.cloudInitConfig.user",description="The username"
-//+kubebuilder:printcolumn:name="Password",type="string",JSONPath=".spec.cloudInitConfig.password",description="The password"
-//+kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.condition[0].type",description="The status of the VM"
-//+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope="Cluster",shortName="vmt"
+// +kubebuilder:printcolumn:name="Node",type="string",JSONPath=".spec.node",description="The node name"
+// +kubebuilder:printcolumn:name="Cores",type="string",JSONPath=".spec.virtualMachineConfig.cores",description="The number of cores"
+// +kubebuilder:printcolumn:name="Memory",type="string",JSONPath=".spec.virtualMachineConfig.memory",description="The amount of memory"
+// +kubebuilder:printcolumn:name="Image",type="string",JSONPath=".spec.imageConfig.filename",description="The name of the image"
+// +kubebuilder:printcolumn:name="Username",type="string",JSONPath=".spec.cloudInitConfig.user",description="The username"
+// +kubebuilder:printcolumn:name="Password",type="string",JSONPath=".spec.cloudInitConfig.password",description="The password"
+// +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.condition[0].type",description="The status of the VM"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // VirtualMachineTemplate is the Schema for the virtualmachinetemplates API
 type VirtualMachineTemplate struct {
@@ -174,7 +174,7 @@ type VirtualMachineTemplate struct {
 	Status VirtualMachineTemplateStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // VirtualMachineTemplateList contains a list of VirtualMachineTemplate
 type VirtualMachineTemplateList struct {

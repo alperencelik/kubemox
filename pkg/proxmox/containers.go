@@ -222,7 +222,8 @@ func (pc *ProxmoxClient) UpdateContainer(container *proxmoxv1alpha1.Container) e
 		return err
 	}
 	// Check if update is needed
-	if container.Spec.Template.Cores != ProxmoxContainer.CPUs || container.Spec.Template.Memory != int(ProxmoxContainer.MaxMem/1024/1024) {
+	if container.Spec.Template.Cores != ProxmoxContainer.CPUs ||
+		container.Spec.Template.Memory != int(ProxmoxContainer.MaxMem/1024/1024) {
 		cpuOption.Value = container.Spec.Template.Cores
 		memoryOption.Value = container.Spec.Template.Memory
 		// Update container
@@ -272,7 +273,8 @@ func (pc *ProxmoxClient) CheckContainerDelta(container *proxmoxv1alpha1.Containe
 		return false, err
 	}
 	// Check if update is needed
-	if container.Spec.Template.Cores != ProxmoxContainer.CPUs || container.Spec.Template.Memory != int(ProxmoxContainer.MaxMem/1024/1024) {
+	if container.Spec.Template.Cores != ProxmoxContainer.CPUs ||
+		container.Spec.Template.Memory != int(ProxmoxContainer.MaxMem/1024/1024) {
 		return true, nil
 	}
 	return false, nil

@@ -61,9 +61,9 @@ const (
 	typeCompletedStorageDownloadURL = "Completed"
 )
 
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=storagedownloadurls,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=storagedownloadurls/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=storagedownloadurls/finalizers,verbs=update
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=storagedownloadurls,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=storagedownloadurls/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=storagedownloadurls/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -106,7 +106,7 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 	node := storageDownloadURL.Spec.Node
 	storage := storageDownloadURL.Spec.Storage
 
-	if storageDownloadURL.ObjectMeta.DeletionTimestamp.IsZero() {
+	if storageDownloadURL.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(storageDownloadURL, storageDownloadURLFinalizerName) {
 			controllerutil.AddFinalizer(storageDownloadURL, storageDownloadURLFinalizerName)
 			if err = r.Update(ctx, storageDownloadURL); err != nil {
@@ -122,7 +122,7 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 				logger.Error(delErr, "unable to delete StorageDownloadURL")
 				return res, delErr
 			}
-			if res.Requeue {
+			if res != (ctrl.Result{}) {
 				return res, nil
 			}
 		}

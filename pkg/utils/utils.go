@@ -55,7 +55,10 @@ func StringInSlice(str string, list []string) bool {
 
 func EnsurePodNamespaceEnv() string {
 	if os.Getenv("POD_NAMESPACE") == "" {
-		os.Setenv("POD_NAMESPACE", "default")
+		err := os.Setenv("POD_NAMESPACE", "default")
+		if err != nil {
+			panic(err)
+		}
 	}
 	return os.Getenv("POD_NAMESPACE")
 }

@@ -71,9 +71,9 @@ type StorageDownloadURLStatus struct {
 	Status     string             `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-//+kubebuilder:resource:scope="Cluster",shortName="sdu"
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope="Cluster",shortName="sdu"
 
 // StorageDownloadURL is the Schema for the storagedownloadurls API
 type StorageDownloadURL struct {
@@ -84,7 +84,7 @@ type StorageDownloadURL struct {
 	Status StorageDownloadURLStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // StorageDownloadURLList contains a list of StorageDownloadURL
 type StorageDownloadURLList struct {
