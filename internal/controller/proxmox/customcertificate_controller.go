@@ -60,10 +60,10 @@ const (
 	typeErrorCustomCertificate     = "Error"
 )
 
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=customcertificates,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=customcertificates/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=customcertificates/finalizers,verbs=update
-//+kubebuilder:rbac:groups="apiextensions.k8s.io",resources=customresourcedefinitions,verbs=get;list;watch
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=customcertificates,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=customcertificates/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=customcertificates/finalizers,verbs=update
+// +kubebuilder:rbac:groups="apiextensions.k8s.io",resources=customresourcedefinitions,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -94,7 +94,7 @@ func (r *CustomCertificateReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// Check if the CustomCertificate resource is marked for deletion
-	if customCert.ObjectMeta.DeletionTimestamp.IsZero() {
+	if customCert.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(customCert, customCertificateFinalizerName) {
 			controllerutil.AddFinalizer(customCert, customCertificateFinalizerName)
 			if err = r.Update(ctx, customCert); err != nil {
@@ -123,7 +123,7 @@ func (r *CustomCertificateReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if err != nil {
 		logger.Error(err, "unable to create CustomCertificate")
 	}
-	if result.Requeue {
+	if result != (ctrl.Result{}) {
 		logger.Info("Requeuing the request")
 		return result, client.IgnoreNotFound(err)
 	}

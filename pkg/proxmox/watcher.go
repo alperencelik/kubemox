@@ -93,7 +93,7 @@ func StartWatcher(ctx context.Context, resource Resource,
 			if err != nil {
 				logger.Error(err, "Error handling auto start")
 			}
-			if result.Requeue {
+			if result != (ctrl.Result{}) {
 				logger.Info(fmt.Sprintf("Requeueing resource %s", resourceName))
 				// TODO: Re-evaluate the requirement of deleting the watcher
 				deleteWatcher(resourceName)

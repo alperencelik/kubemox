@@ -56,16 +56,16 @@ type ManagedVirtualMachineSpec struct {
 	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-//+kubebuilder:resource:scope=Cluster,shortName="mvm"
-//+kubebuilder:printcolumn:name="Node",type="string",JSONPath=".spec.nodeName",description="The node name"
-//+kubebuilder:printcolumn:name="ID",type="integer",JSONPath=".status.status.id",description="The ID of the VM"
-//+kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.status.state",description="The state of the VM"
-//+kubebuilder:printcolumn:name="Uptime",type="string",JSONPath=".status.status.uptime",description="The uptime of the VM"
-//+kubebuilder:printcolumn:name="IP Address",type="string",JSONPath=".status.status.IPAddress",description="The IP address of the VM"
-//+kubebuilder:printcolumn:name="OS Info",type="string",JSONPath=".status.status.OSInfo",description="The OS information of the VM"
-//+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Cluster,shortName="mvm"
+// +kubebuilder:printcolumn:name="Node",type="string",JSONPath=".spec.nodeName",description="The node name"
+// +kubebuilder:printcolumn:name="ID",type="integer",JSONPath=".status.status.id",description="The ID of the VM"
+// +kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.status.state",description="The state of the VM"
+// +kubebuilder:printcolumn:name="Uptime",type="string",JSONPath=".status.status.uptime",description="The uptime of the VM"
+// +kubebuilder:printcolumn:name="IP Address",type="string",JSONPath=".status.status.IPAddress",description="The IP address of the VM"
+// +kubebuilder:printcolumn:name="OS Info",type="string",JSONPath=".status.status.OSInfo",description="The OS information of the VM"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // ManagedVirtualMachine is the Schema for the managedvirtualmachines API
 type ManagedVirtualMachine struct {
@@ -76,7 +76,7 @@ type ManagedVirtualMachine struct {
 	Status VirtualMachineStatus      `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // ManagedVirtualMachineList contains a list of ManagedVirtualMachine
 type ManagedVirtualMachineList struct {

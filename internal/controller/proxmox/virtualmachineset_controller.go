@@ -56,9 +56,9 @@ const (
 	typeErrorVirtualMachineSet       = "Error"
 )
 
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinesets,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinesets/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinesets/finalizers,verbs=update
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinesets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinesets/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachinesets/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -105,7 +105,7 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// DELETE
-	if vmSet.ObjectMeta.DeletionTimestamp.IsZero() {
+	if vmSet.DeletionTimestamp.IsZero() {
 		err = r.handleFinalizer(ctx, vmSet)
 		if err != nil {
 			logger.Error(err, "unable to handle finalizer")
@@ -121,7 +121,7 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				logger.Error(delErr, "unable to delete VirtualMachineSet")
 				return res, delErr
 			}
-			if res.Requeue {
+			if res != (ctrl.Result{}) {
 				return res, nil
 			}
 		}
@@ -305,7 +305,7 @@ func (r *VirtualMachineSetReconciler) handleDelete(ctx context.Context, vmSet *p
 		vm := &vmList.Items[i]
 		if err = r.Delete(ctx, vm); err != nil {
 			logger.Error(err, "unable to delete VirtualMachine")
-			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			return ctrl.Result{RequeueAfter: 1 * time.Second}, client.IgnoreNotFound(err)
 		}
 	}
 
@@ -317,7 +317,7 @@ func (r *VirtualMachineSetReconciler) handleDelete(ctx context.Context, vmSet *p
 		if err = r.Update(ctx, vmSet); err != nil {
 			logger.Error(err, "Error updating VirtualMachineSet")
 		}
-		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		return ctrl.Result{RequeueAfter: 1 * time.Second}, client.IgnoreNotFound(err)
 	}
 	return ctrl.Result{}, nil
 }

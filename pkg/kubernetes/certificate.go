@@ -39,12 +39,12 @@ func CreateCertificate(customCert *proxmoxv1alpha1.CustomCertificate) (*unstruct
 	usages := certManagerSpec.Usages
 
 	// Check if secret ref exists
-	secretExists, err := checkSecretExists(secretName, customCert.ObjectMeta.Namespace)
+	secretExists, err := checkSecretExists(secretName, customCert.GetNamespace())
 	if err != nil {
 		return nil, err
 	}
 	if !secretExists {
-		return nil, fmt.Errorf("secret %s does not exist in namespace %s", secretName, customCert.ObjectMeta.Namespace)
+		return nil, fmt.Errorf("secret %s does not exist in namespace %s", secretName, customCert.GetNamespace())
 	}
 
 	certManagerCertificate := &unstructured.Unstructured{
@@ -52,14 +52,14 @@ func CreateCertificate(customCert *proxmoxv1alpha1.CustomCertificate) (*unstruct
 			"apiVersion": "cert-manager.io/v1",
 			"kind":       "Certificate",
 			"metadata": map[string]any{
-				"name":      customCert.ObjectMeta.Name,
-				"namespace": customCert.ObjectMeta.Namespace,
+				"name":      customCert.GetName(),
+				"namespace": customCert.GetNamespace(),
 				"ownerReferences": []map[string]any{
 					{
 						"apiVersion": customCert.APIVersion,
 						"kind":       customCert.Kind,
-						"name":       customCert.ObjectMeta.Name,
-						"uid":        customCert.ObjectMeta.UID,
+						"name":       customCert.GetName(),
+						"uid":        customCert.GetUID(),
 					},
 				},
 			},
@@ -154,7 +154,8 @@ func GetCertificateSecretKeys(certificate *unstructured.Unstructured) (tlscrt, t
 		return nil, nil, fmt.Errorf("can't find cert-manager installat namespace")
 	}
 	// Get Kubernetes secret
-	secret, err := Clientset.CoreV1().Secrets(certManagerNamespace).Get(context.Background(), secretName, metav1.GetOptions{})
+	secret, err := Clientset.CoreV1().Secrets(certManagerNamespace).
+		Get(context.Background(), secretName, metav1.GetOptions{})
 	if err != nil {
 		return nil, nil, err
 	}

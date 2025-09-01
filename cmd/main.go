@@ -42,7 +42,7 @@ import (
 	"github.com/alperencelik/kubemox/pkg/metrics"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 	"github.com/alperencelik/kubemox/pkg/utils"
-	//+kubebuilder:scaffold:imports
+	// +kubebuilder:scaffold:imports
 )
 
 var (
@@ -55,7 +55,7 @@ func init() { //nolint:gochecknoinits // This is required by kubebuilder
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(proxmoxv1alpha1.AddToScheme(scheme))
-	//+kubebuilder:scaffold:scheme
+	// +kubebuilder:scaffold:scheme
 }
 
 func main() {
@@ -192,7 +192,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "ProxmoxConnection")
 		os.Exit(1)
 	}
-	//+kubebuilder:scaffold:builder
+	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
