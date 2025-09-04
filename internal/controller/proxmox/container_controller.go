@@ -58,9 +58,9 @@ const (
 	typeErrorContainer     = "Error"
 )
 
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=containers,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=containers/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=containers/finalizers,verbs=update
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=containers,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=containers/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=containers/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -123,7 +123,7 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	r.handleWatcher(ctx, req, container)
 
 	// Check if the Container instance is marked to be deleted, which is indicated by the deletion timestamp being set.
-	if container.ObjectMeta.DeletionTimestamp.IsZero() {
+	if container.DeletionTimestamp.IsZero() {
 		// The object is not being deleted, so if it does not have our finalizer, then lets add the finalizer and update the object.
 		err = r.handleFinalizer(ctx, container)
 		if err != nil {
@@ -149,7 +149,7 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		logger.Error(err, "Failed to handle Container operations")
 		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 	}
-	if result.Requeue {
+	if result != (ctrl.Result{}) {
 		return result, nil
 	}
 

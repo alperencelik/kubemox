@@ -74,15 +74,15 @@ type VirtualMachineSetStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"` //nolint:lll // This is required by kubebuilder
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-//+kubebuilder:resource:scope="Cluster",shortName=vmset
-//+kubebuilder:printcolumn:name="Replicas",type="integer",JSONPath=".spec.replicas",description="The number of VMs"
-//+kubebuilder:printcolumn:name="Node",type="string",JSONPath=".spec.nodeName",description="The name of the target node of Proxmox"
-//+kubebuilder:printcolumn:name="Cores",type="string",JSONPath=".spec.template.cores",description="The number of CPU cores"
-//+kubebuilder:printcolumn:name="Memory",type="string",JSONPath=".spec.template.memory",description="The amount of memory in MB"
-//+kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.conditions[0].type",description="The status of the VM"
-//+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope="Cluster",shortName=vmset
+// +kubebuilder:printcolumn:name="Replicas",type="integer",JSONPath=".spec.replicas",description="The number of VMs"
+// +kubebuilder:printcolumn:name="Node",type="string",JSONPath=".spec.nodeName",description="The name of the target node of Proxmox"
+// +kubebuilder:printcolumn:name="Cores",type="string",JSONPath=".spec.template.cores",description="The number of CPU cores"
+// +kubebuilder:printcolumn:name="Memory",type="string",JSONPath=".spec.template.memory",description="The amount of memory in MB"
+// +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.conditions[0].type",description="The status of the VM"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // VirtualMachineSet is the Schema for the virtualmachinesets API
 type VirtualMachineSet struct {
@@ -93,7 +93,7 @@ type VirtualMachineSet struct {
 	Status VirtualMachineSetStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // VirtualMachineSetList contains a list of VirtualMachineSet
 type VirtualMachineSetList struct {

@@ -38,7 +38,8 @@ func ClientConfig() any {
 		var kubeconfig *string
 		flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 		if home := homedir.HomeDir(); home != "" {
-			kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+			kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"),
+				"(optional) absolute path to the kubeconfig file")
 		} else {
 			kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
 		}

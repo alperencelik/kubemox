@@ -7,7 +7,8 @@ import (
 )
 
 // CreateCustomCertificate creates a custom certificate object in proxmox node
-func (pc *ProxmoxClient) CreateCustomCertificate(nodeName string, proxmoxCertSpec *proxmoxv1alpha1.ProxmoxCertSpec) error {
+func (pc *ProxmoxClient) CreateCustomCertificate(nodeName string,
+	proxmoxCertSpec *proxmoxv1alpha1.ProxmoxCertSpec) error {
 	// get the node object
 	node, err := pc.Client.Node(ctx, nodeName)
 	if err != nil {

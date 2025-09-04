@@ -60,10 +60,10 @@ type ManagedVirtualMachineReconciler struct {
 	Recorder record.EventRecorder
 }
 
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=managedvirtualmachines,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=managedvirtualmachines/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=managedvirtualmachines/finalizers,verbs=update
-//+kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=managedvirtualmachines,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=managedvirtualmachines/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=managedvirtualmachines/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -112,7 +112,7 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 	r.handleWatcher(ctx, req, managedVM)
 
 	// Check if the ManagedVM instance is marked to be deleted, which is indicated by the deletion timestamp being set.
-	if managedVM.ObjectMeta.DeletionTimestamp.IsZero() {
+	if managedVM.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(managedVM, managedvirtualMachineFinalizerName) {
 			controllerutil.AddFinalizer(managedVM, managedvirtualMachineFinalizerName)
 			if err = r.Update(ctx, managedVM); err != nil {

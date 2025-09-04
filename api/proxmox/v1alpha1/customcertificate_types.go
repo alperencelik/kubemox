@@ -67,9 +67,9 @@ type CustomCertificateStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"` //nolint:lll // This is required by kubebuilder
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-//+kubebuilder:resource:scope="Cluster",shortName="cc"
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope="Cluster",shortName="cc"
 
 // CustomCertificate is the Schema for the customcertificates API
 type CustomCertificate struct {
@@ -80,7 +80,7 @@ type CustomCertificate struct {
 	Status CustomCertificateStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // CustomCertificateList contains a list of CustomCertificate
 type CustomCertificateList struct {

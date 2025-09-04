@@ -120,7 +120,8 @@ func (pc *ProxmoxClient) CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine
 	}
 	mutex.Lock()
 	// TODO: Switch to task Status
-	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineCreateTimesNum, virtualMachineCreateSteps)
+	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx,
+		virtualMachineCreateTimesNum, virtualMachineCreateSteps)
 	if !taskStatus {
 		// Return the task.ExitStatus as error
 		return &TaskError{ExitStatus: task.ExitStatus}
@@ -260,7 +261,8 @@ func (pc *ProxmoxClient) DeleteVM(vmName, nodeName string) error {
 			log.Log.Error(stopErr, "Can't stop VM")
 			return &TaskError{ExitStatus: stopTask.ExitStatus}
 		}
-		taskStatus, taskCompleted, taskErr := stopTask.WaitForCompleteStatus(ctx, virtualMachineStopTimesNum, virtualMachineStopSteps)
+		taskStatus, taskCompleted, taskErr := stopTask.WaitForCompleteStatus(ctx,
+			virtualMachineStopTimesNum, virtualMachineStopSteps)
 		if !taskStatus {
 			// Return the task.ExitStatus as error
 			return &TaskError{ExitStatus: stopTask.ExitStatus}
@@ -275,7 +277,8 @@ func (pc *ProxmoxClient) DeleteVM(vmName, nodeName string) error {
 	if err != nil {
 		return err
 	}
-	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineDeleteTimesNum, virtualMachineDeleteSteps)
+	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx,
+		virtualMachineDeleteTimesNum, virtualMachineDeleteSteps)
 	if !taskStatus {
 		// Return the task.ExitStatus as error
 		return &TaskError{ExitStatus: task.ExitStatus}
@@ -297,7 +300,8 @@ func (pc *ProxmoxClient) StartVM(vmName, nodeName string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineStartTimesNum, virtualMachineStartSteps)
+	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx,
+		virtualMachineStartTimesNum, virtualMachineStartSteps)
 	if !taskStatus {
 		// Return the taks.ExitStatus as error
 		return false, &TaskError{ExitStatus: task.ExitStatus}
@@ -335,7 +339,8 @@ func (pc *ProxmoxClient) StopVM(vmName, nodeName string) error {
 		return err
 	}
 
-	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineStopTimesNum, virtualMachineStopSteps)
+	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx,
+		virtualMachineStopTimesNum, virtualMachineStopSteps)
 	if !taskStatus {
 		// Return the taks.ExitStatus as error
 		return &TaskError{ExitStatus: task.ExitStatus}
@@ -495,7 +500,7 @@ func CheckManagedVMExists(managedVM string) (bool, error) {
 	// Theoretically this should be handled with the reconciler.List method
 	// but since this one is used before the reconciler build it's cache
 	// we have to retrieve the objects from API server directly
-	var existingManagedVMNames []string
+	existingManagedVMNames := []string{}
 	// Get managed VMs
 	crd, err := kubernetes.GetManagedVMCRD()
 	if err != nil {
@@ -613,7 +618,8 @@ func (pc *ProxmoxClient) UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) (bool, err
 			return false, err
 		}
 
-		taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineUpdateTimesNum, virtualMachineUpdateSteps)
+		taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx,
+			virtualMachineUpdateTimesNum, virtualMachineUpdateSteps)
 		if !taskStatus {
 			// Return the taks.ExitStatus as error
 			return false, &TaskError{ExitStatus: task.ExitStatus}
@@ -631,7 +637,8 @@ func (pc *ProxmoxClient) UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) (bool, err
 		if err != nil {
 			return false, err
 		}
-		taskStatus, taskCompleted, taskErr = task.WaitForCompleteStatus(ctx, virtualMachineRestartTimesNum, virtualMachineRestartSteps)
+		taskStatus, taskCompleted, taskErr = task.WaitForCompleteStatus(ctx,
+			virtualMachineRestartTimesNum, virtualMachineRestartSteps)
 		if !taskStatus {
 			// Return the taks.ExitStatus as error
 			return false, &TaskError{ExitStatus: task.ExitStatus}
@@ -752,7 +759,8 @@ func (pc *ProxmoxClient) UpdateManagedVM(ctx context.Context, managedVM *proxmox
 				log.Log.Error(err, "Can't update VM")
 				return err
 			}
-			taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, virtualMachineUpdateTimesNum, virtualMachineUpdateSteps)
+			taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx,
+				virtualMachineUpdateTimesNum, virtualMachineUpdateSteps)
 			if !taskStatus {
 				// Return the taks.ExitStatus as error
 				return &TaskError{ExitStatus: task.ExitStatus}
@@ -764,7 +772,8 @@ func (pc *ProxmoxClient) UpdateManagedVM(ctx context.Context, managedVM *proxmox
 			if err != nil {
 				return err
 			}
-			taskStatus, taskCompleted, taskErr = task.WaitForCompleteStatus(ctx, virtualMachineRestartTimesNum, virtualMachineRestartSteps)
+			taskStatus, taskCompleted, taskErr = task.WaitForCompleteStatus(ctx,
+				virtualMachineRestartTimesNum, virtualMachineRestartSteps)
 			if !taskStatus {
 				// Return the taks.ExitStatus as error
 				return &TaskError{ExitStatus: task.ExitStatus}
@@ -819,7 +828,7 @@ func (pc *ProxmoxClient) GetVMSnapshots(vmName string) ([]string, error) {
 	if err != nil {
 		log.Log.Error(err, "Error getting snapshots")
 	}
-	var snapshotNames []string
+	snapshotNames := []string{}
 	for _, snapshot := range snapshots {
 		snapshotNames = append(snapshotNames, snapshot.Name)
 	}
@@ -871,7 +880,7 @@ func (pc *ProxmoxClient) GetNetworkConfiguration(vm *proxmoxv1alpha1.VirtualMach
 }
 
 func parseNetworkConfiguration(networks map[string]string) ([]proxmoxv1alpha1.VirtualMachineNetwork, error) {
-	var networkConfiguration []proxmoxv1alpha1.VirtualMachineNetwork
+	networkConfiguration := []proxmoxv1alpha1.VirtualMachineNetwork{}
 
 	// Parse networks to use as VirtualMachineSpecTemplateNetwork
 	for _, network := range networks {
@@ -908,7 +917,8 @@ func (pc *ProxmoxClient) ConfigureVirtualMachine(vm *proxmoxv1alpha1.VirtualMach
 	return nil
 }
 
-func (pc *ProxmoxClient) deleteVirtualMachineOption(vm *proxmoxv1alpha1.VirtualMachine, option string) (proxmox.Task, error) {
+func (pc *ProxmoxClient) deleteVirtualMachineOption(vm *proxmoxv1alpha1.VirtualMachine,
+	option string) (proxmox.Task, error) {
 	nodeName := vm.Spec.NodeName
 	virtualMachine, err := pc.getVirtualMachine(vm.Name, nodeName)
 	if err != nil {
@@ -1146,7 +1156,7 @@ func (pc *ProxmoxClient) applyDiskChanges(
 }
 
 func parseDiskConfiguration(disks map[string]string) ([]proxmoxv1alpha1.VirtualMachineDisk, error) {
-	var diskConfiguration []proxmoxv1alpha1.VirtualMachineDisk
+	diskConfiguration := []proxmoxv1alpha1.VirtualMachineDisk{}
 
 	// Parse disks to use as VirtualMachineDisk
 	for device, disk := range disks {
@@ -1514,6 +1524,44 @@ func parseSinglePCIConfiguration(pci string) (proxmoxv1alpha1.PciDevice, error) 
 	} else {
 		pciConfig.Type = "raw"
 		pciConfig.DeviceID = pciSplit[0]
+	// Rebooting VM spawns two different tasks, one for stopping and one for starting and unfortunately you can't
+	// track the start so here we should do stop and start separately
+	// Stop VM
+	err = pc.StopVM(vmName, nodeName)
+	if err != nil {
+		log.Log.Error(err, "Error stopping VirtualMachine")
+		return err
+	}
+	// TODO: Implement something more logical
+	// Start VM
+	task, err = VirtualMachine.Start(ctx)
+	if err != nil {
+		log.Log.Error(err, "Error starting VirtualMachine")
+		return err
+	}
+	taskStatus, taskCompleted, err = task.WaitForCompleteStatus(ctx, 5, 3)
+	if err != nil {
+		log.Log.Error(err, "Error starting VirtualMachine")
+		return err
+	}
+	if !taskStatus {
+		// Return the task.ExitStatus as error
+		return &TaskError{ExitStatus: task.ExitStatus}
+	}
+	if !taskCompleted {
+		return err
+	}
+	return nil
+}
+
+// getIndexOfPCIConfig returns the index of the PCI device in the VM configuration
+// Returns as hostpci0, hostpci1, etc.
+func (pc *ProxmoxClient) getIndexOfPCIConfig(vmName, nodeName string,
+	pciDevice proxmoxv1alpha1.PciDevice) (string, error) {
+	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM")
+
 	}
 
 	for _, pciSplit := range pciSplit[1:] {

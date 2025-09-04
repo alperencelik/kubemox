@@ -37,7 +37,7 @@ type ProxmoxConnectionSpec struct {
 	// Secret to authenticate with the Proxmox cluster
 	Secret string `json:"secret,omitempty"`
 	// InsecureSkipVerify skips the verification of the server's certificate chain and host name
-	//+kubebuilder:default:=false
+	// +kubebuilder:default:=false
 	InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
 }
 
