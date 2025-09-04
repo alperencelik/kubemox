@@ -1399,7 +1399,8 @@ func (pc *ProxmoxClient) configureVirtualMachinePCI(vm *proxmoxv1alpha1.VirtualM
 			return err
 		}
 		if reboot {
-			// Rebooting VM spawns two different tasks, one for stopping and one for starting and unfortunately you can't track the start so
+			// Rebooting VM spawns two different tasks, one for stopping and one for starting
+			// and unfortunately you can't track the start so
 			// here we should do stop and start separately
 			// Stop VM
 			err = pc.StopVM(vm.Name, vm.Spec.NodeName)
@@ -1445,7 +1446,8 @@ func (pc *ProxmoxClient) GetPCIConfiguration(vmName, nodeName string) (map[strin
 	return PCIs, nil
 }
 
-func (pc *ProxmoxClient) ApplyPCIChanges(vm *proxmoxv1alpha1.VirtualMachine, desiredPCIs []proxmoxv1alpha1.PciDevice, actualPCIs map[string]proxmoxv1alpha1.PciDevice) (bool, error) {
+func (pc *ProxmoxClient) ApplyPCIChanges(vm *proxmoxv1alpha1.VirtualMachine, desiredPCIs []proxmoxv1alpha1.PciDevice,
+	actualPCIs map[string]proxmoxv1alpha1.PciDevice) (bool, error) {
 	reboot := false
 	for i, desiredPCI := range desiredPCIs {
 		indexStr := fmt.Sprintf("hostpci%d", i)
@@ -1488,7 +1490,8 @@ func (pc *ProxmoxClient) ApplyPCIChanges(vm *proxmoxv1alpha1.VirtualMachine, des
 	return reboot, nil
 }
 
-func (pc *ProxmoxClient) updatePCIConfig(vm *proxmoxv1alpha1.VirtualMachine, index string, pci proxmoxv1alpha1.PciDevice) error {
+func (pc *ProxmoxClient) updatePCIConfig(vm *proxmoxv1alpha1.VirtualMachine, index string,
+	pci proxmoxv1alpha1.PciDevice) error {
 	vmName, nodeName := vm.Name, vm.Spec.NodeName
 	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
