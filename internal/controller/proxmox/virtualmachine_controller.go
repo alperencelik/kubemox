@@ -407,7 +407,7 @@ func (r *VirtualMachineReconciler) handleAutoStart(ctx context.Context,
 		if err != nil {
 			return ctrl.Result{Requeue: true}, err
 		}
-		if vmState == "stopped" {
+		if vmState == proxmox.VirtualMachineStoppedState {
 			startResult, err := pc.StartVM(vmName, nodeName)
 			if err != nil {
 				var taskErr *proxmox.TaskError
@@ -563,6 +563,9 @@ func (r *VirtualMachineReconciler) handleCloudInitOperations(ctx context.Context
 
 func (r *VirtualMachineReconciler) handleAdditionalConfig(ctx context.Context,
 	pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine) error {
+	if vm.Spec.AdditionalConfig == nil {
+		return nil
+	}
 	logger := log.FromContext(ctx)
 	err := pc.ApplyAdditionalConfiguration(vm)
 	if err != nil {

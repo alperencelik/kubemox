@@ -196,6 +196,7 @@ func (pc *ProxmoxClient) GetVMIPAddress(vmName, nodeName string) string {
 	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
+		return ""
 	}
 	// Get VM IP
 	VirtualMachineIfaces, err := VirtualMachine.AgentGetNetworkIFaces(ctx)

@@ -71,10 +71,11 @@ func (r *ProxmoxConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	proxmoxConnection.Status.Version = *version
 	// Update the status with the connection status
 	meta.SetStatusCondition(&proxmoxConnection.Status.Conditions, metav1.Condition{
-		Type:    "Ready",
-		Status:  metav1.ConditionTrue,
-		Reason:  "ProxmoxConnectionReady",
-		Message: "Proxmox connection is ready",
+		LastTransitionTime: metav1.Now(),
+		Type:               "Ready",
+		Status:             metav1.ConditionTrue,
+		Reason:             "ProxmoxConnectionReady",
+		Message:            "Proxmox connection is ready",
 	})
 	if err := r.Status().Update(ctx, proxmoxConnection); err != nil {
 		logger.Error(err, "unable to update ProxmoxConnection status")
