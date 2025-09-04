@@ -1525,44 +1525,6 @@ func parseSinglePCIConfiguration(pci string) (proxmoxv1alpha1.PciDevice, error) 
 	} else {
 		pciConfig.Type = "raw"
 		pciConfig.DeviceID = pciSplit[0]
-	// Rebooting VM spawns two different tasks, one for stopping and one for starting and unfortunately you can't
-	// track the start so here we should do stop and start separately
-	// Stop VM
-	err = pc.StopVM(vmName, nodeName)
-	if err != nil {
-		log.Log.Error(err, "Error stopping VirtualMachine")
-		return err
-	}
-	// TODO: Implement something more logical
-	// Start VM
-	task, err = VirtualMachine.Start(ctx)
-	if err != nil {
-		log.Log.Error(err, "Error starting VirtualMachine")
-		return err
-	}
-	taskStatus, taskCompleted, err = task.WaitForCompleteStatus(ctx, 5, 3)
-	if err != nil {
-		log.Log.Error(err, "Error starting VirtualMachine")
-		return err
-	}
-	if !taskStatus {
-		// Return the task.ExitStatus as error
-		return &TaskError{ExitStatus: task.ExitStatus}
-	}
-	if !taskCompleted {
-		return err
-	}
-	return nil
-}
-
-// getIndexOfPCIConfig returns the index of the PCI device in the VM configuration
-// Returns as hostpci0, hostpci1, etc.
-func (pc *ProxmoxClient) getIndexOfPCIConfig(vmName, nodeName string,
-	pciDevice proxmoxv1alpha1.PciDevice) (string, error) {
-	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
-	if err != nil {
-		log.Log.Error(err, "Error getting VM")
-
 	}
 
 	for _, pciSplit := range pciSplit[1:] {
