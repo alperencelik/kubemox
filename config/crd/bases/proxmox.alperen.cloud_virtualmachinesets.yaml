@@ -104,6 +104,48 @@ spec:
               nodeName:
                 description: NodeName is the name of the target node of Proxmox
                 type: string
+              pciDevices:
+                description: PCIDevices is the PCI devices configuration
+                properties:
+                  devices:
+                    description: Devices is the list of PCI devices
+                    items:
+                      properties:
+                        deviceID:
+                          description: DeviceID is the ID hex id of the device
+                          type: string
+                        pcie:
+                          default: false
+                          description: PCIE is the flag that indicates whether the
+                            device is a PCIE device ==> pcie=1
+                          type: boolean
+                        primaryGPU:
+                          default: false
+                          description: PrimaryGPU is the flag that indicates whether
+                            the device is the primary GPU ==> x-vga=1
+                          type: boolean
+                        type:
+                          description: Type is the type of the PCI device either raw
+                            or mapped
+                          enum:
+                          - raw
+                          - mapped
+                          type: string
+                      required:
+                      - type
+                      type: object
+                    type: array
+                  mode:
+                    description: Mode is the mode of the PCI devices, either shared
+                      or per-machine
+                    enum:
+                    - shared
+                    - dedicated
+                    type: string
+                required:
+                - devices
+                - mode
+                type: object
               replicas:
                 description: Replicas is the number of VMs
                 type: integer
