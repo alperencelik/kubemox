@@ -7,6 +7,7 @@ import (
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/utils"
+	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -142,9 +143,9 @@ func UpdateCertificate(customCertSpec *proxmoxv1alpha1.CertManagerSpec, certific
 	return nil
 }
 
-func GetCertificateSecretKeys(certificate *unstructured.Unstructured) (tlscrt, tlskey []byte, err error) {
+func GetCertificateSecretKeys(certificate *certmanagerv1.Certificate) (tlscrt, tlskey []byte, err error) {
 	// Get certificate secret
-	secretName := certificate.Object["spec"].(map[string]any)["secretName"].(string)
+	secretName := certificate.Spec.SecretName
 	// Find the namespace that cert-manager is installed and get the secret from that namespace
 	certManagerNamespace, err := findCertManagerNamespace()
 	if err != nil {
