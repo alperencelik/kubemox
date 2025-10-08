@@ -23,6 +23,7 @@ import (
 	"os"
 	"time"
 
+	certmanagerv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -53,6 +54,7 @@ var (
 
 func init() { //nolint:gochecknoinits // This is required by kubebuilder
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(certmanagerv1.AddToScheme(scheme))
 
 	utilruntime.Must(proxmoxv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
@@ -72,7 +74,9 @@ func main() {
 	flag.BoolVar(&secureMetrics, "metrics-secure", false,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 
-	opts := zap.Options{}
+	opts := zap.Options{
+		Development: true,
+	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
