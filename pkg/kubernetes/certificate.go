@@ -3,7 +3,7 @@ package kubernetes
 import (
 	"context"
 	"fmt"
-	"strings"
+	"os"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/utils"
@@ -143,19 +143,24 @@ func UpdateCertificate(customCertSpec *proxmoxv1alpha1.CertManagerSpec, certific
 	return nil
 }
 
+func WaitForCertificateReady(certificate *certmanagerv1.Certificate) (bool, error) {
+	// Check if certificate is ready
+	conditionLen := len(certificate.Status.Conditions)
+	if conditionLen == 0 {
+		return false, nil
+	}
+	lastCondition := certificate.Status.Conditions[conditionLen-1]
+	if lastCondition.Type == certmanagerv1.CertificateConditionReady && lastCondition.Status == "True" {
+		return true, nil
+	}
+	return false, nil
+}
+
 func GetCertificateSecretKeys(certificate *certmanagerv1.Certificate) (tlscrt, tlskey []byte, err error) {
 	// Get certificate secret
 	secretName := certificate.Spec.SecretName
-	// Find the namespace that cert-manager is installed and get the secret from that namespace
-	certManagerNamespace, err := findCertManagerNamespace()
-	if err != nil {
-		return nil, nil, err
-	}
-	if certManagerNamespace == "" {
-		return nil, nil, fmt.Errorf("can't find cert-manager installat namespace")
-	}
-	// Get Kubernetes secret
-	secret, err := Clientset.CoreV1().Secrets(certManagerNamespace).
+	//  Get Kubernetes secret
+	secret, err := Clientset.CoreV1().Secrets(os.Getenv("POD_NAMESPACE")).
 		Get(context.Background(), secretName, metav1.GetOptions{})
 	if err != nil {
 		return nil, nil, err
@@ -164,37 +169,6 @@ func GetCertificateSecretKeys(certificate *certmanagerv1.Certificate) (tlscrt, t
 	tlsCrt := secret.Data["tls.crt"]
 	tlsKey := secret.Data["tls.key"]
 	return tlsCrt, tlsKey, nil
-}
-
-func findCertManagerNamespace() (string, error) {
-	// Find the namespace that cert-manager is installed
-	// List namespaces and find the namespace that has cert-manager resources
-	namespaces, err := Clientset.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
-	if err != nil {
-		return "", nil
-	}
-	// If there is a namespace called cert-manager, return it
-	for i := range namespaces.Items {
-		namespace := &namespaces.Items[i]
-		if namespace.Name == "cert-manager" {
-			return namespace.Name, nil
-		} else {
-			// If there is no namespace called cert-manager, then get all deployments and check if cert-manager is installed
-			deployments, err := Clientset.AppsV1().Deployments(namespace.Name).List(context.Background(), metav1.ListOptions{})
-			// If there is a deployment called cert-manager, return the namespace
-			if err != nil {
-				return "", err
-			}
-			for j := range deployments.Items {
-				deployment := &deployments.Items[j]
-				if strings.Contains(deployment.Name, "cert-manager") {
-					return namespace.Name, nil
-				}
-				return namespace.Name, nil
-			}
-		}
-	}
-	return "", nil
 }
 
 func checkSecretExists(secretName, namespace string) (bool, error) {

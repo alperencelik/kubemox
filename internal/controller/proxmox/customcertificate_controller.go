@@ -19,7 +19,6 @@ package proxmox
 import (
 	"context"
 	"os"
-	"reflect"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -141,13 +140,12 @@ func (r *CustomCertificateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
+		Owns(&certmanagerv1.Certificate{}).
 		For(&proxmoxv1alpha1.CustomCertificate{}).
 		WithEventFilter(predicate.Funcs{
 			UpdateFunc: func(e event.UpdateEvent) bool {
-				oldCustomCert := e.ObjectOld.(*proxmoxv1alpha1.CustomCertificate)
-				newCustomCert := e.ObjectNew.(*proxmoxv1alpha1.CustomCertificate)
-				condition1 := !reflect.DeepEqual(oldCustomCert.Spec, newCustomCert.Spec)
-				condition2 := newCustomCert.ObjectMeta.GetDeletionTimestamp().IsZero()
+				condition1 := e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()
+				condition2 := e.ObjectNew.GetDeletionTimestamp().IsZero()
 				return condition1 || !condition2
 			},
 		}).
@@ -206,12 +204,25 @@ func (r *CustomCertificateReconciler) handleDelete(ctx context.Context,
 func (r *CustomCertificateReconciler) handleCertificate(ctx context.Context,
 	pc *proxmox.ProxmoxClient, customCert *proxmoxv1alpha1.CustomCertificate) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+	// TODO: First make sure that the issuerRef exists
+
 	// Create or update the Certificate obj
 	certObj, err := r.CreateOrUpdateCertificateObject(ctx, customCert)
 	if err != nil {
 		logger.Error(err, "unable to create or update Certificate object")
 		return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
 	}
+	// Wait till the certificate is ready
+	ready, err := kubernetes.WaitForCertificateReady(certObj)
+	if err != nil {
+		logger.Error(err, "unable to check Certificate whether it's ready")
+		return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
+	}
+	if !ready {
+		logger.Info("Certificate is not ready yet, requeuing")
+		return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, nil
+	}
+
 	// Retrieve the certificate and private key
 	tlsCrt, tlsKey, err := kubernetes.GetCertificateSecretKeys(certObj)
 	if err != nil {
@@ -231,6 +242,21 @@ func (r *CustomCertificateReconciler) handleCertificate(ctx context.Context,
 		logger.Error(err, "unable to create CustomCertificate in Proxmox")
 		return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
 	}
+	// Update the condition for the CustomCertificate
+	if !meta.IsStatusConditionPresentAndEqual(customCert.Status.Conditions, typeAvailableCustomCertificate, metav1.ConditionTrue) {
+		meta.SetStatusCondition(&customCert.Status.Conditions, metav1.Condition{
+			Type:    typeAvailableCustomCertificate,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Available",
+			Message: "CustomCertificate is available",
+		})
+		if err = r.Status().Update(ctx, customCert); err != nil {
+			logger.Error(err, "Error updating CustomCertificate status")
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		}
+	}
+	logger.Info("CustomCertificate is successfully created/updated")
+
 	return ctrl.Result{}, nil
 }
 
