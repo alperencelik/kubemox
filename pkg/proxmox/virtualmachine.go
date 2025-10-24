@@ -83,7 +83,7 @@ func init() {
 
 func (pc *ProxmoxClient) CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine) error {
 	nodeName := vm.Spec.NodeName
-	node, err := pc.Client.Node(ctx, nodeName)
+	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		return err
 	}
@@ -151,11 +151,19 @@ func (pc *ProxmoxClient) CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine
 	if err != nil {
 		return err
 	}
+	// Cache the new VM ID
+	pc.setCachedVMID(nodeName, vm.Name, newID)
 	return nil
 }
 
 func (pc *ProxmoxClient) getVMID(vmName, nodeName string) (int, error) {
-	node, err := pc.Client.Node(ctx, nodeName)
+	// Try to get from cache first
+	if vmID, exists := pc.getCachedVMID(nodeName, vmName); exists {
+		return vmID, nil
+	}
+
+	// Not in cache, fetch from API
+	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		return 0, err
 	}
@@ -165,17 +173,23 @@ func (pc *ProxmoxClient) getVMID(vmName, nodeName string) (int, error) {
 	}
 	for _, vm := range vmList {
 		if strings.EqualFold(vm.Name, vmName) {
-			vmID := vm.VMID
-			// Convert vmID to int
-			vmIDInt := int(vmID)
-			return vmIDInt, nil
+			vmID := int(vm.VMID)
+			// Store in cache
+			pc.setCachedVMID(nodeName, vmName, vmID)
+			return vmID, nil
 		}
 	}
 	return 0, nil
 }
 
 func (pc *ProxmoxClient) CheckVM(vmName, nodeName string) (bool, error) {
-	node, err := pc.Client.Node(ctx, nodeName)
+	// Try to check from cache first
+	if vmID, exists := pc.getCachedVMID(nodeName, vmName); exists && vmID != 0 {
+		return true, nil
+	}
+
+	// Not in cache, fetch from API
+	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		return false, err
 	}
@@ -186,6 +200,8 @@ func (pc *ProxmoxClient) CheckVM(vmName, nodeName string) (bool, error) {
 	for _, vm := range vmList {
 		// if vm.Name == vmName {
 		if strings.EqualFold(vm.Name, vmName) {
+			// Cache the VM ID while we're at it
+			pc.setCachedVMID(nodeName, vm.Name, int(vm.VMID))
 			return true, nil
 		}
 	}
@@ -288,6 +304,12 @@ func (pc *ProxmoxClient) DeleteVM(vmName, nodeName string) error {
 		log.Log.Error(taskErr, "Can't delete VM")
 		return taskErr
 	}
+	// Invalidate cache entry for this VM
+	pc.vmIDMutex.Lock()
+	if nodeCache, exists := pc.vmIDCache[nodeName]; exists {
+		delete(nodeCache, vmName)
+	}
+	pc.vmIDMutex.Unlock()
 	return nil
 }
 
@@ -390,7 +412,7 @@ func (pc *ProxmoxClient) AgentIsRunning(vmName, nodeName string) (bool, error) {
 
 func (pc *ProxmoxClient) CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine) error {
 	nodeName := vm.Spec.NodeName
-	node, err := pc.Client.Node(ctx, nodeName)
+	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		return err
 	}
@@ -479,6 +501,8 @@ func (pc *ProxmoxClient) CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine)
 	if !taskCompleted {
 		return taskErr
 	}
+	// Cache the new VM ID
+	pc.setCachedVMID(nodeName, vm.Spec.Name, vmID)
 	return nil
 }
 
@@ -688,8 +712,8 @@ func (pc *ProxmoxClient) GetManagedVMs() ([]string, error) {
 		return nil, err
 	}
 	var ManagedVMs []string
-	for _, node := range nodes {
-		node, err := pc.Client.Node(ctx, node)
+	for _, nodeName := range nodes {
+		node, err := pc.getNode(ctx, nodeName)
 		if err != nil {
 			return nil, err
 		}
@@ -702,6 +726,8 @@ func (pc *ProxmoxClient) GetManagedVMs() ([]string, error) {
 			// Check if VM has managedVirtualMachineTag but not kubemox tag
 			if utils.StringInSlice(ManagedVirtualMachineTag, vmTags) && !utils.StringInSlice(virtualMachineTag, vmTags) {
 				ManagedVMs = append(ManagedVMs, VirtualMachine.Name)
+				// Cache the VM ID
+				pc.setCachedVMID(nodeName, VirtualMachine.Name, int(VirtualMachine.VMID))
 			}
 		}
 	}
@@ -1362,7 +1388,7 @@ func getNextVMID(client *proxmox.Client) (int, error) {
 }
 
 func (pc *ProxmoxClient) getVirtualMachine(vmName, nodeName string) (*proxmox.VirtualMachine, error) {
-	node, err := pc.Client.Node(ctx, nodeName)
+	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		return nil, err
 	}
