@@ -10,7 +10,7 @@ import (
 func (pc *ProxmoxClient) CreateCustomCertificate(nodeName string,
 	proxmoxCertSpec *proxmoxv1alpha1.ProxmoxCertSpec) error {
 	// get the node object
-	node, err := pc.Client.Node(ctx, nodeName)
+	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		return err
 	}
@@ -32,7 +32,7 @@ func (pc *ProxmoxClient) CreateCustomCertificate(nodeName string,
 // Delete certificate object from proxmox node
 func (pc *ProxmoxClient) DeleteCustomCertificate(nodeName string) error {
 	// get the node object
-	node, err := pc.Client.Node(ctx, nodeName)
+	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		return err
 	}

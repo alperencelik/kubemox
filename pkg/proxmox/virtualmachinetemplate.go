@@ -232,7 +232,7 @@ func (pc *ProxmoxClient) IsVMTemplate(vmName, nodeName string) bool {
 func (pc *ProxmoxClient) CreateVMTemplate(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (*proxmox.Task, error) {
 	vmTemplateName := vmTemplate.Spec.Name
 	nodeName := vmTemplate.Spec.NodeName
-	node, err := pc.Client.Node(ctx, nodeName)
+	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting node for creating VM template")
 		return nil, err

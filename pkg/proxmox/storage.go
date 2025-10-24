@@ -11,7 +11,7 @@ import (
 func (pc *ProxmoxClient) StorageDownloadURL(node string,
 	storageDownloadURLSpec *proxmoxv1alpha1.StorageDownloadURLSpec) (string, error) {
 	// Get node
-	Node, err := pc.Client.Node(ctx, node)
+	Node, err := pc.getNode(ctx, node)
 	if err != nil {
 		log.Log.Error(err, "unable to get node")
 	}
@@ -36,7 +36,7 @@ func (pc *ProxmoxClient) StorageDownloadURL(node string,
 
 func (pc *ProxmoxClient) GetStorageContent(node, storageName string) ([]*proxmox.StorageContent, error) {
 	// Get node
-	Node, err := pc.Client.Node(ctx, node)
+	Node, err := pc.getNode(ctx, node)
 	if err != nil {
 		log.Log.Error(err, "unable to get node")
 	}
@@ -64,7 +64,7 @@ func HasFile(storageContent []*proxmox.StorageContent,
 func (pc *ProxmoxClient) DeleteStorageContent(storageName string, spec *proxmoxv1alpha1.StorageDownloadURLSpec) error {
 	// Get node
 	node := spec.Node
-	Node, err := pc.Client.Node(ctx, node)
+	Node, err := pc.getNode(ctx, node)
 	if err != nil {
 		log.Log.Error(err, "unable to get node")
 	}

@@ -15,7 +15,7 @@ func (pc *ProxmoxClient) CloneContainer(container *proxmoxv1alpha1.Container) er
 	// Returning an error is quite reasonable here since that error moved up
 	// to the controller and will be handled there as requeue
 	nodeName := container.Spec.NodeName
-	node, err := pc.Client.Node(ctx, nodeName)
+	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		return err
 	}
@@ -52,7 +52,7 @@ func (pc *ProxmoxClient) CloneContainer(container *proxmoxv1alpha1.Container) er
 }
 
 func (pc *ProxmoxClient) GetContainerID(containerName, nodeName string) (int, error) {
-	node, err := pc.Client.Node(ctx, nodeName)
+	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		return 0, err
 	}
@@ -69,7 +69,7 @@ func (pc *ProxmoxClient) GetContainerID(containerName, nodeName string) (int, er
 }
 
 func (pc *ProxmoxClient) ContainerExists(containerName, nodeName string) (bool, error) {
-	node, err := pc.Client.Node(ctx, nodeName)
+	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		return false, err
 	}
@@ -86,7 +86,7 @@ func (pc *ProxmoxClient) ContainerExists(containerName, nodeName string) (bool, 
 }
 
 func (pc *ProxmoxClient) GetContainer(containerName, nodeName string) (*proxmox.Container, error) {
-	node, err := pc.Client.Node(ctx, nodeName)
+	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		return nil, err
 	}
