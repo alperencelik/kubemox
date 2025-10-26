@@ -157,16 +157,18 @@ func (pc *ProxmoxClient) CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine
 }
 
 func (pc *ProxmoxClient) getVMID(vmName, nodeName string) (int, error) {
-	// Try to get from cache first
-	if vmID, exists := pc.getCachedVMID(nodeName, vmName); exists {
-		return vmID, nil
-	}
-
-	// Not in cache, fetch from API
+	// Get node
 	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		return 0, err
 	}
+	// If it's in the cache, return it directly
+	pc.vmIDMutex.RLock()
+	if vmID, exists := pc.nodesCache[nodeName].vms[vmName]; exists {
+		pc.vmIDMutex.RUnlock()
+		return vmID, nil
+	}
+	// Not in cache, fetch from API
 	vmList, err := node.VirtualMachines(ctx)
 	if err != nil {
 		return 0, err
@@ -183,12 +185,7 @@ func (pc *ProxmoxClient) getVMID(vmName, nodeName string) (int, error) {
 }
 
 func (pc *ProxmoxClient) CheckVM(vmName, nodeName string) (bool, error) {
-	// Try to check from cache first
-	if vmID, exists := pc.getCachedVMID(nodeName, vmName); exists && vmID != 0 {
-		return true, nil
-	}
-
-	// Not in cache, fetch from API
+	// Check if VM exists
 	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		return false, err
@@ -306,8 +303,8 @@ func (pc *ProxmoxClient) DeleteVM(vmName, nodeName string) error {
 	}
 	// Invalidate cache entry for this VM
 	pc.vmIDMutex.Lock()
-	if nodeCache, exists := pc.vmIDCache[nodeName]; exists {
-		delete(nodeCache, vmName)
+	if _, exists := pc.nodesCache[nodeName].vms[vmName]; exists {
+		delete(pc.nodesCache[nodeName].vms, vmName)
 	}
 	pc.vmIDMutex.Unlock()
 	return nil

@@ -14,14 +14,15 @@ import (
 )
 
 type ProxmoxClient struct {
-	Client *proxmox.Client
-	// ctx    context.Context
-	// Cache for nodes to reduce API calls
-	nodesCache map[string]*proxmox.Node
+	Client     *proxmox.Client
+	nodesCache map[string]NodeCache
 	nodesMutex sync.RWMutex
-	// Cache for VM IDs to reduce API calls
-	vmIDCache map[string]map[string]int // nodeName -> vmName -> vmID
-	vmIDMutex sync.RWMutex
+	vmIDMutex  sync.RWMutex
+}
+
+type NodeCache struct {
+	node *proxmox.Node
+	vms  map[string]int // vmName -> vmID
 }
 
 func NewProxmoxClient(proxmoxConnection *proxmoxv1alpha1.ProxmoxConnection) *ProxmoxClient {
@@ -63,8 +64,7 @@ func NewProxmoxClient(proxmoxConnection *proxmoxv1alpha1.ProxmoxConnection) *Pro
 
 	return &ProxmoxClient{
 		Client:     client,
-		nodesCache: make(map[string]*proxmox.Node),
-		vmIDCache:  make(map[string]map[string]int),
+		nodesCache: make(map[string]NodeCache),
 	}
 }
 
@@ -82,7 +82,7 @@ func (pc *ProxmoxClient) getNode(ctx context.Context, nodeName string) (*proxmox
 	pc.nodesMutex.RLock()
 	if node, exists := pc.nodesCache[nodeName]; exists {
 		pc.nodesMutex.RUnlock()
-		return node, nil
+		return node.node, nil
 	}
 	pc.nodesMutex.RUnlock()
 
@@ -94,72 +94,10 @@ func (pc *ProxmoxClient) getNode(ctx context.Context, nodeName string) (*proxmox
 
 	// Store in cache
 	pc.nodesMutex.Lock()
-	pc.nodesCache[nodeName] = node
+	pc.nodesCache[nodeName] = NodeCache{node: node, vms: make(map[string]int)}
 	pc.nodesMutex.Unlock()
 
 	return node, nil
-}
-
-// refreshNodeCache refreshes the node cache
-func (pc *ProxmoxClient) refreshNodeCache(ctx context.Context, nodeName string) error {
-	node, err := pc.Client.Node(ctx, nodeName)
-	if err != nil {
-		return err
-	}
-
-	pc.nodesMutex.Lock()
-	pc.nodesCache[nodeName] = node
-	pc.nodesMutex.Unlock()
-
-	return nil
-}
-
-// getCachedVMID retrieves a VM ID from cache
-func (pc *ProxmoxClient) getCachedVMID(nodeName, vmName string) (int, bool) {
-	pc.vmIDMutex.RLock()
-	defer pc.vmIDMutex.RUnlock()
-
-	if nodeCache, exists := pc.vmIDCache[nodeName]; exists {
-		if vmID, exists := nodeCache[vmName]; exists {
-			return vmID, true
-		}
-	}
-	return 0, false
-}
-
-// setCachedVMID stores a VM ID in cache
-func (pc *ProxmoxClient) setCachedVMID(nodeName, vmName string, vmID int) {
-	pc.vmIDMutex.Lock()
-	defer pc.vmIDMutex.Unlock()
-
-	if _, exists := pc.vmIDCache[nodeName]; !exists {
-		pc.vmIDCache[nodeName] = make(map[string]int)
-	}
-	pc.vmIDCache[nodeName][vmName] = vmID
-}
-
-// refreshVMIDCache refreshes the VM ID cache for a specific node
-func (pc *ProxmoxClient) refreshVMIDCache(ctx context.Context, nodeName string) error {
-	node, err := pc.getNode(ctx, nodeName)
-	if err != nil {
-		return err
-	}
-
-	vmList, err := node.VirtualMachines(ctx)
-	if err != nil {
-		return err
-	}
-
-	pc.vmIDMutex.Lock()
-	if _, exists := pc.vmIDCache[nodeName]; !exists {
-		pc.vmIDCache[nodeName] = make(map[string]int)
-	}
-	for _, vm := range vmList {
-		pc.vmIDCache[nodeName][vm.Name] = int(vm.VMID)
-	}
-	pc.vmIDMutex.Unlock()
-
-	return nil
 }
 
 func NewProxmoxClientFromRef(ctx context.Context, c cc.Client,
@@ -172,4 +110,13 @@ func NewProxmoxClientFromRef(ctx context.Context, c cc.Client,
 		return nil, fmt.Errorf("getting ProxmoxConnection %q: %w", ref.Name, err)
 	}
 	return NewProxmoxClient(conn), nil
+}
+
+func (pc *ProxmoxClient) setCachedVMID(nodeName, vmName string, vmID int) {
+	pc.vmIDMutex.Lock()
+	defer pc.vmIDMutex.Unlock()
+	if _, exists := pc.nodesCache[nodeName]; !exists {
+		pc.nodesCache[nodeName] = NodeCache{vms: make(map[string]int)}
+	}
+	pc.nodesCache[nodeName].vms[vmName] = vmID
 }
