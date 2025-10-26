@@ -34,8 +34,8 @@ func (pc *ProxmoxClient) GetNodeOfVM(vmName string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for _, node := range nodes {
-		node, err := pc.Client.Node(ctx, node)
+	for _, nodeName := range nodes {
+		node, err := pc.getNode(ctx, nodeName)
 		if err != nil {
 			return "", err
 		}
@@ -46,6 +46,8 @@ func (pc *ProxmoxClient) GetNodeOfVM(vmName string) (string, error) {
 		}
 		for _, vm := range VirtualMachines {
 			if strings.EqualFold(vm.Name, vmName) {
+				// Cache the VM ID while we're here
+				pc.setCachedVMID(nodeName, vm.Name, int(vm.VMID))
 				return node.Name, nil
 			}
 		}
