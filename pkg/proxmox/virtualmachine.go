@@ -303,9 +303,7 @@ func (pc *ProxmoxClient) DeleteVM(vmName, nodeName string) error {
 	}
 	// Invalidate cache entry for this VM
 	pc.vmIDMutex.Lock()
-	if _, exists := pc.nodesCache[nodeName].vms[vmName]; exists {
-		delete(pc.nodesCache[nodeName].vms, vmName)
-	}
+	delete(pc.nodesCache[nodeName].vms, vmName)
 	pc.vmIDMutex.Unlock()
 	return nil
 }
