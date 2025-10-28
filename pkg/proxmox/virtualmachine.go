@@ -168,6 +168,7 @@ func (pc *ProxmoxClient) getVMID(vmName, nodeName string) (int, error) {
 		pc.vmIDMutex.RUnlock()
 		return vmID, nil
 	}
+	pc.vmIDMutex.RUnlock()
 	// Not in cache, fetch from API
 	vmList, err := node.VirtualMachines(ctx)
 	if err != nil {
