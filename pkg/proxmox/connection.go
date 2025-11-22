@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
@@ -28,7 +29,7 @@ type NodeCache struct {
 func NewProxmoxClient(proxmoxConnection *proxmoxv1alpha1.ProxmoxConnection) *ProxmoxClient {
 	// Create a new client
 	proxmoxConfig := proxmoxv1alpha1.ProxmoxConnectionSpec{
-		Endpoint:           fmt.Sprintf("https://%s:8006/api2/json", proxmoxConnection.Spec.Endpoint),
+		Endpoint:           getProxmoxAPIEndpoint(proxmoxConnection.Spec.Endpoint),
 		Username:           proxmoxConnection.Spec.Username,
 		Password:           proxmoxConnection.Spec.Password,
 		TokenID:            proxmoxConnection.Spec.TokenID,
@@ -119,4 +120,17 @@ func (pc *ProxmoxClient) setCachedVMID(nodeName, vmName string, vmID int) {
 		pc.nodesCache[nodeName] = NodeCache{vms: make(map[string]int)}
 	}
 	pc.nodesCache[nodeName].vms[vmName] = vmID
+}
+
+func getProxmoxAPIEndpoint(endpoint string) string {
+	// Check if the endpoint already contains the API path
+	if strings.HasSuffix(endpoint, "/api2/json") {
+		if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
+			return endpoint
+		} else {
+			return "https://" + endpoint
+		}
+	}
+	// Append the API path if not present
+	return fmt.Sprintf("https://%s:8006/api2/json", endpoint)
 }
