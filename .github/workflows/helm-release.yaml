@@ -1,59 +1,72 @@
-name: Package and Publish Helm Chart
+name: Update and Publish Helm Chart
 
 on:
-  release:
-    types: [created]
+  push:
+    branches:
+      - main
+    paths:
+      - 'charts/kubemox/**'
 
 jobs:
-  publish_chart:
+  update-chart:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Kubemox Repo 
-        uses: actions/checkout@v2
-
-      - name: Setup Helm
-        uses: azure/setup-helm@v1
+      - name: Checkout Kubemox Repo
+        uses: actions/checkout@v3
         with:
-          version: '3.8.0'  
-
-      - name: Lint Helm Chart
-        run: helm lint charts/kubemox 
-    
-      - name: Test Helm Chart
-        run: helm template kubemox charts/kubemox --dry-run --debug 
-
-      - name: Update Chart Version (Optional)
-        run: |
-          # Remove the leading 'v' if present (e.g., v1.2.3 -> 1.2.3)
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "Updating chart version to $VERSION"
-          # Assume the Chart.yaml is in helm-chart-directory; adjust as needed.
-          sed -i "s/^version:.*/version: ${VERSION}/" charts/kubemox/Chart.yaml
-          # COPY the updated chart to the /tmp/kubemox
-          cp -R charts/kubemox /tmp/kubemox
-        env:
-          GITHUB_REF: ${{ github.ref }}
-
-      # 6. Checkout the helm-charts Repo
-      - name: Checkout helm-charts Repo
-        uses: actions/checkout@v2
-        with:
-          repository: alperencelik/helm-charts 
           token: ${{ secrets.RELEASE_TOKEN }}
-          path: /tmp/kubemox 
+          fetch-depth: 0
 
-      - name: Copy  Helm Chart
+      - name: Install yq
         run: |
-          rm -rf helm-charts/charts/kubemox
-          # Copy the entire chart directory into helm-charts
-          cp -R /tmp/kubemox helm-charts/charts/kubemox
+          sudo wget https://github.com/mikefarah/yq/releases/download/v4.34.1/yq_linux_amd64 -O /usr/bin/yq
+          sudo chmod +x /usr/bin/yq
 
-      - name: Commit and Push Changes
+      - name: Configure Git
         run: |
-          cd helm-charts
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Get Chart Version
+        id: get_version
+        run: |
+          # Get current version
+          CURRENT_VERSION=$(yq '.version' charts/kubemox/Chart.yaml)
+          echo "Current version: $CURRENT_VERSION"
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Checkout Helm Charts Repo
+        uses: actions/checkout@v3
+        with:
+          repository: alperencelik/helm-charts
+          token: ${{ secrets.RELEASE_TOKEN }}
+          path: helm-charts-repo
+
+      - name: Sync Chart to Helm Charts Repo
+        run: |
+          # Ensure target directory exists
+          mkdir -p helm-charts-repo/charts/kubemox
+          
+          # Remove old content to ensure clean sync (optional, but good for removing deleted files)
+          rm -rf helm-charts-repo/charts/kubemox/*
+          
+          # Copy new content
+          cp -R charts/kubemox/* helm-charts-repo/charts/kubemox/
+
+      - name: Push to Helm Charts Repo
+        run: |
+          cd helm-charts-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
           git add .
-          git commit -m "Release: Update helm chart from Kubemox repo" || echo "No changes to commit"
-          git tag "kubemox-$VERSION"
-          git push origin main --follow-tags
+          
+          # Check if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to commit in helm-charts repo"
+          else
+            VERSION="${{ steps.get_version.outputs.version }}"
+            git commit -m "feat: update kubemox chart to version $VERSION"
+            git tag "kubemox-$VERSION"
+            git push origin main --tags
+          fi
