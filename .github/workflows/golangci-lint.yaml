@@ -5,11 +5,13 @@ on:
     types: [opened, edited, synchronize, reopened]
     paths-ignore:
       - '.github/**'
+      - 'charts/**'
   push:
     branches:
       - '**'
     paths-ignore:
       - '.github/**'
+      - 'charts/**'
 
 jobs:
   lint:

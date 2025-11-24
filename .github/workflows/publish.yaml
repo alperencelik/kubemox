@@ -5,6 +5,7 @@ on:
       - main
     paths-ignore:
       - '.github/**'
+      - 'charts/**'
 permissions:
   contents: write
 jobs:

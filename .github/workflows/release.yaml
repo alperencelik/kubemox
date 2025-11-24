@@ -6,6 +6,7 @@ on:
       - '*'
     paths-ignore:
       - '.github/**'
+      - 'charts/**'
 
 jobs:
   release:
