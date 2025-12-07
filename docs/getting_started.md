@@ -14,8 +14,8 @@
 ### Install Kubemox with Helm
 
 ```bash
-helm repo add kubemox https://alperencelik.github.io/helm-charts/
-helm repo update kubemox
+helm repo add alperencelik https://alperencelik.github.io/helm-charts/
+helm repo update alperencelik
 helm install kubemox alperencelik/kubemox
 ```
 
