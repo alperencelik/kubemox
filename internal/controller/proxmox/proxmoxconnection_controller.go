@@ -58,15 +58,31 @@ func (r *ProxmoxConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		logger.Error(err, "unable to fetch ProxmoxConnection")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	logger.Info("Reconciling ProxmoxConnection", "name", proxmoxConnection.Name)
 
-	// Test the proxmox connection
+	// Create Proxmox client
 	proxmoxClient := proxmox.NewProxmoxClient(proxmoxConnection)
 
 	// Return the version
 	version, err := proxmoxClient.GetVersion()
 	if err != nil {
 		logger.Error(err, "unable to get version")
+		// Update the status with the connection error
+		meta.SetStatusCondition(&proxmoxConnection.Status.Conditions, metav1.Condition{
+			LastTransitionTime: metav1.Now(),
+			Type:               "Ready",
+			Status:             metav1.ConditionFalse,
+			Reason:             "ProxmoxConnectionError",
+			Message:            err.Error(),
+		})
+		if err := r.Status().Update(ctx, proxmoxConnection); err != nil {
+			logger.Error(err, "unable to update ProxmoxConnection status")
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, err
 	}
+
+	logger.Info("Proxmox connection successful", "version", *version)
 	// Update the status with the version
 	proxmoxConnection.Status.Version = *version
 	// Update the status with the connection status

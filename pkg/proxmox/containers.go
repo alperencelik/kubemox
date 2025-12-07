@@ -24,6 +24,10 @@ func (pc *ProxmoxClient) CloneContainer(container *proxmoxv1alpha1.Container) er
 	if err != nil {
 		return err
 	}
+	// If templateContainerID is 0, return error that template not found
+	if templateContainerID == 0 {
+		return fmt.Errorf("template container %s not found on node %s", templateContainerName, nodeName)
+	}
 	templateContainer, err := node.Container(ctx, templateContainerID)
 	if err != nil {
 		return err
