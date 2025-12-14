@@ -762,7 +762,8 @@ func (pc *ProxmoxClient) UpdateManagedVM(ctx context.Context, managedVM *proxmox
 		// convert string to uint64
 		if VirtualMachineMaxDisk <= uint64(diskSize) {
 			// Resize Disk
-			err = VirtualMachine.ResizeDisk(ctx, disk, strconv.Itoa(diskSize)+"G")
+			// TODO: Review if I need to track the disk resize task
+			_, err := VirtualMachine.ResizeDisk(ctx, disk, strconv.Itoa(diskSize)+"G")
 			if err != nil {
 				log.Log.Error(err, "Can't resize disk")
 			}
@@ -1257,7 +1258,8 @@ func (pc *ProxmoxClient) updateDiskConfig(ctx context.Context, vm *proxmoxv1alph
 		logger.Error(err, "Error getting VM for updating disk configuration")
 		return err
 	}
-	err = virtualMachine.ResizeDisk(ctx, disk.Device, strconv.Itoa(disk.Size)+"G")
+	// TODO: Review if I need to track the disk resize task
+	_, err = virtualMachine.ResizeDisk(ctx, disk.Device, strconv.Itoa(disk.Size)+"G")
 	if err != nil {
 		log.Log.Error(err, "Error updating disk configuration for VirtualMachine")
 		return err
