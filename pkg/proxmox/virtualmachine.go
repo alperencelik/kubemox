@@ -395,6 +395,10 @@ func (pc *ProxmoxClient) AgentIsRunning(vmName, nodeName string) (bool, error) {
 		log.Log.Error(err, "Error getting VM for agent check")
 		return false, err
 	}
+	// If VM is not running, return false directly
+	if VirtualMachine.Status != VirtualMachineRunningState {
+		return false, nil
+	}
 	err = VirtualMachine.WaitForAgent(ctx, AgentTimeoutSeconds)
 	if err != nil {
 		if errors.Is(err, proxmox.ErrTimeout) {
