@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/luthermonson/go-proxmox"
@@ -19,6 +20,16 @@ type ProxmoxClient struct {
 	nodesCache map[string]NodeCache
 	nodesMutex sync.RWMutex
 	vmIDMutex  sync.RWMutex
+}
+
+var (
+	clientCache      = make(map[string]*CachedClient)
+	clientCacheMutex sync.RWMutex
+)
+
+type CachedClient struct {
+	Client          *ProxmoxClient
+	ResourceVersion string
 }
 
 type NodeCache struct {
@@ -36,15 +47,26 @@ func NewProxmoxClient(proxmoxConnection *proxmoxv1alpha1.ProxmoxConnection) *Pro
 		Secret:             proxmoxConnection.Spec.Secret,
 		InsecureSkipVerify: proxmoxConnection.Spec.InsecureSkipVerify,
 	}
-	var httpClient *http.Client
+	var tlsConfig *tls.Config
 	if proxmoxConfig.InsecureSkipVerify {
-		httpClient = &http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true, //nolint:gosec // Skipping linting for InsecureSkipVerify due to user choice
-				},
-			},
-		}
+		tlsConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // user choice
+	} else {
+		tlsConfig = &tls.Config{}
+	}
+	// Configure HTTP client with performance tuning
+	transport := &http.Transport{
+		MaxIdleConns:        100,
+		DisableKeepAlives:   false,
+		MaxIdleConnsPerHost: 20,
+		IdleConnTimeout:     30 * time.Second,
+		TLSClientConfig:     tlsConfig,
+	}
+
+	httpClient := &http.Client{
+		Transport: &RetryRoundTripper{
+			Transport: transport,
+			Retries:   3,
+		},
 	}
 	var client *proxmox.Client
 	switch {
@@ -106,11 +128,34 @@ func NewProxmoxClientFromRef(ctx context.Context, c cc.Client,
 	if ref == nil || ref.Name == "" {
 		return nil, fmt.Errorf("ProxmoxConnection reference is nil or empty")
 	}
+
+	// Check the cache first
+	clientCacheMutex.RLock()
+	cached, exists := clientCache[ref.Name]
+	clientCacheMutex.RUnlock()
+
 	conn := &proxmoxv1alpha1.ProxmoxConnection{}
 	if err := c.Get(ctx, cc.ObjectKey{Name: ref.Name}, conn); err != nil {
 		return nil, fmt.Errorf("getting ProxmoxConnection %q: %w", ref.Name, err)
 	}
-	return NewProxmoxClient(conn), nil
+
+	// If exists in cache and ResourceVersion matches, return cached client
+	if exists && cached.ResourceVersion == conn.ResourceVersion {
+		return cached.Client, nil
+	}
+
+	// If not in cache or ResourceVersion mismatch, create new client
+	client := NewProxmoxClient(conn)
+
+	// Update cache
+	clientCacheMutex.Lock()
+	clientCache[ref.Name] = &CachedClient{
+		Client:          client,
+		ResourceVersion: conn.ResourceVersion,
+	}
+	clientCacheMutex.Unlock()
+
+	return client, nil
 }
 
 func (pc *ProxmoxClient) setCachedVMID(nodeName, vmName string, vmID int) {
@@ -133,4 +178,55 @@ func getProxmoxAPIEndpoint(endpoint string) string {
 	}
 	// Append the API path if not present
 	return fmt.Sprintf("https://%s:8006/api2/json", endpoint)
+}
+
+// RetryRoundTripper is a custom RoundTripper that retries requests on specific errors
+type RetryRoundTripper struct {
+	Transport http.RoundTripper
+	Retries   int
+}
+
+func (rt *RetryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	var resp *http.Response
+	var err error
+
+	for i := 0; i <= rt.Retries; i++ {
+		resp, err = rt.Transport.RoundTrip(req)
+		if err == nil {
+			return resp, nil
+		}
+
+		// Check if the error is "server closed idle connection"
+		// This error is safe to retry for idempotent requests, and also for POSTs if we are sure it happened before the body was sent.
+		// In Go's net/http, this error specifically means the connection was closed by the peer while trying to reuse it.
+		// It is generally safe to retry this specific error.
+		if strings.Contains(err.Error(), "http: server closed idle connection") ||
+			strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "unexpected end of JSON input") {
+			// If we have a body, we might need to rewind it, but GetBody is handled by Request
+			if req.GetBody != nil {
+				newBody, bodyErr := req.GetBody()
+				if bodyErr != nil {
+					return resp, err
+				}
+				req.Body = newBody
+			}
+			continue
+		}
+
+		// Provide a fallback for connection reset by peer which often happens with Proxmox
+		if strings.Contains(err.Error(), "connection reset by peer") {
+			if req.GetBody != nil {
+				newBody, bodyErr := req.GetBody()
+				if bodyErr != nil {
+					return resp, err
+				}
+				req.Body = newBody
+			}
+			continue
+		}
+
+		// If it's not a retriable error, return immediately
+		return resp, err
+	}
+	return resp, err
 }

@@ -270,6 +270,8 @@ func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, pc 
 			if updateErr := r.Status().Update(context.Background(), vm); updateErr != nil {
 				return requeue, updateErr
 			}
+			// For other errors, requeue
+			return requeue, err
 		}
 		r.Recorder.Event(vm, "Normal", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
 		// Before starting the VM handle the additional configuration

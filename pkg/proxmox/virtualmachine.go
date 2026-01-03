@@ -314,6 +314,10 @@ func (pc *ProxmoxClient) StartVM(vmName, nodeName string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	// Check if VM is already running
+	if VirtualMachine.Status == VirtualMachineRunningState {
+		return true, nil
+	}
 	// Start VM
 	task, err := VirtualMachine.Start(ctx)
 	if err != nil {
