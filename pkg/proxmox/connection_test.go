@@ -22,7 +22,7 @@ func TestNewProxmoxClientFromRef(t *testing.T) {
 
 	conn := &proxmoxv1alpha1.ProxmoxConnection{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            "test-connection",
+			Name:            "test-conn",
 			ResourceVersion: "1",
 		},
 		Spec: proxmoxv1alpha1.ProxmoxConnectionSpec{
@@ -35,13 +35,13 @@ func TestNewProxmoxClientFromRef(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(conn).Build()
 
 	// Test 1: First call - should create new client
-	client1, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "test-connection"})
+	client1, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "test-conn"})
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
 	// Test 2: Second call - should return cached client
-	client2, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "test-connection"})
+	client2, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "test-conn"})
 	if err != nil {
 		t.Fatalf("Failed to retrieve cached client: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestNewProxmoxClientFromRef(t *testing.T) {
 		t.Fatalf("Failed to get updated connection: %v", err)
 	}
 
-	client3, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "test-connection"})
+	client3, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "test-conn"})
 	if err != nil {
 		t.Fatalf("Failed to create new client after update: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestNewProxmoxClientFromRef(t *testing.T) {
 	}
 
 	// Test 4: Verify cache is updated
-	client4, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "test-connection"})
+	client4, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "test-conn"})
 	if err != nil {
 		t.Fatalf("Failed to retrieve updated cached client: %v", err)
 	}

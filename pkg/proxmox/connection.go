@@ -197,7 +197,8 @@ func (rt *RetryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		}
 
 		// Check if the error is "server closed idle connection"
-		// This error is safe to retry for idempotent requests, and also for POSTs if we are sure it happened before the body was sent.
+		// This error is safe to retry for idempotent requests,
+		// and also for POSTs if we are sure it happened before the body was sent.
 		// In Go's net/http, this error specifically means the connection was closed by the peer while trying to reuse it.
 		// It is generally safe to retry this specific error.
 		if strings.Contains(err.Error(), "http: server closed idle connection") ||
