@@ -191,6 +191,14 @@ func (pc *ProxmoxClient) CheckVM(vmName, nodeName string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	// Check cache first
+	pc.vmIDMutex.RLock()
+	if _, exists := pc.nodesCache[nodeName].vms[vmName]; exists {
+		pc.vmIDMutex.RUnlock()
+		return true, nil
+	}
+	pc.vmIDMutex.RUnlock()
+	// If not in cache, fetch from API
 	vmList, err := node.VirtualMachines(ctx)
 	if err != nil {
 		return false, err
@@ -305,7 +313,9 @@ func (pc *ProxmoxClient) DeleteVM(vmName, nodeName string) error {
 	// Invalidate cache entry for this VM
 	pc.vmIDMutex.Lock()
 	delete(pc.nodesCache[nodeName].vms, vmName)
+	delete(pc.nodesCache[nodeName].vmObjs, int(VirtualMachine.VMID))
 	pc.vmIDMutex.Unlock()
+
 	return nil
 }
 
@@ -1306,12 +1316,22 @@ func (pc *ProxmoxClient) addDiskConfig(ctx context.Context, vm *proxmoxv1alpha1.
 func (pc *ProxmoxClient) CheckVirtualMachineDelta(vm *proxmoxv1alpha1.VirtualMachine) (bool, error) {
 	// Compare the actual state of the VM with the desired state
 	// If there is a difference, return true
-	VirtualMachine, err := pc.getVirtualMachine(vm.Name, vm.Spec.NodeName)
+	// I have to call the API here to avoid using cached VM data and then update the cache
+	node, err := pc.getNode(ctx, vm.Spec.NodeName)
 	if err != nil {
-		log.Log.Error(err, "Error getting VM for watching")
-		// Return here to avoid further processing if VM is not found
 		return false, err
 	}
+	vmID, err := pc.getVMID(vm.Spec.Name, vm.Spec.NodeName)
+	if err != nil {
+		return false, err
+	}
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
+	if err != nil {
+		log.Log.Error(err, "Error getting VM for watching")
+		return false, err
+	}
+	// Update the cache
+	pc.setCachedVM(vm.Spec.NodeName, vmID, VirtualMachine)
 	// Get actual VM's network configuration
 	virtualMachineNetworks, err := pc.GetNetworkConfiguration(vm)
 	if err != nil {
@@ -1402,10 +1422,16 @@ func (pc *ProxmoxClient) getVirtualMachine(vmName, nodeName string) (*proxmox.Vi
 	if err != nil {
 		return nil, err
 	}
+	// Check cache
+	if vm := pc.getCachedVM(nodeName, vmID); vm != nil {
+		return vm, nil
+	}
 	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
 		return nil, err
 	}
+	// Cache it
+	pc.setCachedVM(nodeName, vmID, VirtualMachine)
 	return VirtualMachine, nil
 }
 

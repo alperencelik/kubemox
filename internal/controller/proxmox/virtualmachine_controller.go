@@ -130,8 +130,8 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	logger.Info(fmt.Sprintf("Reconciling VirtualMachine %s", vm.Name))
 
-	// Handle the external watcher for the VirtualMachine
-	r.handleWatcher(ctx, req, vm)
+	// TODO(review): I think this is too early to start the watcher, need to move it at the end of reconcile
+	// r.handleWatcher(ctx, req, vm)
 
 	// Check if the VirtualMachine instance is marked to be deleted, which is indicated by the deletion timestamp being set.
 	if vm.DeletionTimestamp.IsZero() {
@@ -164,6 +164,9 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if result != (ctrl.Result{}) {
 		return result, nil
 	}
+
+	// Handle the external watcher for the VirtualMachine
+	r.handleWatcher(ctx, req, vm)
 
 	logger.Info(fmt.Sprintf("VirtualMachine %s already exists", vm.Spec.Name))
 
