@@ -33,8 +33,9 @@ type CachedClient struct {
 }
 
 type NodeCache struct {
-	node *proxmox.Node
-	vms  map[string]int // vmName -> vmID
+	node   *proxmox.Node
+	vms    map[string]int                  // vmName -> vmID
+	vmObjs map[int]*proxmox.VirtualMachine // vmID -> VirtualMachine object
 }
 
 func NewProxmoxClient(proxmoxConnection *proxmoxv1alpha1.ProxmoxConnection) *ProxmoxClient {
@@ -77,11 +78,17 @@ func NewProxmoxClient(proxmoxConnection *proxmoxv1alpha1.ProxmoxConnection) *Pro
 				Password: proxmoxConfig.Password,
 			}),
 			proxmox.WithHTTPClient(httpClient),
+			proxmox.WithUserAgent("kubemox"),
+			// DEBUG
+			// proxmox.WithLogger(&proxmox.LeveledLogger{Level: proxmox.LevelDebug}),
 		)
 	case proxmoxConfig.TokenID != "" && proxmoxConfig.Secret != "":
 		client = proxmox.NewClient(proxmoxConfig.Endpoint,
 			proxmox.WithAPIToken(proxmoxConfig.TokenID, proxmoxConfig.Secret),
 			proxmox.WithHTTPClient(httpClient),
+			proxmox.WithUserAgent("kubemox"),
+			// DEBUG
+			// proxmox.WithLogger(&proxmox.LeveledLogger{Level: proxmox.LevelDebug}),
 		)
 	}
 
@@ -162,9 +169,32 @@ func (pc *ProxmoxClient) setCachedVMID(nodeName, vmName string, vmID int) {
 	pc.vmIDMutex.Lock()
 	defer pc.vmIDMutex.Unlock()
 	if _, exists := pc.nodesCache[nodeName]; !exists {
-		pc.nodesCache[nodeName] = NodeCache{vms: make(map[string]int)}
+		pc.nodesCache[nodeName] = NodeCache{vms: make(map[string]int), vmObjs: make(map[int]*proxmox.VirtualMachine)}
 	}
 	pc.nodesCache[nodeName].vms[vmName] = vmID
+}
+
+func (pc *ProxmoxClient) setCachedVM(nodeName string, vmID int, vm *proxmox.VirtualMachine) {
+	pc.vmIDMutex.Lock()
+	defer pc.vmIDMutex.Unlock()
+	if _, exists := pc.nodesCache[nodeName]; !exists {
+		pc.nodesCache[nodeName] = NodeCache{vms: make(map[string]int), vmObjs: make(map[int]*proxmox.VirtualMachine)}
+	} else if pc.nodesCache[nodeName].vmObjs == nil {
+		// Initialize mapping if nil (for existing cache entries before upgrade)
+		entry := pc.nodesCache[nodeName]
+		entry.vmObjs = make(map[int]*proxmox.VirtualMachine)
+		pc.nodesCache[nodeName] = entry
+	}
+	pc.nodesCache[nodeName].vmObjs[vmID] = vm
+}
+
+func (pc *ProxmoxClient) getCachedVM(nodeName string, vmID int) *proxmox.VirtualMachine {
+	pc.vmIDMutex.RLock()
+	defer pc.vmIDMutex.RUnlock()
+	if nodeCache, exists := pc.nodesCache[nodeName]; exists && nodeCache.vmObjs != nil {
+		return nodeCache.vmObjs[vmID]
+	}
+	return nil
 }
 
 func getProxmoxAPIEndpoint(endpoint string) string {
