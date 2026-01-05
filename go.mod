@@ -6,7 +6,7 @@ require (
 	github.com/carolynvs/magex v0.9.0
 	github.com/cert-manager/cert-manager v1.18.2
 	github.com/google/go-cmp v0.7.0
-	github.com/luthermonson/go-proxmox v0.3.1
+	github.com/luthermonson/go-proxmox v0.3.2
 	github.com/magefile/mage v1.15.0
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.1
