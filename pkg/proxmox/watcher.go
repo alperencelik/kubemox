@@ -50,17 +50,11 @@ func (e *ExternalWatchers) HandleWatcher(ctx context.Context, req ctrl.Request,
 	if _, exists := e.Watchers[req.Name]; !exists {
 		stopChan := make(chan struct{})
 		e.Watchers[req.Name] = stopChan
-		resultChan := make(chan ctrl.Result)
-		errChan := make(chan error)
 		go func() {
-			var result ctrl.Result
-			var err error
-			result, err = startWatcherFunc(ctx, stopChan)
+			_, err := startWatcherFunc(ctx, stopChan)
 			if err != nil {
-				errChan <- err
-				return
+				log.Log.Error(err, "Watcher stopped with error")
 			}
-			resultChan <- result
 		}()
 	}
 }
@@ -97,6 +91,12 @@ func StartWatcher(ctx context.Context, resource Resource,
 				logger.Info(fmt.Sprintf("Requeueing resource %s", resourceName))
 				// TODO: Re-evaluate the requirement of deleting the watcher
 				deleteWatcher(resourceName)
+				// Trigger reconciliation by returning from the watcher
+				_, err = handleReconcile(ctx, resource)
+				if err != nil {
+					logger.Error(err, "Error while triggering the reconciliation of resource")
+					return ctrl.Result{}, err
+				}
 				return ctrl.Result{Requeue: true}, nil
 			}
 

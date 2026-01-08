@@ -118,7 +118,7 @@ func (pc *ProxmoxClient) CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine
 	for logEntry := range logChan {
 		log.Log.Info(fmt.Sprintf("Virtual Machine %s, creation process: %s", vm.Name, logEntry))
 	}
-	mutex.Lock()
+
 	// TODO: Switch to task Status
 	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx,
 		virtualMachineCreateTimesNum, virtualMachineCreateSteps)
@@ -147,7 +147,7 @@ func (pc *ProxmoxClient) CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine
 		log.Log.Error(taskErr, "Error adding tag to VM")
 		return taskErr
 	}
-	mutex.Unlock()
+
 	if err != nil {
 		return err
 	}
@@ -272,7 +272,8 @@ func (pc *ProxmoxClient) GetVMUptime(vmName, nodeName string) string {
 func (pc *ProxmoxClient) DeleteVM(vmName, nodeName string) error {
 	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
-		log.Log.Error(err, "Error getting VM")
+		// No need to log the error here
+		// log.Log.Error(err, "Error getting VM")
 		// Make the error as not found error to complete the deletion
 		return &NotFoundError{Message: err.Error()}
 	}
@@ -321,6 +322,14 @@ func (pc *ProxmoxClient) DeleteVM(vmName, nodeName string) error {
 
 func (pc *ProxmoxClient) StartVM(vmName, nodeName string) (bool, error) {
 	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
+	if err != nil {
+		return false, err
+	}
+	// TODO: Main problem here is that if the cache is stale, the status will be stale as well
+	// and the operator will try to start an already running VM.
+	//
+	// Update VM status by pinging to get latest status
+	err = VirtualMachine.Ping(ctx)
 	if err != nil {
 		return false, err
 	}

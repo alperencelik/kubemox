@@ -18,11 +18,12 @@ package proxmox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -35,6 +36,7 @@ import (
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
+	"github.com/alperencelik/kubemox/pkg/proxmox"
 )
 
 // VirtualMachineSetReconciler reconciles a VirtualMachineSet object
@@ -250,7 +252,7 @@ func (r *VirtualMachineSetReconciler) scaleDownVMs(vmSet *proxmoxv1alpha1.Virtua
 
 func (r *VirtualMachineSetReconciler) handleResourceNotFound(ctx context.Context, err error) error {
 	logger := log.FromContext(ctx)
-	if errors.IsNotFound(err) {
+	if kerrors.IsNotFound(err) {
 		logger.Info("VirtualMachineSet resource not found. Ignoring since object must be deleted")
 		return nil
 	}
@@ -266,7 +268,11 @@ func (r *VirtualMachineSetReconciler) handleVMsetOperations(ctx context.Context,
 	// If the number of the VirtualMachines is more than the desired number of replicas
 	if len(vmList.Items) > replicas {
 		if err := r.scaleDownVMs(vmSet, vmList); err != nil {
-			logger.Error(err, "unable to scale down VirtualMachines")
+			var notFoundErr *proxmox.NotFoundError
+			if errors.As(err, &notFoundErr) {
+				// Ignore not found errors
+				return nil
+			}
 			return err
 		}
 		// Set the condition for the VirtualMachineSet
