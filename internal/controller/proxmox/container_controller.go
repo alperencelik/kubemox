@@ -119,8 +119,6 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	logger.Info(fmt.Sprintf("Reconciling Container %s", container.Name))
-	// Handle the external watcher for the Container
-	r.handleWatcher(ctx, req, container)
 
 	// Check if the Container instance is marked to be deleted, which is indicated by the deletion timestamp being set.
 	if container.DeletionTimestamp.IsZero() {
@@ -152,6 +150,8 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if result != (ctrl.Result{}) {
 		return result, nil
 	}
+	// Handle the external watcher for the Container
+	r.handleWatcher(ctx, req, container)
 
 	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
@@ -203,7 +203,7 @@ func (r *ContainerReconciler) UpdateContainer(ctx context.Context, pc *proxmox.P
 
 func (r *ContainerReconciler) UpdateContainerStatus(ctx context.Context, pc *proxmox.ProxmoxClient,
 	container *proxmoxv1alpha1.Container) error {
-	containerStatus, err := pc.UpdateContainerStatus(container.Name, container.Spec.NodeName)
+	containerStatus, err := pc.UpdateContainerStatus(container.Spec.Name, container.Spec.NodeName)
 	if err != nil {
 		return err
 	}
@@ -283,7 +283,7 @@ func (r *ContainerReconciler) handleCloneContainer(ctx context.Context,
 		logger.Error(err, "Failed to clone Container")
 		return err
 	}
-	err = pc.StartContainer(container.Name, container.Spec.NodeName)
+	err = pc.StartContainer(container.Spec.Name, container.Spec.NodeName)
 	if err != nil {
 		logger.Error(err, "Failed to start Container")
 		return err

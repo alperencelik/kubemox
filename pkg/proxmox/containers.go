@@ -14,6 +14,7 @@ import (
 func (pc *ProxmoxClient) CloneContainer(container *proxmoxv1alpha1.Container) error {
 	// Returning an error is quite reasonable here since that error moved up
 	// to the controller and will be handled there as requeue
+	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
 	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
@@ -35,11 +36,11 @@ func (pc *ProxmoxClient) CloneContainer(container *proxmoxv1alpha1.Container) er
 
 	var CloneOptions proxmox.ContainerCloneOptions
 	CloneOptions.Full = 1
-	CloneOptions.Hostname = container.Name
+	CloneOptions.Hostname = containerName
 	CloneOptions.Target = nodeName
-	log.Log.Info(fmt.Sprintf("Cloning container %s from template %s", container.Name, templateContainerName))
+	log.Log.Info(fmt.Sprintf("Cloning container %s from template %s", containerName, templateContainerName))
 
-	_, task, err := templateContainer.Clone(ctx, &CloneOptions)
+	newID, task, err := templateContainer.Clone(ctx, &CloneOptions)
 	if err != nil {
 		log.Log.Error(err, "Can't clone container")
 		return err
@@ -52,20 +53,29 @@ func (pc *ProxmoxClient) CloneContainer(container *proxmoxv1alpha1.Container) er
 	if !taskCompleted {
 		return taskWaitErr
 	}
+	// Cache the new container ID
+	pc.setCachedContainerID(nodeName, containerName, newID)
 	return nil
 }
 
 func (pc *ProxmoxClient) GetContainerID(containerName, nodeName string) (int, error) {
+	// Get node
 	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		return 0, err
 	}
+	// If it's cached, return it
+	if cachedID, ok := pc.getCachedContainerID(nodeName, containerName); ok {
+		return cachedID, nil
+	}
+	// If not cached, fetch from API
 	containers, err := node.Containers(ctx)
 	if err != nil {
 		return 0, err
 	}
 	for _, container := range containers {
 		if container.Name == containerName {
+			pc.setCachedContainerID(nodeName, containerName, int(container.VMID))
 			return int(container.VMID), nil
 		}
 	}
@@ -73,6 +83,11 @@ func (pc *ProxmoxClient) GetContainerID(containerName, nodeName string) (int, er
 }
 
 func (pc *ProxmoxClient) ContainerExists(containerName, nodeName string) (bool, error) {
+	// Check cache
+	if _, ok := pc.getCachedContainerID(nodeName, containerName); ok {
+		return true, nil
+	}
+
 	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		return false, err
@@ -83,6 +98,7 @@ func (pc *ProxmoxClient) ContainerExists(containerName, nodeName string) (bool, 
 	}
 	for _, container := range containers {
 		if container.Name == containerName {
+			pc.setCachedContainerID(nodeName, containerName, int(container.VMID))
 			return true, nil
 		}
 	}
@@ -98,10 +114,21 @@ func (pc *ProxmoxClient) GetContainer(containerName, nodeName string) (*proxmox.
 	if err != nil {
 		return nil, err
 	}
+	if containerID == 0 {
+		return nil, fmt.Errorf("container %s not found", containerName)
+	}
+	// Check cache for container object
+	if container := pc.getCachedContainer(nodeName, containerID); container != nil {
+		return container, nil
+	}
+	// If not in cache, fetch from API
 	container, err := node.Container(ctx, containerID)
 	if err != nil {
 		return nil, err
 	}
+	// Store in cache
+	pc.setCachedContainer(nodeName, containerID, container)
+
 	return container, nil
 }
 
@@ -161,15 +188,45 @@ func (pc *ProxmoxClient) DeleteContainer(containerName, nodeName string) error {
 	default:
 		log.Log.Info("Container is already deleted")
 	}
+	pc.deleteCachedContainer(nodeName, containerName)
 	mutex.Unlock()
 	return nil
 }
 
 func (pc *ProxmoxClient) StartContainer(containerName, nodeName string) error {
 	// Get container
-	container, err := pc.GetContainer(containerName, nodeName)
+	// TODO: Main problem here is that if the cache is stale, the status will be stale as well
+	// and the operator will try to start an already running VM.
+	//
+	// Update the container status before starting
+	// TODO: Fix this later
+	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		return err
+	}
+	// Get container ID
+	containerID, err := pc.GetContainerID(containerName, nodeName)
+	if err != nil {
+		return err
+	}
+	container, err := node.Container(ctx, containerID)
+	if err != nil {
+		return err
+	}
+
+	// 	container, err := pc.GetContainer(containerName, nodeName)
+	// if err != nil {
+	// return err
+	// }
+	// TODO: This is not implemented in the go-proxmox library yet
+	// err = container.Ping(ctx)
+	// if err != nil {
+	// return err
+	// }
+	containerStatus := container.Status
+	if containerStatus == VirtualMachineRunningState {
+		// Return early since container is already running
+		return nil
 	}
 	// Start container
 	taskID, err := container.Start(ctx)
@@ -215,7 +272,7 @@ func (pc *ProxmoxClient) UpdateContainerStatus(containerName, nodeName string) (
 
 func (pc *ProxmoxClient) UpdateContainer(container *proxmoxv1alpha1.Container) error {
 	// Get container from proxmox
-	containerName := container.Name
+	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
 	var cpuOption proxmox.ContainerOption
 	var memoryOption proxmox.ContainerOption
@@ -270,7 +327,7 @@ func (pc *ProxmoxClient) RestartContainer(containerName, nodeName string) (bool,
 
 func (pc *ProxmoxClient) CheckContainerDelta(container *proxmoxv1alpha1.Container) (bool, error) {
 	// Get container
-	containerName := container.Name
+	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
 	ProxmoxContainer, err := pc.GetContainer(containerName, nodeName)
 	if err != nil {
@@ -287,12 +344,15 @@ func (pc *ProxmoxClient) CheckContainerDelta(container *proxmoxv1alpha1.Containe
 func (pc *ProxmoxClient) IsContainerReady(container *proxmoxv1alpha1.Container) (bool, error) {
 	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
-	ProxmoxContainer, err := pc.GetContainer(containerName, nodeName)
+	lxc, err := pc.GetContainer(containerName, nodeName)
 	if err != nil {
 		return false, err
 	}
 
-	if ProxmoxContainer.VMID == 0 {
+	if lxc.VMID == 0 {
+		return false, nil
+	}
+	if lxc.ContainerConfig.Lock != "" {
 		return false, nil
 	}
 	return true, nil
