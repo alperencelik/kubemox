@@ -195,34 +195,16 @@ func (pc *ProxmoxClient) DeleteContainer(containerName, nodeName string) error {
 
 func (pc *ProxmoxClient) StartContainer(containerName, nodeName string) error {
 	// Get container
+	container, err := pc.GetContainer(containerName, nodeName)
+	if err != nil {
+		return err
+	}
 	// TODO: Main problem here is that if the cache is stale, the status will be stale as well
 	// and the operator will try to start an already running VM.
-	//
-	// Update the container status before starting
-	// TODO: Fix this later
-	node, err := pc.getNode(ctx, nodeName)
+	err = container.Ping(ctx)
 	if err != nil {
 		return err
 	}
-	// Get container ID
-	containerID, err := pc.GetContainerID(containerName, nodeName)
-	if err != nil {
-		return err
-	}
-	container, err := node.Container(ctx, containerID)
-	if err != nil {
-		return err
-	}
-
-	// 	container, err := pc.GetContainer(containerName, nodeName)
-	// if err != nil {
-	// return err
-	// }
-	// TODO: This is not implemented in the go-proxmox library yet
-	// err = container.Ping(ctx)
-	// if err != nil {
-	// return err
-	// }
 	containerStatus := container.Status
 	if containerStatus == VirtualMachineRunningState {
 		// Return early since container is already running

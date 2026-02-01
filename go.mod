@@ -1,6 +1,6 @@
 module github.com/alperencelik/kubemox
 
-go 1.24.0
+go 1.25
 
 require (
 	github.com/carolynvs/magex v0.9.0
@@ -19,6 +19,8 @@ require (
 	sigs.k8s.io/controller-runtime v0.22.0
 	sigs.k8s.io/release-utils v0.7.7
 )
+
+replace github.com/luthermonson/go-proxmox => github.com/alperencelik/go-proxmox v0.0.0-20260201203053-5a1bc2aed607
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
