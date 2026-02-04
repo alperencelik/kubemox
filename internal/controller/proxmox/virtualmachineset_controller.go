@@ -147,6 +147,12 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// is not being deleted, create the VirtualMachines
 	err = r.handleVMsetOperations(ctx, vmSet, vmList)
 	if err != nil {
+		var notFoundErr *proxmox.NotFoundError
+		if errors.As(err, &notFoundErr) {
+			// Resource not foun d, might be deleted meanwhile
+			logger.Info("Resource not found. Ignoring since object must be deleted")
+			return ctrl.Result{}, nil
+		}
 		logger.Error(err, "unable to handle VirtualMachineSet operations")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}

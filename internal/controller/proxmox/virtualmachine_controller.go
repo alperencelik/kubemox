@@ -46,7 +46,7 @@ const (
 
 	// Controller settings
 	VMreconcilationPeriod     = 10
-	VMmaxConcurrentReconciles = 10
+	VMmaxConcurrentReconciles = 30
 
 	// Status conditions
 	typeAvailableVirtualMachine = "Available"

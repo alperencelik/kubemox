@@ -31,6 +31,10 @@ type VirtualMachineComparison struct {
 
 var mutex = &sync.Mutex{}
 
+// 10 is the secret number here :)
+// It's pretty much the max concurrent VM creations from the same template
+var createVMSemaphore = make(chan struct{}, 10)
+
 const (
 	// The tag that will be added to VMs in Proxmox cluster
 	VirtualMachineRunningState = "running"
@@ -82,6 +86,10 @@ func init() {
 }
 
 func (pc *ProxmoxClient) CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine) error {
+	// Acquire semaphore to limit concurrent VM creation
+	createVMSemaphore <- struct{}{}
+	defer func() { <-createVMSemaphore }()
+
 	nodeName := vm.Spec.NodeName
 	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
@@ -277,8 +285,13 @@ func (pc *ProxmoxClient) DeleteVM(vmName, nodeName string) error {
 		// Make the error as not found error to complete the deletion
 		return &NotFoundError{Message: err.Error()}
 	}
-	// Stop VM
+	// Ping to get latest status
+	err = VirtualMachine.Ping(ctx)
+	if err != nil {
+		return err
+	}
 	vmStatus := VirtualMachine.Status
+	// Stop VM if it's running
 	if vmStatus == VirtualMachineRunningState {
 		stopTask, stopErr := VirtualMachine.Stop(ctx)
 		if stopErr != nil {
