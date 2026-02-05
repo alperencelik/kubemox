@@ -3,6 +3,7 @@ package utils
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 func FormatUptime(uptime int) string {
@@ -61,4 +62,11 @@ func EnsurePodNamespaceEnv() string {
 		}
 	}
 	return os.Getenv("POD_NAMESPACE")
+}
+
+func IsTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "timeout")
 }

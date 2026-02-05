@@ -148,7 +148,7 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	err = r.handleVMsetOperations(ctx, vmSet, vmList)
 	if err != nil {
 		var notFoundErr *proxmox.NotFoundError
-		if errors.As(err, &notFoundErr) {
+		if errors.As(err, &notFoundErr) || kerrors.IsNotFound(err) {
 			// Resource not foun d, might be deleted meanwhile
 			logger.Info("Resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil

@@ -39,6 +39,7 @@ import (
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
+	"github.com/alperencelik/kubemox/pkg/utils"
 )
 
 const (
@@ -159,7 +160,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		logger.Error(err, "Error handling VirtualMachine operations")
 		// TODO: If I return err here it goes for requeue and errors out as "Reconciler error" so need to return nil to stop the requeue
-		return ctrl.Result{}, nil
+		return result, nil
 	}
 	if result != (ctrl.Result{}) {
 		return result, nil
@@ -266,6 +267,10 @@ func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, pc 
 			if errors.As(err, &taskErr) {
 				r.Recorder.Event(vm, "Warning", "Error",
 					fmt.Sprintf("VirtualMachine %s failed to create due to %s", vmName, err))
+				// If error has got timeout then requeue
+				if utils.IsTimeoutError(err) {
+					return requeue, err
+				}
 				// It's unrecoverable error, so return the error without requeue but first stop the watcher
 				r.StopWatcher(vm.Name) // req.name = object.Name
 				return dontRequeue, err
