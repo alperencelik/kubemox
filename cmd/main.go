@@ -74,6 +74,9 @@ func main() {
 	flag.BoolVar(&secureMetrics, "metrics-secure", false,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 
+	flag.BoolVar(&proxmox.EnableProxmoxTaskLogs, "enable-task-logs", proxmox.EnableProxmoxTaskLogs,
+		"Enable verbose task logging specific to Proxmox tasks. Can also be set via ENABLE_PROXMOX_TASK_LOG env var.")
+
 	opts := zap.Options{
 		Development: true,
 	}
