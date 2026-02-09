@@ -35,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
@@ -159,8 +160,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	result, err := r.handleVirtualMachineOperations(ctx, pc, vm)
 	if err != nil {
 		logger.Error(err, "Error handling VirtualMachine operations")
-		// TODO: If I return err here it goes for requeue and errors out as "Reconciler error" so need to return nil to stop the requeue
-		return result, nil
+		return result, reconcile.TerminalError(err)
 	}
 	if result != (ctrl.Result{}) {
 		return result, nil
@@ -266,7 +266,7 @@ func (r *VirtualMachineReconciler) handleCreateFromTemplate(ctx context.Context,
 		if errors.As(err, &notFoundErr) {
 			r.Recorder.Event(vm, "Warning", "Error",
 				fmt.Sprintf("VirtualMachine %s failed to create due to %s", vmName, err))
-			return dontRequeue, err
+			return dontRequeue, reconcile.TerminalError(err)
 		}
 		var taskErr *proxmox.TaskError
 		if errors.As(err, &taskErr) {
@@ -276,7 +276,7 @@ func (r *VirtualMachineReconciler) handleCreateFromTemplate(ctx context.Context,
 				return requeue, err
 			}
 			r.StopWatcher(vm.Name)
-			return dontRequeue, err
+			return dontRequeue, reconcile.TerminalError(err)
 		}
 		if updateErr := r.Status().Update(context.Background(), vm); updateErr != nil {
 			return requeue, updateErr
@@ -304,7 +304,7 @@ func (r *VirtualMachineReconciler) handleCreateFromScratch(ctx context.Context, 
 			r.Recorder.Event(vm, "Warning", "Error",
 				fmt.Sprintf("VirtualMachine %s failed to create due to %s", vmName, err))
 			r.StopWatcher(vm.Name)
-			return dontRequeue, err
+			return dontRequeue, reconcile.TerminalError(err)
 		}
 		if updateErr := r.Status().Update(context.Background(), vm); updateErr != nil {
 			return requeue, updateErr
@@ -329,7 +329,7 @@ func (r *VirtualMachineReconciler) startCreatedVM(ctx context.Context, pc *proxm
 		if errors.As(err, &taskErr) {
 			r.Recorder.Event(vm, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to start due to %s", vmName, err))
 			r.StopWatcher(vm.Name)
-			return dontRequeue, err
+			return dontRequeue, reconcile.TerminalError(err)
 		}
 		logger.Error(err, "Failed to start VirtualMachine")
 		return requeue, err
@@ -361,7 +361,7 @@ func (r *VirtualMachineReconciler) DeleteVirtualMachine(ctx context.Context,
 			if errors.As(err, &taskErr) {
 				r.Recorder.Event(vm, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to delete due to %s", vm.Spec.Name, err))
 				r.StopWatcher(vm.Name)
-				return dontRequeue, err
+				return dontRequeue, reconcile.TerminalError(err)
 			}
 			return requeue, err
 		}
@@ -418,7 +418,7 @@ func (r *VirtualMachineReconciler) handleAutoStart(ctx context.Context,
 				if errors.As(err, &taskErr) {
 					r.Recorder.Event(vm, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to start due to %s", vmName, err))
 					r.StopWatcher(vm.Name)
-					return dontRequeue, err
+					return dontRequeue, reconcile.TerminalError(err)
 				}
 				return requeue, err
 			}
@@ -443,7 +443,7 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachine(ctx context.Context,
 			r.Recorder.Event(vm, "Warning", "Error",
 				fmt.Sprintf("VirtualMachine %s failed to update due to %s", vm.Name, taskErr.ExitStatus))
 			r.StopWatcher(vm.Name)
-			return &dontRequeue, err
+			return &dontRequeue, reconcile.TerminalError(err)
 		}
 		return &requeue, err
 	}
@@ -456,7 +456,7 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachine(ctx context.Context,
 			r.Recorder.Event(vm, "Warning", "Error",
 				fmt.Sprintf("VirtualMachine %s failed to configure due to %s", vm.Name, taskErr.ExitStatus))
 			r.StopWatcher(vm.Name)
-			return &dontRequeue, err
+			return &dontRequeue, reconcile.TerminalError(err)
 		}
 		return &requeue, err
 	}
