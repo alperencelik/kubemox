@@ -68,6 +68,7 @@ var (
 	virtualMachineTag         string
 	ManagedVirtualMachineTag  string
 	virtualMachineTemplateTag string
+	EnableProxmoxTaskLogs     bool
 )
 
 func init() {
@@ -82,6 +83,9 @@ func init() {
 	virtualMachineTemplateTag = os.Getenv("VIRTUAL_MACHINE_TEMPLATE_TAG")
 	if virtualMachineTemplateTag == "" {
 		virtualMachineTemplateTag = "kubemox-template"
+	}
+	if os.Getenv("ENABLE_PROXMOX_TASK_LOG") == "true" {
+		EnableProxmoxTaskLogs = true
 	}
 }
 
@@ -119,12 +123,14 @@ func (pc *ProxmoxClient) CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine
 	log.Log.Info(fmt.Sprintf("New VM %s has been creating with ID: %d", vm.Name, newID))
 	mutex.Unlock()
 	// TODO: Implement a better way to watch the tasks.
-	logChan, err := task.Watch(ctx, 0)
-	if err != nil {
-		return err
-	}
-	for logEntry := range logChan {
-		log.Log.Info(fmt.Sprintf("Virtual Machine %s, creation process: %s", vm.Name, logEntry))
+	if EnableProxmoxTaskLogs {
+		logChan, err := task.Watch(ctx, 0)
+		if err != nil {
+			return err
+		}
+		for logEntry := range logChan {
+			log.Log.Info(fmt.Sprintf("Virtual Machine %s, creation process: %s", vm.Name, logEntry))
+		}
 	}
 
 	// TODO: Switch to task Status

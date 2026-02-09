@@ -204,14 +204,16 @@ func (r *StorageDownloadURLReconciler) handleDownloadURL(ctx context.Context,
 	}
 	// Get the task
 	task := pc.GetTask(taskUPID)
-	var logChannel <-chan string
-	logChannel, err := task.Watch(ctx, 5)
-	if err != nil {
-		logger.Error(err, "unable to watch the task")
-		return err
-	}
-	for logEntry := range logChannel {
-		logger.Info(fmt.Sprintf("Download task for %s: %s", storageDownloadURL.Spec.Filename, logEntry))
+	if proxmox.EnableProxmoxTaskLogs {
+		var logChannel <-chan string
+		logChannel, err := task.Watch(ctx, 5)
+		if err != nil {
+			logger.Error(err, "unable to watch the task")
+			return err
+		}
+		for logEntry := range logChannel {
+			logger.Info(fmt.Sprintf("Download task for %s: %s", storageDownloadURL.Spec.Filename, logEntry))
+		}
 	}
 	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, storageDownloadURLTimesNum, storageDownloadURLSteps)
 	if taskErr != nil {
