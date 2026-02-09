@@ -238,110 +238,104 @@ func (r *VirtualMachineReconciler) handleVirtualMachineOperations(ctx context.Co
 	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
 
-// TODO: Reduce cyclomatic complexity or refactor the function
 // CreateVirtualMachine creates a VirtualMachine on the Proxmox and returns the ctrl.result and error
 // The reason for ctrl.Result is to requeue the VirtualMachine based on the error
-//
-//nolint:all
 func (r *VirtualMachineReconciler) CreateVirtualMachine(ctx context.Context, pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
 	vmName := vm.Spec.Name
-	nodeName := vm.Spec.NodeName
-
 	vmType := proxmox.CheckVMType(vm)
 
 	switch vmType {
 	case "template":
-		r.Recorder.Event(vm, "Normal", "Creating", fmt.Sprintf("VirtualMachine %s is being created", vmName))
-		// TODO: Check return err value and based on the error, update the status if needed.
-		err := pc.CreateVMFromTemplate(vm)
-		// Check if return error is task error
-		if err != nil {
-			var notFoundErr *proxmox.NotFoundError
-			if errors.As(err, &notFoundErr) {
-				r.Recorder.Event(vm, "Warning", "Error",
-					fmt.Sprintf("VirtualMachine %s failed to create due to %s", vmName, err))
-				return dontRequeue, err
-			}
-			var taskErr *proxmox.TaskError
-			if errors.As(err, &taskErr) {
-				r.Recorder.Event(vm, "Warning", "Error",
-					fmt.Sprintf("VirtualMachine %s failed to create due to %s", vmName, err))
-				// If error has got timeout then requeue
-				if utils.IsTimeoutError(err) {
-					return requeue, err
-				}
-				// It's unrecoverable error, so return the error without requeue but first stop the watcher
-				r.StopWatcher(vm.Name) // req.name = object.Name
-				return dontRequeue, err
-			}
-			if updateErr := r.Status().Update(context.Background(), vm); updateErr != nil {
-				return requeue, updateErr
-			}
-			// For other errors, requeue
-			return requeue, err
-		}
-		r.Recorder.Event(vm, "Normal", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
-		// Before starting the VM handle the additional configuration
-		err = r.handleAdditionalConfig(ctx, pc, vm)
-		if err != nil {
-			logger.Error(err, "Error handling additional configuration")
-			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
-		}
-		startResult, err := pc.StartVM(vmName, nodeName)
-		if err != nil {
-			var taskErr *proxmox.TaskError
-			if errors.As(err, &taskErr) {
-				r.Recorder.Event(vm, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to start due to %s", vmName, err))
-				r.StopWatcher(vm.Name)
-				return dontRequeue, err
-			} else {
-				logger.Error(err, "Failed to start VirtualMachine")
-				return requeue, err
-			}
-		}
-		if startResult {
-			logger.Info(fmt.Sprintf("VirtualMachine %s has been started", vm.Spec.Name))
-		}
-
+		return r.handleCreateFromTemplate(ctx, pc, vm)
 	case "scratch":
-		r.Recorder.Event(vm, "Normal", "Creating", fmt.Sprintf("VirtualMachine %s is being created", vmName))
-		err := pc.CreateVMFromScratch(vm)
-		if err != nil {
-			var taskErr *proxmox.TaskError
-			if errors.As(err, &taskErr) {
-				r.Recorder.Event(vm, "Warning", "Error",
-					fmt.Sprintf("VirtualMachine %s failed to create due to %s", vmName, err))
-				r.StopWatcher(vm.Name)
-				return dontRequeue, err
-			}
-			if updateErr := r.Status().Update(context.Background(), vm); updateErr != nil {
-				return requeue, updateErr
-			}
-		}
-		r.Recorder.Event(vm, "Normal", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
-		err = r.handleCloudInitOperations(ctx, pc, vm)
-		if err != nil {
-			return requeue, err
-		}
-
-		startResult, err := pc.StartVM(vmName, nodeName)
-		if err != nil {
-			var taskErr *proxmox.TaskError
-			if errors.As(err, &taskErr) {
-				r.Recorder.Event(vm, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to start due to %s", vmName, err))
-				r.StopWatcher(vm.Name)
-				return dontRequeue, err
-			} else {
-				logger.Error(err, "Failed to start VirtualMachine")
-				return requeue, err
-			}
-		}
-		if startResult {
-			logger.Info(fmt.Sprintf("VirtualMachine %s has been started", vm.Spec.Name))
-		}
+		return r.handleCreateFromScratch(ctx, pc, vm)
 	default:
 		return ctrl.Result{}, fmt.Errorf("VM %s doesn't have any template or vmSpec defined", vmName)
+	}
+}
+
+func (r *VirtualMachineReconciler) handleCreateFromTemplate(ctx context.Context, pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	vmName := vm.Spec.Name
+	nodeName := vm.Spec.NodeName
+
+	r.Recorder.Event(vm, "Normal", "Creating", fmt.Sprintf("VirtualMachine %s is being created", vmName))
+	err := pc.CreateVMFromTemplate(vm)
+	if err != nil {
+		var notFoundErr *proxmox.NotFoundError
+		if errors.As(err, &notFoundErr) {
+			r.Recorder.Event(vm, "Warning", "Error",
+				fmt.Sprintf("VirtualMachine %s failed to create due to %s", vmName, err))
+			return dontRequeue, err
+		}
+		var taskErr *proxmox.TaskError
+		if errors.As(err, &taskErr) {
+			r.Recorder.Event(vm, "Warning", "Error",
+				fmt.Sprintf("VirtualMachine %s failed to create due to %s", vmName, err))
+			if utils.IsTimeoutError(err) {
+				return requeue, err
+			}
+			r.StopWatcher(vm.Name)
+			return dontRequeue, err
+		}
+		if updateErr := r.Status().Update(context.Background(), vm); updateErr != nil {
+			return requeue, updateErr
+		}
+		return requeue, err
+	}
+	r.Recorder.Event(vm, "Normal", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
+	err = r.handleAdditionalConfig(ctx, pc, vm)
+	if err != nil {
+		logger.Error(err, "Error handling additional configuration")
+		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+	}
+	return r.startCreatedVM(ctx, pc, vm, nodeName)
+}
+
+func (r *VirtualMachineReconciler) handleCreateFromScratch(ctx context.Context, pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine) (ctrl.Result, error) {
+	vmName := vm.Spec.Name
+	nodeName := vm.Spec.NodeName
+
+	r.Recorder.Event(vm, "Normal", "Creating", fmt.Sprintf("VirtualMachine %s is being created", vmName))
+	err := pc.CreateVMFromScratch(vm)
+	if err != nil {
+		var taskErr *proxmox.TaskError
+		if errors.As(err, &taskErr) {
+			r.Recorder.Event(vm, "Warning", "Error",
+				fmt.Sprintf("VirtualMachine %s failed to create due to %s", vmName, err))
+			r.StopWatcher(vm.Name)
+			return dontRequeue, err
+		}
+		if updateErr := r.Status().Update(context.Background(), vm); updateErr != nil {
+			return requeue, updateErr
+		}
+	}
+	r.Recorder.Event(vm, "Normal", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
+	err = r.handleCloudInitOperations(ctx, pc, vm)
+	if err != nil {
+		return requeue, err
+	}
+
+	return r.startCreatedVM(ctx, pc, vm, nodeName)
+}
+
+func (r *VirtualMachineReconciler) startCreatedVM(ctx context.Context, pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine, nodeName string) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	vmName := vm.Spec.Name
+
+	startResult, err := pc.StartVM(vmName, nodeName)
+	if err != nil {
+		var taskErr *proxmox.TaskError
+		if errors.As(err, &taskErr) {
+			r.Recorder.Event(vm, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to start due to %s", vmName, err))
+			r.StopWatcher(vm.Name)
+			return dontRequeue, err
+		}
+		logger.Error(err, "Failed to start VirtualMachine")
+		return requeue, err
+	}
+	if startResult {
+		logger.Info(fmt.Sprintf("VirtualMachine %s has been started", vm.Spec.Name))
 	}
 	return ctrl.Result{}, nil
 }
