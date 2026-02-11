@@ -97,7 +97,9 @@ spec:
                     type: boolean
                 type: object
             required:
+            - certManagerSpec
             - connectionRef
+            - proxmoxCertSpec
             type: object
             x-kubernetes-validations:
             - message: ConnectionRef is required once set

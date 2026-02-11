@@ -42,10 +42,7 @@ spec:
             description: ProxmoxConnectionSpec defines the desired state of ProxmoxConnection.
             properties:
               endpoint:
-                description: |-
-                  INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-                  Important: Run "make" to regenerate code after modifying this file
-                  Endpoint is the address of the Proxmox cluster endpoint
+                description: Endpoint is the address of the Proxmox cluster endpoint
                 type: string
               insecureSkipVerify:
                 default: false
@@ -67,6 +64,11 @@ spec:
             required:
             - endpoint
             type: object
+            x-kubernetes-validations:
+            - message: Specify either username/password or tokenID/secret for authentication
+              rule: (has(self.username) && has(self.password) && !has(self.tokenID)
+                && !has(self.secret)) || (!has(self.username) && !has(self.password)
+                && has(self.tokenID) && has(self.secret))
           status:
             description: ProxmoxConnectionStatus defines the observed state of ProxmoxConnection.
             properties:

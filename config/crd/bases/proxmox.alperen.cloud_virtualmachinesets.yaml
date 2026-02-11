@@ -134,6 +134,9 @@ spec:
                       required:
                       - type
                       type: object
+                      x-kubernetes-validations:
+                      - message: pcie cannot be true when device type is mapped
+                        rule: self.type != 'mapped' || self.pcie == false
                     type: array
                   mode:
                     description: Mode is the mode of the PCI devices, either shared
@@ -148,12 +151,14 @@ spec:
                 type: object
               replicas:
                 description: Replicas is the number of VMs
+                minimum: 0
                 type: integer
               template:
                 description: Template is the name of the source VM template
                 properties:
                   cores:
                     description: Cores is the number of CPU cores
+                    minimum: 1
                     type: integer
                   disk:
                     description: Disks is the list of disks
@@ -164,6 +169,7 @@ spec:
                           type: string
                         size:
                           description: Size is the size of the disk in GB
+                          minimum: 1
                           type: integer
                         storage:
                           description: Storage is the name of the storage
@@ -176,6 +182,7 @@ spec:
                     type: array
                   memory:
                     description: Memory is the amount of memory in MB
+                    minimum: 16
                     type: integer
                   name:
                     description: Name of the template
@@ -222,9 +229,13 @@ spec:
                       required:
                       - type
                       type: object
+                      x-kubernetes-validations:
+                      - message: pcie cannot be true when device type is mapped
+                        rule: self.type != 'mapped' || self.pcie == false
                     type: array
                   socket:
                     description: Socket is the number of CPU sockets
+                    minimum: 1
                     type: integer
                 type: object
             required:

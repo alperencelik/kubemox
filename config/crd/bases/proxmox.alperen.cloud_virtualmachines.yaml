@@ -162,6 +162,7 @@ spec:
                 properties:
                   cores:
                     description: Cores is the number of CPU cores
+                    minimum: 1
                     type: integer
                   disk:
                     description: Disks is the list of disks
@@ -172,6 +173,7 @@ spec:
                           type: string
                         size:
                           description: Size is the size of the disk in GB
+                          minimum: 1
                           type: integer
                         storage:
                           description: Storage is the name of the storage
@@ -184,6 +186,7 @@ spec:
                     type: array
                   memory:
                     description: Memory is the amount of memory in MB
+                    minimum: 16
                     type: integer
                   name:
                     description: Name of the template
@@ -230,9 +233,13 @@ spec:
                       required:
                       - type
                       type: object
+                      x-kubernetes-validations:
+                      - message: pcie cannot be true when device type is mapped
+                        rule: self.type != 'mapped' || self.pcie == false
                     type: array
                   socket:
                     description: Socket is the number of CPU sockets
+                    minimum: 1
                     type: integer
                 type: object
               vmSpec:
@@ -330,6 +337,7 @@ spec:
                         && has(self.passwordFrom)) || (!has(self.password) && !has(self.passwordFrom))
                   cores:
                     description: Cores is the number of CPU cores
+                    minimum: 1
                     type: integer
                   disk:
                     description: Disks is the list of disks
@@ -340,6 +348,7 @@ spec:
                           type: string
                         size:
                           description: Size is the size of the disk in GB
+                          minimum: 1
                           type: integer
                         storage:
                           description: Storage is the name of the storage
@@ -352,6 +361,7 @@ spec:
                     type: array
                   memory:
                     description: Memory is the amount of memory in MB
+                    minimum: 16
                     type: integer
                   network:
                     description: Networks is the list of networks
@@ -403,9 +413,14 @@ spec:
                       required:
                       - type
                       type: object
+                      x-kubernetes-validations:
+                      - message: pcie cannot be true when device type is mapped
+                        rule: self.type != 'mapped' || self.pcie == false
                     type: array
                   socket:
+                    default: 1
                     description: Socket is the number of CPU sockets
+                    minimum: 1
                     type: integer
                 type: object
             required:
@@ -416,6 +431,10 @@ spec:
             x-kubernetes-validations:
             - message: ConnectionRef is required once set
               rule: '!has(oldSelf.connectionRef) || has(self.connectionRef)'
+            - message: One of template or vmSpec must be specified
+              rule: has(self.template) || has(self.vmSpec)
+            - message: template and vmSpec are mutually exclusive
+              rule: '!has(self.template) || !has(self.vmSpec)'
           status:
             description: VirtualMachineStatus defines the observed state of VirtualMachine
             properties:

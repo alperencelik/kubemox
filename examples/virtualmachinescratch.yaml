@@ -26,11 +26,11 @@ spec:
     osImage:
       name: ide2 
       value: local:iso/ubuntu-23.04-live-server-amd64.iso 
-  cloudInitConfig:
-    user: "ubuntu"
-    passwordFrom: 
-        name: cloudinit-secret
-        key: password
-    upgradePackages: true
-    custom:
-      userData: "ubuntu-cloud-config-workers.yaml" # That should be inside snippets folder in Proxmox node
+    cloudInitConfig:
+      user: "ubuntu"
+      passwordFrom: 
+          name: cloudinit-secret
+          key: password
+      upgradePackages: true
+      custom:
+        userData: "ubuntu-cloud-config-workers.yaml" # That should be inside snippets folder in Proxmox node
