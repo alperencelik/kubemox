@@ -101,6 +101,9 @@ func NewProxmoxClient(proxmoxConnection *proxmoxv1alpha1.ProxmoxConnection) *Pro
 }
 
 func (pc *ProxmoxClient) GetVersion() (*string, error) {
+	if pc.Client == nil {
+		return nil, fmt.Errorf("proxmox client is not initialized")
+	}
 	version, err := pc.Client.Version(context.Background())
 	if err != nil {
 		return nil, err
