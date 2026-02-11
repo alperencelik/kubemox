@@ -199,6 +199,11 @@ func (r *VirtualMachineReconciler) handleVirtualMachineOperations(ctx context.Co
 	logger := log.FromContext(ctx)
 	vmExists, err := pc.CheckVM(vmName, nodeName)
 	if err != nil {
+		var taskErr *proxmox.TaskError
+		if errors.As(err, &taskErr) {
+			logger.Error(err, "Unrecoverable error checking VirtualMachine")
+			return ctrl.Result{}, reconcile.TerminalError(err)
+		}
 		logger.Error(err, "Error checking VirtualMachine")
 		return ctrl.Result{Requeue: true, RequeueAfter: VMreconcilationPeriod}, client.IgnoreNotFound(err)
 	}
