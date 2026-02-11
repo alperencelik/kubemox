@@ -231,10 +231,12 @@ spec:
                   cores:
                     default: 2
                     description: Cores
+                    minimum: 1
                     type: integer
                   memory:
                     default: 2048
                     description: Memory as MB
+                    minimum: 16
                     type: integer
                   network:
                     properties:
@@ -248,6 +250,7 @@ spec:
                   sockets:
                     default: 1
                     description: Sockets
+                    minimum: 1
                     type: integer
                   storage:
                     default: local-lvm

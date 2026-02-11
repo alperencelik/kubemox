@@ -53,6 +53,7 @@ type VirtualMachineSetSpec struct {
 	// +kubebuilder:default:=true
 	EnableAutoStart bool `json:"enableAutoStart,omitempty"`
 	// Replicas is the number of VMs
+	// +kubebuilder:validation:Minimum=0
 	Replicas int `json:"replicas"`
 	// NodeName is the name of the target node of Proxmox
 	NodeName string `json:"nodeName"`

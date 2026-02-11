@@ -57,12 +57,15 @@ type VirtualMachineTemplateSpec struct {
 type VirtualMachineConfig struct {
 	// Sockets
 	// +kubebuilder:default:=1
+	// +kubebuilder:validation:Minimum=1
 	Sockets int `json:"sockets,omitempty"`
 	// Cores
 	// +kubebuilder:default:=2
+	// +kubebuilder:validation:Minimum=1
 	Cores int `json:"cores,omitempty"`
 	// Memory as MB
 	// +kubebuilder:default:=2048
+	// +kubebuilder:validation:Minimum=16
 	Memory  int               `json:"memory,omitempty"`
 	Network VMTemplateNetwork `json:"network,omitempty"`
 	// Storage is the name of storage where the VM will be created

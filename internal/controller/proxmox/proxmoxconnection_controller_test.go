@@ -51,7 +51,11 @@ var _ = Describe("ProxmoxConnection Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: proxmoxv1alpha1.ProxmoxConnectionSpec{
+						Endpoint: "https://proxmox.example.com:8006",
+						TokenID:  "test@pam!token",
+						Secret:   "test-secret",
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}

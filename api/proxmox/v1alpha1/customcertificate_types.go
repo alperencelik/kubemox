@@ -31,8 +31,10 @@ import (
 type CustomCertificateSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	NodeName        string          `json:"nodeName,omitempty"`
+	NodeName string `json:"nodeName,omitempty"`
+	// +kubebuilder:validation:Required
 	CertManagerSpec CertManagerSpec `json:"certManagerSpec,omitempty"`
+	// +kubebuilder:validation:Required
 	ProxmoxCertSpec ProxmoxCertSpec `json:"proxmoxCertSpec,omitempty"`
 	// +kubebuilder:validation:Required
 	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`

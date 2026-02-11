@@ -23,9 +23,10 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // ProxmoxConnectionSpec defines the desired state of ProxmoxConnection.
+// +kubebuilder:validation:XValidation:rule="(has(self.username) && has(self.password) && !has(self.tokenID) && !has(self.secret)) || (!has(self.username) && !has(self.password) && has(self.tokenID) && has(self.secret))",message="Specify either username/password or tokenID/secret for authentication"
+//
+//nolint:lll // CEL validation rule is too long
 type ProxmoxConnectionSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
 	// Endpoint is the address of the Proxmox cluster endpoint
 	Endpoint string `json:"endpoint"`
 	// Username to authenticate with the Proxmox cluster

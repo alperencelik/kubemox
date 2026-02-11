@@ -27,8 +27,10 @@ import (
 // VirtualMachineSpec defines the desired state of VirtualMachine
 
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.connectionRef) || has(self.connectionRef)", message="ConnectionRef is required once set"
+// +kubebuilder:validation:XValidation:rule="has(self.template) || has(self.vmSpec)",message="One of template or vmSpec must be specified"
+// +kubebuilder:validation:XValidation:rule="!has(self.template) || !has(self.vmSpec)",message="template and vmSpec are mutually exclusive"
 //
-//nolint:lll // CEL validation rule is too long
+//nolint:lll // CEL validation rules are too long
 type VirtualMachineSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -65,10 +67,14 @@ type VirtualMachineSpec struct {
 
 type NewVMSpec struct {
 	// Cores is the number of CPU cores
+	// +kubebuilder:validation:Minimum=1
 	Cores int `json:"cores,omitempty"`
 	// Socket is the number of CPU sockets
+	// +kubebuilder:default:=1
+	// +kubebuilder:validation:Minimum=1
 	Socket int `json:"socket,omitempty"`
 	// Memory is the amount of memory in MB
+	// +kubebuilder:validation:Minimum=16
 	Memory int `json:"memory,omitempty"`
 	// Disks is the list of disks
 	Disk []VirtualMachineDisk `json:"disk,omitempty"`
@@ -91,10 +97,13 @@ type VirtualMachineSpecTemplate struct {
 	// Name of the template
 	Name string `json:"name,omitempty"`
 	// Cores is the number of CPU cores
+	// +kubebuilder:validation:Minimum=1
 	Cores int `json:"cores,omitempty"`
 	// Socket is the number of CPU sockets
+	// +kubebuilder:validation:Minimum=1
 	Socket int `json:"socket,omitempty"`
 	// Memory is the amount of memory in MB
+	// +kubebuilder:validation:Minimum=16
 	Memory int `json:"memory,omitempty"`
 	// Disks is the list of disks
 	Disk []VirtualMachineDisk `json:"disk,omitempty"`
@@ -104,11 +113,11 @@ type VirtualMachineSpecTemplate struct {
 	PciDevices []PciDevice `json:"pciDevices,omitempty"`
 }
 
+// +kubebuilder:validation:XValidation:rule="self.type != 'mapped' || self.pcie == false",message="pcie cannot be true when device type is mapped"
 type PciDevice struct {
 	// Type is the type of the PCI device either raw or mapped
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=raw;mapped
-	// TODO: Add validation for that one to immutable and make sure that you can't set PCIE to true if the type is mapped
 	Type string `json:"type"`
 	// DeviceID is the ID hex id of the device
 	DeviceID string `json:"deviceID,omitempty"`
@@ -124,6 +133,7 @@ type VirtualMachineDisk struct {
 	// Storage is the name of the storage
 	Storage string `json:"storage"`
 	// Size is the size of the disk in GB
+	// +kubebuilder:validation:Minimum=1
 	Size int `json:"size"`
 	// Device is the name of the device
 	Device string `json:"device"`

@@ -107,6 +107,7 @@ spec:
                 properties:
                   cores:
                     description: Cores is the number of CPU cores
+                    minimum: 1
                     type: integer
                   disk:
                     description: Disks is the list of disks
@@ -114,6 +115,7 @@ spec:
                       properties:
                         size:
                           description: Size is the size of the disk
+                          minimum: 1
                           type: integer
                         storage:
                           description: Storage is the name of the storage
@@ -125,6 +127,7 @@ spec:
                     type: array
                   memory:
                     description: Memory is the amount of memory in MB
+                    minimum: 16
                     type: integer
                   name:
                     description: Name of the template

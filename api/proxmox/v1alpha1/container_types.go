@@ -56,8 +56,10 @@ type ContainerTemplate struct {
 	// Name of the template
 	Name string `json:"name,omitempty"`
 	// Cores is the number of CPU cores
+	// +kubebuilder:validation:Minimum=1
 	Cores int `json:"cores,omitempty"`
 	// Memory is the amount of memory in MB
+	// +kubebuilder:validation:Minimum=16
 	Memory int `json:"memory,omitempty"`
 	// Disks is the list of disks
 	Disk []ContainerTemplateDisk `json:"disk,omitempty"`
@@ -69,6 +71,7 @@ type ContainerTemplateDisk struct {
 	// Storage is the name of the storage
 	Storage string `json:"storage,omitempty"`
 	// Size is the size of the disk
+	// +kubebuilder:validation:Minimum=1
 	Size int `json:"size,omitempty"`
 	// Type is the type of the disk
 	Type string `json:"type,omitempty"`
