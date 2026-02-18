@@ -1847,3 +1847,15 @@ func getPciDevices(vm *proxmoxv1alpha1.VirtualMachine) []proxmoxv1alpha1.PciDevi
 	}
 	return vm.Spec.VMSpec.PciDevices
 }
+
+func (pc *ProxmoxClient) GetVirtualMachine(vmId int, nodeName string) (*proxmox.VirtualMachine, error) {
+	node, err := pc.getNode(ctx, nodeName)
+	if err != nil {
+		return nil, err
+	}
+	VirtualMachine, err := node.VirtualMachine(ctx, vmId)
+	if err != nil {
+		return nil, err
+	}
+	return VirtualMachine, nil
+}

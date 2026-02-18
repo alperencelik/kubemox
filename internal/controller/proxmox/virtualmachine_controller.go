@@ -33,10 +33,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	watcher "github.com/alperencelik/kube-external-watcher/watcher"
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
@@ -167,7 +170,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// Handle the external watcher for the VirtualMachine
-	r.handleWatcher(ctx, req, vm)
+	// r.handleWatcher(ctx, req, vm)
 
 	logger.Info(fmt.Sprintf("VirtualMachine %s already exists", vm.Spec.Name))
 
@@ -176,6 +179,31 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *VirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
+
+	vmFetcher := &VirtualMachineFetcher{
+		Client: r.Client,
+		pc:     nil, // Proxmox client will be initialized in the fetcher methods
+	}
+	// Resource comparator
+
+	ew := watcher.NewExternalWatcher(vmFetcher, watcher.WithDefaultPollInterval(30*time.Second),
+		watcher.WithLogger(log.FromContext(context.Background())),
+		watcher.WithComparator(&VirtualMachineComparator{}),
+
+		watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.VirtualMachine{}, func(obj client.Object) watcher.ResourceConfig {
+			vm := obj.(*proxmoxv1alpha1.VirtualMachine)
+			return watcher.ResourceConfig{
+				PollInterval: 10 * time.Second,
+				ResourceKey: VirtualMachineKey{
+					ID:            vm.Status.Status.ID,
+					NodeName:      vm.Spec.NodeName,
+					ConnectionRef: vm.Spec.ConnectionRef,
+				},
+			}
+		}),
+	)
+	mgr.Add(ew)
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.VirtualMachine{}).
 		WithEventFilter(predicate.Funcs{
@@ -188,6 +216,7 @@ func (r *VirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				return condition1 || !condition2 || condition3
 			},
 		}).
+		WatchesRawSource(source.Channel(ew.EventChannel(), &handler.EnqueueRequestForObject{})).
 		WithOptions(controller.Options{MaxConcurrentReconciles: VMmaxConcurrentReconciles}).
 		Complete(r)
 }
