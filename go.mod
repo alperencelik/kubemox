@@ -6,7 +6,7 @@ require (
 	github.com/carolynvs/magex v0.9.0
 	github.com/cert-manager/cert-manager v1.18.2
 	github.com/google/go-cmp v0.7.0
-	github.com/luthermonson/go-proxmox v0.3.2
+	github.com/luthermonson/go-proxmox v0.4.0
 	github.com/magefile/mage v1.15.0
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.1
@@ -19,8 +19,6 @@ require (
 	sigs.k8s.io/controller-runtime v0.22.0
 	sigs.k8s.io/release-utils v0.7.7
 )
-
-replace github.com/luthermonson/go-proxmox => github.com/alperencelik/go-proxmox v0.0.0-20260201203053-5a1bc2aed607
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
