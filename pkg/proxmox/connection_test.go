@@ -85,3 +85,59 @@ func TestNewProxmoxClientFromRef(t *testing.T) {
 		t.Errorf("Expected updated cached client to be returned, but got different instance")
 	}
 }
+
+func TestNewProxmoxClientFromRef_MultipleConnections(t *testing.T) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(proxmoxv1alpha1.AddToScheme(scheme))
+
+	conn1 := &proxmoxv1alpha1.ProxmoxConnection{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "conn-1",
+			ResourceVersion: "1",
+		},
+		Spec: proxmoxv1alpha1.ProxmoxConnectionSpec{
+			Endpoint: "https://proxmox1:8006",
+			Username: "root",
+			Password: "password1",
+		},
+	}
+
+	conn2 := &proxmoxv1alpha1.ProxmoxConnection{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "conn-2",
+			ResourceVersion: "1",
+		},
+		Spec: proxmoxv1alpha1.ProxmoxConnectionSpec{
+			Endpoint: "https://proxmox2:8006",
+			Username: "root",
+			Password: "password2",
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(conn1, conn2).Build()
+
+	client1, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "conn-1"})
+	if err != nil {
+		t.Fatalf("Failed to create client 1: %v", err)
+	}
+
+	client2, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "conn-2"})
+	if err != nil {
+		t.Fatalf("Failed to create client 2: %v", err)
+	}
+
+	if client1 == client2 {
+		t.Errorf("Expected different clients for different connections")
+	}
+
+	// Verify caching works independently
+	client1Cached, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "conn-1"})
+	if err != nil {
+		t.Fatalf("Failed to retrieve cached client 1: %v", err)
+	}
+
+	if client1 != client1Cached {
+		t.Errorf("Expected cached client 1 to be returned")
+	}
+}
