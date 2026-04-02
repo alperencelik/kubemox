@@ -34,7 +34,8 @@ func (pc *ProxmoxClient) StorageDownloadURL(ctx context.Context, node string,
 	return response, nil
 }
 
-func (pc *ProxmoxClient) GetStorageContent(ctx context.Context, node, storageName string) ([]*proxmox.StorageContent, error) {
+func (pc *ProxmoxClient) GetStorageContent(ctx context.Context, node,
+	storageName string) ([]*proxmox.StorageContent, error) {
 	// Get node
 	Node, err := pc.getNode(ctx, node)
 	if err != nil {
@@ -64,7 +65,8 @@ func HasFile(storageContent []*proxmox.StorageContent,
 	return false
 }
 
-func (pc *ProxmoxClient) DeleteStorageContent(ctx context.Context, storageName string, spec *proxmoxv1alpha1.StorageDownloadURLSpec) error {
+func (pc *ProxmoxClient) DeleteStorageContent(ctx context.Context, storageName string,
+	spec *proxmoxv1alpha1.StorageDownloadURLSpec) error {
 	// Get node
 	node := spec.Node
 	Node, err := pc.getNode(ctx, node)
