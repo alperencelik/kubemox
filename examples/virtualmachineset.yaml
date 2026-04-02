@@ -12,14 +12,14 @@ spec:
   connectionRef:
     # Name of the ProxmoxConnection resource
     name: proxmoxconnection-sample
-  deletionProtection: false 
+  deletionProtection: false
   enableAutoStart: false
   # Number of VMs to be created
   replicas: 3
   nodeName: lowtower
   template:
     # Name of the template to be cloned
-    name: fedora-template 
+    name: fedora-template
     # CPU cores to be allocated to the VM
     cores: 2
     # CPU sockets to be allocated to the VM
@@ -27,7 +27,7 @@ spec:
     # Memory to be allocated to the VM
     memory: 4096 # As MB
     # Disk used by the VM
-    disk: 
+    disk:
       - storage: local-lvm
         size: 50 # As GB
         device: scsi0

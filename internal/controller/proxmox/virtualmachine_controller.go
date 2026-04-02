@@ -283,7 +283,7 @@ func (r *VirtualMachineReconciler) handleCreateFromTemplate(ctx context.Context,
 			r.StopWatcher(vm.Name)
 			return dontRequeue, reconcile.TerminalError(err)
 		}
-		if updateErr := r.Status().Update(context.Background(), vm); updateErr != nil {
+		if updateErr := r.Status().Update(ctx, vm); updateErr != nil {
 			return requeue, updateErr
 		}
 		return requeue, err
@@ -311,9 +311,10 @@ func (r *VirtualMachineReconciler) handleCreateFromScratch(ctx context.Context, 
 			r.StopWatcher(vm.Name)
 			return dontRequeue, reconcile.TerminalError(err)
 		}
-		if updateErr := r.Status().Update(context.Background(), vm); updateErr != nil {
+		if updateErr := r.Status().Update(ctx, vm); updateErr != nil {
 			return requeue, updateErr
 		}
+		return requeue, err
 	}
 	r.Recorder.Event(vm, "Normal", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
 	err = r.handleCloudInitOperations(ctx, pc, vm)
@@ -637,8 +638,5 @@ func (r *VirtualMachineReconciler) IsResourceReady(ctx context.Context, obj prox
 }
 
 func (r *VirtualMachineReconciler) StopWatcher(name string) {
-	if stopChan, exists := r.Watchers.Watchers[name]; exists {
-		close(stopChan)
-		delete(r.Watchers.Watchers, name)
-	}
+	r.Watchers.DeleteWatcher(name)
 }

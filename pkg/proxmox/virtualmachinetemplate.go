@@ -136,7 +136,7 @@ func (pc *ProxmoxClient) ImportDiskToVM(vmName, nodeName, diskName, storageName 
 	if scsi0 != "" {
 		return nil
 	}
-	localStorage, err := pc.GetStorage("local")
+	localStorage, err := pc.GetStorage(ctx, "local")
 	if err != nil {
 		log.Log.Error(err, "Error getting local storage")
 		return err

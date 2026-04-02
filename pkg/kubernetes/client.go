@@ -27,7 +27,7 @@ func InsideCluster() bool {
 	return false
 }
 
-func ClientConfig() any {
+func ClientConfig() *rest.Config {
 	if InsideCluster() {
 		config, err := rest.InClusterConfig()
 		if err != nil {
@@ -52,7 +52,7 @@ func ClientConfig() any {
 }
 
 func GetKubeconfig() (*kubernetes.Clientset, dynamic.Interface) {
-	config := ClientConfig().(*rest.Config)
+	config := ClientConfig()
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(err.Error())

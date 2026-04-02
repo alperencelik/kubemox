@@ -32,23 +32,12 @@ type StorageDownloadURLSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// +kubebuilder:validation:Pattern=\b(iso|vztmpl)\b
-	Content  string `json:"content"`
-	Filename string `json:"filename"`
-	Node     string `json:"node"`
-	// +kubebuilder:default:=local
-	Storage string `json:"storage,omitempty"`
-	URL     string `json:"url"`
-	// Optional fields
-	Checksum          string `json:"checksum,omitempty"`
-	ChecksumAlgorithm string `json:"checksumAlgorithm,omitempty"`
-	Compression       string `json:"compression,omitempty"`
-	VerifyCertificate bool   `json:"verifyCertificate,omitempty"`
+	StorageDownloadURLContent `json:",inline"`
 	// +kubebuilder:validation:Required
 	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 }
 
-type SDUSpec struct {
+type StorageDownloadURLContent struct {
 	// +kubebuilder:validation:Pattern=\b(iso|vztmpl)\b
 	Content  string `json:"content"`
 	Filename string `json:"filename"`

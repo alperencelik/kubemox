@@ -8,7 +8,6 @@ import (
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -18,7 +17,7 @@ var (
 
 func ListCRDs() ([]string, error) {
 	// Create apiextensions client
-	config := ClientConfig().(*rest.Config)
+	config := ClientConfig()
 	// create the clientset
 	clientset, err := apiextensionsclientset.NewForConfig(config)
 	if err != nil {
@@ -38,7 +37,7 @@ func ListCRDs() ([]string, error) {
 }
 
 func GetManagedVMCRD() (*v1.CustomResourceDefinition, error) {
-	config := ClientConfig().(*rest.Config)
+	config := ClientConfig()
 	// create the clientset
 	clientset, err := apiextensionsclientset.NewForConfig(config)
 	if err != nil {

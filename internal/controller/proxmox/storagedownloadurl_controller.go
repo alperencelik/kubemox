@@ -131,7 +131,7 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	// Check if the filename exists in the storage
-	storageContent, err := pc.GetStorageContent(node, storage)
+	storageContent, err := pc.GetStorageContent(ctx, node, storage)
 	if err != nil {
 		logger.Error(err, "unable to get storage content")
 		return ctrl.Result{}, err
@@ -177,7 +177,6 @@ func (r *StorageDownloadURLReconciler) SetupWithManager(mgr ctrl.Manager) error 
 				return condition1 || !condition2
 			},
 		}).
-		Owns(&proxmoxv1alpha1.StorageDownloadURL{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: SDUmaxConcurrentReconciles}).
 		Complete(r)
 }
@@ -197,7 +196,7 @@ func (r *StorageDownloadURLReconciler) handleDownloadURL(ctx context.Context,
 	// Download the file
 	logger := log.FromContext(ctx)
 
-	taskUPID, taskErr := pc.StorageDownloadURL(storageDownloadURL.Spec.Node, &storageDownloadURL.Spec)
+	taskUPID, taskErr := pc.StorageDownloadURL(ctx, storageDownloadURL.Spec.Node, &storageDownloadURL.Spec)
 	if taskErr != nil {
 		logger.Error(taskErr, "unable to download the file")
 		return taskErr
@@ -261,7 +260,7 @@ func (r *StorageDownloadURLReconciler) handleDelete(ctx context.Context,
 		}
 	}
 	// Delete the file from the storage
-	err = pc.DeleteStorageContent(storageDownloadURL.Spec.Storage, &storageDownloadURL.Spec)
+	err = pc.DeleteStorageContent(ctx, storageDownloadURL.Spec.Storage, &storageDownloadURL.Spec)
 	if err != nil {
 		logger.Error(err, "unable to delete the file")
 		return ctrl.Result{}, client.IgnoreNotFound(err)

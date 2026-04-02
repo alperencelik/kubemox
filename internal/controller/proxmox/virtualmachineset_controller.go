@@ -131,25 +131,13 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{Requeue: true, RequeueAfter: VMSetreconcilationPeriod * time.Second}, client.IgnoreNotFound(err)
 	}
 
-	// Get VM list and create them
-	vmList = &proxmoxv1alpha1.VirtualMachineList{}
-	listOptions = []client.ListOption{
-		client.InNamespace(vmSet.Namespace),
-		client.MatchingLabels{"owner": vmSet.Name},
-	}
-	err = r.List(ctx, vmList, listOptions...)
-	if err != nil {
-		logger.Error(err, "unable to list VirtualMachines")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
-
 	// If the number of the VirtualMachines is less than the desired number of replicas and the object
 	// is not being deleted, create the VirtualMachines
 	err = r.handleVMsetOperations(ctx, vmSet, vmList)
 	if err != nil {
 		var notFoundErr *proxmox.NotFoundError
 		if errors.As(err, &notFoundErr) || kerrors.IsNotFound(err) {
-			// Resource not foun d, might be deleted meanwhile
+			// Resource not found, might be deleted meanwhile
 			logger.Info("Resource not found. Ignoring since object must be deleted")
 			return ctrl.Result{}, nil
 		}
@@ -173,7 +161,7 @@ func (r *VirtualMachineSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		})
 }
 
-func (r *VirtualMachineSetReconciler) createOrUpdateVirtualMachineCRs(vmSet *proxmoxv1alpha1.VirtualMachineSet) error {
+func (r *VirtualMachineSetReconciler) createOrUpdateVirtualMachineCRs(ctx context.Context, vmSet *proxmoxv1alpha1.VirtualMachineSet) error {
 	for i := 0; i < vmSet.Spec.Replicas; i++ {
 		index := strconv.Itoa(i)
 		// Define a new VirtualMachine object
@@ -185,7 +173,7 @@ func (r *VirtualMachineSetReconciler) createOrUpdateVirtualMachineCRs(vmSet *pro
 		}
 
 		// Create or update the VirtualMachine instance
-		_, err := controllerutil.CreateOrUpdate(context.Background(), r.Client, virtualMachine, func() error {
+		_, err := controllerutil.CreateOrUpdate(ctx, r.Client, virtualMachine, func() error {
 			// Set the owner and controller reference
 			if err := controllerutil.SetControllerReference(vmSet, virtualMachine, r.Scheme); err != nil {
 				return err
@@ -236,7 +224,7 @@ func labelsSetter(vmSet *proxmoxv1alpha1.VirtualMachineSet) map[string]string {
 	return labels
 }
 
-func (r *VirtualMachineSetReconciler) scaleDownVMs(vmSet *proxmoxv1alpha1.VirtualMachineSet,
+func (r *VirtualMachineSetReconciler) scaleDownVMs(ctx context.Context, vmSet *proxmoxv1alpha1.VirtualMachineSet,
 	vmList *proxmoxv1alpha1.VirtualMachineList) error {
 	// Create a map of expected VirtualMachines
 	expectedVMMap := make(map[string]bool)
@@ -248,7 +236,7 @@ func (r *VirtualMachineSetReconciler) scaleDownVMs(vmSet *proxmoxv1alpha1.Virtua
 	for i := range vmList.Items {
 		vm := &vmList.Items[i]
 		if _, exists := expectedVMMap[vm.Name]; !exists {
-			if err := r.Delete(context.Background(), vm); err != nil {
+			if err := r.Delete(ctx, vm); err != nil {
 				return fmt.Errorf("unable to delete VirtualMachine: %w", err)
 			}
 		}
@@ -273,7 +261,7 @@ func (r *VirtualMachineSetReconciler) handleVMsetOperations(ctx context.Context,
 
 	// If the number of the VirtualMachines is more than the desired number of replicas
 	if len(vmList.Items) > replicas {
-		if err := r.scaleDownVMs(vmSet, vmList); err != nil {
+		if err := r.scaleDownVMs(ctx, vmSet, vmList); err != nil {
 			var notFoundErr *proxmox.NotFoundError
 			if errors.As(err, &notFoundErr) {
 				// Ignore not found errors
@@ -293,7 +281,7 @@ func (r *VirtualMachineSetReconciler) handleVMsetOperations(ctx context.Context,
 			return err
 		}
 	} else {
-		if err := r.createOrUpdateVirtualMachineCRs(vmSet); err != nil {
+		if err := r.createOrUpdateVirtualMachineCRs(ctx, vmSet); err != nil {
 			return err
 		}
 	}

@@ -43,7 +43,7 @@ type VirtualMachineTemplateSpec struct {
 	VirtualMachineConfig VirtualMachineConfig `json:"virtualMachineConfig,omitempty"`
 
 	// Image config
-	ImageConfig SDUSpec `json:"imageConfig"`
+	ImageConfig StorageDownloadURLContent `json:"imageConfig"`
 
 	// Cloud Init Config
 	CloudInitConfig CloudInitConfig `json:"cloudInitConfig,omitempty"`
@@ -152,7 +152,7 @@ type IPConfig struct {
 type VirtualMachineTemplateStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Conditions []metav1.Condition `json:"condition,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	Status     string             `json:"status,omitempty"`
 }
 
@@ -165,7 +165,7 @@ type VirtualMachineTemplateStatus struct {
 // +kubebuilder:printcolumn:name="Image",type="string",JSONPath=".spec.imageConfig.filename",description="The name of the image"
 // +kubebuilder:printcolumn:name="Username",type="string",JSONPath=".spec.cloudInitConfig.user",description="The username"
 // +kubebuilder:printcolumn:name="Password",type="string",JSONPath=".spec.cloudInitConfig.password",description="The password"
-// +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.condition[0].type",description="The status of the VM"
+// +kubebuilder:printcolumn:name="Status",type="string",JSONPath=".status.conditions[0].type",description="The status of the VM"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // VirtualMachineTemplate is the Schema for the virtualmachinetemplates API

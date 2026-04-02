@@ -44,10 +44,6 @@ type VirtualMachineSnapshotReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-var (
-	StatusCode int
-)
-
 const (
 	// Controller settings
 	VMSnapshotreconcilationPeriod     = 10
@@ -177,12 +173,12 @@ func (r *VirtualMachineSnapshotReconciler) handleSnapshotCreation(ctx context.Co
 		return nil
 	} else if vmSnapshot.Status.Status != snapshotCreatedStatus {
 		// Create the snapshot
-		StatusCode, err = pc.CreateVMSnapshot(vmName, snapshotName)
+		statusCode, err := pc.CreateVMSnapshot(vmName, snapshotName)
 		if err != nil {
 			logger.Error(err, "Failed to create VM snapshot")
 			return client.IgnoreNotFound(err)
 		}
-		switch StatusCode {
+		switch statusCode {
 		case 0:
 			vmSnapshot.Status.Status = snapshotCreatedStatus
 			vmSnapshot.Spec.Timestamp = metav1.Now()
