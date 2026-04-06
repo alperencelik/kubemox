@@ -123,7 +123,8 @@ func TestNewProxmoxClientFromRef_APITokenNoTTL(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(conn).Build()
 
 	// Create initial client
-	client1, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "test-token-conn"})
+	client1, err := NewProxmoxClientFromRef(context.Background(),
+		cl, &corev1.LocalObjectReference{Name: "test-token-conn"})
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -136,7 +137,8 @@ func TestNewProxmoxClientFromRef_APITokenNoTTL(t *testing.T) {
 	clientCacheMutex.Unlock()
 
 	// Should still return cached client since API tokens don't use session TTL
-	client2, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "test-token-conn"})
+	client2, err := NewProxmoxClientFromRef(context.Background(),
+		cl, &corev1.LocalObjectReference{Name: "test-token-conn"})
 	if err != nil {
 		t.Fatalf("Failed to retrieve cached client: %v", err)
 	}
