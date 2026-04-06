@@ -33,8 +33,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
@@ -44,7 +46,7 @@ import (
 type VirtualMachineTemplateReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Watchers *proxmox.ExternalWatchers
+	EventCh  <-chan event.GenericEvent
 	Recorder record.EventRecorder
 }
 
@@ -96,9 +98,6 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 		logger.Error(err, "Error getting Proxmox client reference")
 		return ctrl.Result{}, err
 	}
-
-	// Handle the external watcher for the VirtualMachineTemplate
-	r.handleWatcher(ctx, req, vmTemplate)
 
 	// Check if the VirtualMachineTemplate is marked for deleted, which is indicated by the deletion timestamp being set.
 	if vmTemplate.DeletionTimestamp.IsZero() {
@@ -162,7 +161,7 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *VirtualMachineTemplateReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	builder := ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.VirtualMachineTemplate{}).
 		WithEventFilter(predicate.Funcs{
 			UpdateFunc: func(e event.UpdateEvent) bool {
@@ -173,8 +172,13 @@ func (r *VirtualMachineTemplateReconciler) SetupWithManager(mgr ctrl.Manager) er
 				return condition1 || !condition2
 			},
 		}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: VMTemplateMaxConcurrentReconciles}).
-		Complete(r)
+		WithOptions(controller.Options{MaxConcurrentReconciles: VMTemplateMaxConcurrentReconciles})
+
+	if r.EventCh != nil {
+		builder = builder.WatchesRawSource(source.Channel(r.EventCh, &handler.EnqueueRequestForObject{}))
+	}
+
+	return builder.Complete(r)
 }
 
 func (r *VirtualMachineTemplateReconciler) handleResourceNotFound(ctx context.Context, err error) error {
@@ -473,53 +477,8 @@ func (r *VirtualMachineTemplateReconciler) handleStatus(ctx context.Context,
 	return ctrl.Result{}, nil
 }
 
-func (r *VirtualMachineTemplateReconciler) handleWatcher(ctx context.Context, req ctrl.Request,
-	vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) {
-	r.Watchers.HandleWatcher(ctx, req, func(ctx context.Context, stopChan chan struct{}) (ctrl.Result, error) {
-		return proxmox.StartWatcher(ctx, vmTemplate, stopChan, r.fetchResource, r.updateStatus,
-			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher, r.IsResourceReady)
-	})
-}
-
-func (r *VirtualMachineTemplateReconciler) fetchResource(ctx context.Context, key client.ObjectKey, obj proxmox.Resource) error {
-	return r.Get(ctx, key, obj.(*proxmoxv1alpha1.VirtualMachineTemplate))
-}
-
-func (r *VirtualMachineTemplateReconciler) updateStatus(ctx context.Context, obj proxmox.Resource) error {
-	return r.Status().Update(ctx, obj.(*proxmoxv1alpha1.VirtualMachineTemplate))
-}
-
-func (r *VirtualMachineTemplateReconciler) checkDelta(ctx context.Context, obj proxmox.Resource) (bool, error) {
-	logger := log.FromContext(ctx)
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.ConnectionRef)
-	if err != nil {
-		logger.Error(err, "Error getting Proxmox client reference")
-		return false, err
-	}
-	return pc.CheckVirtualMachineTemplateDelta(obj.(*proxmoxv1alpha1.VirtualMachineTemplate))
-}
-
-// TODO: Try to remove the requirement of handleAutoStartFunc
-func (r *VirtualMachineTemplateReconciler) handleAutoStartFunc(_ context.Context, _ proxmox.Resource) (ctrl.Result, error) {
-	return ctrl.Result{}, nil
-}
-
-func (r *VirtualMachineTemplateReconciler) handleReconcileFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
-	return r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKey{Namespace: obj.GetNamespace(), Name: obj.GetName()}})
-}
-
-func (r *VirtualMachineTemplateReconciler) IsResourceReady(ctx context.Context, obj proxmox.Resource) (bool, error) {
-	logger := log.FromContext(ctx)
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.ConnectionRef)
-	if err != nil {
-		logger.Error(err, "Error getting Proxmox client reference")
-		return false, err
-	}
-	return pc.IsVirtualMachineReady(obj.(*proxmoxv1alpha1.VirtualMachineTemplate))
-}
-
 func (r *VirtualMachineTemplateReconciler) handleDelete(ctx context.Context,
-	req ctrl.Request, pc *proxmox.ProxmoxClient, vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (ctrl.Result, error) {
+	_ ctrl.Request, pc *proxmox.ProxmoxClient, vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	if !meta.IsStatusConditionPresentAndEqual(vmTemplate.Status.Conditions, typeDeletingVirtualMachineTemplate, metav1.ConditionUnknown) {
 		meta.SetStatusCondition(&vmTemplate.Status.Conditions, metav1.Condition{
@@ -532,12 +491,6 @@ func (r *VirtualMachineTemplateReconciler) handleDelete(ctx context.Context,
 			logger.Error(err, "Failed to update VirtualMachineTemplate status")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}
-	}
-	// TODO: Stop the watcher if resource is being deleted
-	// Stop the watcher if resource is being deleted
-	if stopChan, exists := r.Watchers.Watchers[req.Name]; exists {
-		close(stopChan)
-		delete(r.Watchers.Watchers, req.Name)
 	}
 	// Delete the VirtualMachineTemplate
 	if err := r.deleteVirtualMachineTemplate(ctx, pc, vmTemplate); err != nil {
