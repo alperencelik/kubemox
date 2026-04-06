@@ -25,7 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -59,7 +59,7 @@ type ManagedVirtualMachineReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	EventCh  <-chan event.GenericEvent
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=managedvirtualmachines,verbs=get;list;watch;create;update;patch;delete
@@ -141,7 +141,7 @@ func (r *ManagedVirtualMachineReconciler) Reconcile(ctx context.Context, req ctr
 	if err = pc.UpdateManagedVM(ctx, managedVM); err != nil {
 		var taskErr *proxmox.TaskError
 		if errors.As(err, &taskErr) {
-			r.Recorder.Event(managedVM, "Warning", "Error",
+			r.Recorder.Eventf(managedVM, nil, "Warning", "Error", "Error",
 				fmt.Sprintf("ManagedVirtualMachine %s failed to update due to %s", managedVM.Name, taskErr.ExitStatus))
 		}
 		logger.Error(err, "Failed to update ManagedVirtualMachine")
@@ -200,13 +200,13 @@ func (r *ManagedVirtualMachineReconciler) handleResourceNotFound(ctx context.Con
 // return err
 // }
 // err = r.Create(context.Background(), managedVM)
-// r.Recorder.Event(managedVM, "Normal", "Creating", fmt.Sprintf("Creating ManagedVirtualMachine %s", managedVM.Name))
+// r.Recorder.Eventf(managedVM, nil, "Normal", "Creating", "Creating", fmt.Sprintf("Creating ManagedVirtualMachine %s", managedVM.Name))
 // if err != nil {
 // logger.Error(err, fmt.Sprintf("ManagedVM %v could not be created", managedVM.Name))
 // return err
 // }
 // // Add metrics and events
-// r.Recorder.Event(managedVM, "Normal", "Created", fmt.Sprintf("ManagedVirtualMachine %s created", managedVM.Name))
+// r.Recorder.Eventf(managedVM, nil, "Normal", "Created", "Created", fmt.Sprintf("ManagedVirtualMachine %s created", managedVM.Name))
 // } else {
 // logger.Info(fmt.Sprintf("ManagedVM %v already exists", managedVM))
 // }
@@ -231,7 +231,7 @@ func (r *ManagedVirtualMachineReconciler) handleAutoStart(ctx context.Context,
 				var taskErr *proxmox.TaskError
 				if errors.As(err, &taskErr) {
 					// Handle the specific TaskError
-					r.Recorder.Event(managedVM, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to start due to %s", vmName, taskErr.ExitStatus))
+					r.Recorder.Eventf(managedVM, nil, "Warning", "Error", "Error", fmt.Sprintf("VirtualMachine %s failed to start due to %s", vmName, taskErr.ExitStatus))
 				} else {
 					logger.Error(err, "Failed to start VirtualMachine")
 				}
@@ -290,13 +290,13 @@ func (r *ManagedVirtualMachineReconciler) handleDelete(ctx context.Context, _ ct
 		}
 	}
 	// Delete the VM
-	r.Recorder.Event(managedVM, "Normal", "Deleting", fmt.Sprintf("Deleting ManagedVirtualMachine %s", managedVM.Name))
+	r.Recorder.Eventf(managedVM, nil, "Normal", "Deleting", "Deleting", fmt.Sprintf("Deleting ManagedVirtualMachine %s", managedVM.Name))
 	if !managedVM.Spec.DeletionProtection {
 		err = pc.DeleteVM(managedVM.Name, managedVM.Spec.NodeName)
 		if err != nil {
 			var taskErr *proxmox.TaskError
 			if errors.As(err, &taskErr) {
-				r.Recorder.Event(managedVM, "Warning", "Error", fmt.Sprintf("ManagedVirtualMachine %s failed to delete due to %s", managedVM.Name, err))
+				r.Recorder.Eventf(managedVM, nil, "Warning", "Error", "Error", fmt.Sprintf("ManagedVirtualMachine %s failed to delete due to %s", managedVM.Name, err))
 			}
 			logger.Error(err, "Error deleting Managed Virtual Machine")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)

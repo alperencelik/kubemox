@@ -175,7 +175,7 @@ func main() {
 		Scheme:   mgr.GetScheme(),
 		Watcher:  vmWatcher,
 		EventCh:  vmWatcher.EventChannel(),
-		Recorder: mgr.GetEventRecorderFor("VirtualMachine"),
+		Recorder: mgr.GetEventRecorder("VirtualMachine"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachine")
 		os.Exit(1)
@@ -183,7 +183,7 @@ func main() {
 	if err = (&proxmoxcontroller.ManagedVirtualMachineReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("ManagedVirtualMachine"),
+		Recorder: mgr.GetEventRecorder("ManagedVirtualMachine"),
 		EventCh:  managedVMWatcher.EventChannel(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ManagedVirtualMachine")
@@ -213,7 +213,7 @@ func main() {
 	if err = (&proxmoxcontroller.ContainerReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("Container"),
+		Recorder: mgr.GetEventRecorder("Container"),
 		EventCh:  containerWatcher.EventChannel(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Container")
@@ -237,7 +237,7 @@ func main() {
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
 		EventCh:  vmTemplateWatcher.EventChannel(),
-		Recorder: mgr.GetEventRecorderFor("VirtualMachineTemplate"),
+		Recorder: mgr.GetEventRecorder("VirtualMachineTemplate"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineTemplate")
 		os.Exit(1)

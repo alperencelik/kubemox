@@ -27,7 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -47,7 +47,7 @@ type VirtualMachineTemplateReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	EventCh  <-chan event.GenericEvent
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 }
 
 const (
@@ -272,7 +272,7 @@ func (r *VirtualMachineTemplateReconciler) handleVMCreation(ctx context.Context,
 		// Wait for the task to complete
 		taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 3, 7)
 		if !taskStatus {
-			r.Recorder.Event(vmTemplate, "Warning", "VMTemplateCreateFailed",
+			r.Recorder.Eventf(vmTemplate, nil, "Warning", "VMTemplateCreateFailed", "VMTemplateCreateFailed",
 				fmt.Sprintf("VirtualMachine template %s creation failed: %s", templateVMName, task.ExitStatus))
 			// Return the task.ExitStatus as an error
 			return &proxmox.TaskError{ExitStatus: task.ExitStatus}
@@ -281,7 +281,7 @@ func (r *VirtualMachineTemplateReconciler) handleVMCreation(ctx context.Context,
 			logger.Error(taskErr, "Failed to add tag to VM template")
 			return taskErr
 		}
-		r.Recorder.Event(vmTemplate, "Normal", "VMTemplateCreated", fmt.Sprintf("VirtualMachine template %s is created", templateVMName))
+		r.Recorder.Eventf(vmTemplate, nil, "Normal", "VMTemplateCreated", "VMTemplateCreated", fmt.Sprintf("VirtualMachine template %s is created", templateVMName))
 	}
 	return nil
 }
@@ -304,7 +304,7 @@ func (r *VirtualMachineTemplateReconciler) deleteVirtualMachineTemplate(ctx cont
 	logger := log.FromContext(ctx)
 	logger.Info(fmt.Sprintf("Deleting VirtualMachineTemplate %s", vmTemplate.Name))
 	// Delete the VM
-	r.Recorder.Event(vmTemplate, "Normal", "VMTemplateDeleting", fmt.Sprintf("VirtualMachine template %s is deleting", vmTemplate.Name))
+	r.Recorder.Eventf(vmTemplate, nil, "Normal", "VMTemplateDeleting", "VMTemplateDeleting", fmt.Sprintf("VirtualMachine template %s is deleting", vmTemplate.Name))
 	if vmTemplate.Spec.DeletionProtection {
 		logger.Info("Deletion protection is enabled, skipping the deletion of VM")
 		return nil
@@ -313,7 +313,7 @@ func (r *VirtualMachineTemplateReconciler) deleteVirtualMachineTemplate(ctx cont
 		if err != nil {
 			var taskErr *proxmox.TaskError
 			if errors.As(err, &taskErr) {
-				r.Recorder.Event(vmTemplate, "Warning", "VMTemplateDeleteFailed",
+				r.Recorder.Eventf(vmTemplate, nil, "Warning", "VMTemplateDeleteFailed", "VMTemplateDeleteFailed",
 					fmt.Sprintf("VirtualMachine template %s deletion failed: %s", vmTemplate.Name, err))
 			}
 			return err
@@ -377,7 +377,7 @@ func (r *VirtualMachineTemplateReconciler) handleCloudInitOperations(ctx context
 	if err != nil {
 		var taskErr *proxmox.TaskError
 		if errors.As(err, &taskErr) {
-			r.Recorder.Event(vmTemplate, "Warning", "VMTemplateImportDiskFailed",
+			r.Recorder.Eventf(vmTemplate, nil, "Warning", "VMTemplateImportDiskFailed", "VMTemplateImportDiskFailed",
 				fmt.Sprintf("VirtualMachine template %s import disk failed: %s", templateVMName, err))
 		}
 		logger.Error(err, "Failed to import disk to VM")
@@ -388,7 +388,7 @@ func (r *VirtualMachineTemplateReconciler) handleCloudInitOperations(ctx context
 	if err != nil {
 		var taskErr *proxmox.TaskError
 		if errors.As(err, &taskErr) {
-			r.Recorder.Event(vmTemplate, "Warning", "VMTemplateAddCloudInitDriveFailed",
+			r.Recorder.Eventf(vmTemplate, nil, "Warning", "VMTemplateAddCloudInitDriveFailed", "VMTemplateAddCloudInitDriveFailed",
 				fmt.Sprintf("VirtualMachine template %s cloud init drive addition failed: %s", templateVMName, err))
 		}
 		logger.Error(err, "Failed to add cloud-init drive to VM")

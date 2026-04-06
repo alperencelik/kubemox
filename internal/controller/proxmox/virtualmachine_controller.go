@@ -27,7 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -75,7 +75,7 @@ type VirtualMachineReconciler struct {
 	Scheme   *runtime.Scheme
 	Watcher  watcher.WatcherManager
 	EventCh  <-chan event.GenericEvent
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachines,verbs=get;list;watch;create;update;patch;delete
@@ -270,18 +270,18 @@ func (r *VirtualMachineReconciler) handleCreateFromTemplate(ctx context.Context,
 	vmName := vm.Spec.Name
 	nodeName := vm.Spec.NodeName
 
-	r.Recorder.Event(vm, "Normal", "Creating", fmt.Sprintf("VirtualMachine %s is being created", vmName))
+	r.Recorder.Eventf(vm, nil, "Normal", "Creating", "Creating", fmt.Sprintf("VirtualMachine %s is being created", vmName))
 	err := pc.CreateVMFromTemplate(vm)
 	if err != nil {
 		var notFoundErr *proxmox.NotFoundError
 		if errors.As(err, &notFoundErr) {
-			r.Recorder.Event(vm, "Warning", "Error",
+			r.Recorder.Eventf(vm, nil, "Warning", "Error", "Error",
 				fmt.Sprintf("VirtualMachine %s failed to create due to %s", vmName, err))
 			return dontRequeue, reconcile.TerminalError(err)
 		}
 		var taskErr *proxmox.TaskError
 		if errors.As(err, &taskErr) {
-			r.Recorder.Event(vm, "Warning", "Error",
+			r.Recorder.Eventf(vm, nil, "Warning", "Error", "Error",
 				fmt.Sprintf("VirtualMachine %s failed to create due to %s", vmName, err))
 			if utils.IsTimeoutError(err) {
 				return requeue, err
@@ -294,7 +294,7 @@ func (r *VirtualMachineReconciler) handleCreateFromTemplate(ctx context.Context,
 		}
 		return requeue, err
 	}
-	r.Recorder.Event(vm, "Normal", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
+	r.Recorder.Eventf(vm, nil, "Normal", "Created", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
 	err = r.handleAdditionalConfig(ctx, pc, vm)
 	if err != nil {
 		logger.Error(err, "Error handling additional configuration")
@@ -307,12 +307,12 @@ func (r *VirtualMachineReconciler) handleCreateFromScratch(ctx context.Context, 
 	vmName := vm.Spec.Name
 	nodeName := vm.Spec.NodeName
 
-	r.Recorder.Event(vm, "Normal", "Creating", fmt.Sprintf("VirtualMachine %s is being created", vmName))
+	r.Recorder.Eventf(vm, nil, "Normal", "Creating", "Creating", fmt.Sprintf("VirtualMachine %s is being created", vmName))
 	err := pc.CreateVMFromScratch(vm)
 	if err != nil {
 		var taskErr *proxmox.TaskError
 		if errors.As(err, &taskErr) {
-			r.Recorder.Event(vm, "Warning", "Error",
+			r.Recorder.Eventf(vm, nil, "Warning", "Error", "Error",
 				fmt.Sprintf("VirtualMachine %s failed to create due to %s", vmName, err))
 			r.Watcher.Unregister(client.ObjectKeyFromObject(vm))
 			return dontRequeue, reconcile.TerminalError(err)
@@ -322,7 +322,7 @@ func (r *VirtualMachineReconciler) handleCreateFromScratch(ctx context.Context, 
 		}
 		return requeue, err
 	}
-	r.Recorder.Event(vm, "Normal", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
+	r.Recorder.Eventf(vm, nil, "Normal", "Created", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
 	err = r.handleCloudInitOperations(ctx, pc, vm)
 	if err != nil {
 		return requeue, err
@@ -339,7 +339,7 @@ func (r *VirtualMachineReconciler) startCreatedVM(ctx context.Context, pc *proxm
 	if err != nil {
 		var taskErr *proxmox.TaskError
 		if errors.As(err, &taskErr) {
-			r.Recorder.Event(vm, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to start due to %s", vmName, err))
+			r.Recorder.Eventf(vm, nil, "Warning", "Error", "Error", fmt.Sprintf("VirtualMachine %s failed to start due to %s", vmName, err))
 			r.Watcher.Unregister(client.ObjectKeyFromObject(vm))
 			return dontRequeue, reconcile.TerminalError(err)
 		}
@@ -356,7 +356,7 @@ func (r *VirtualMachineReconciler) DeleteVirtualMachine(ctx context.Context,
 	pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	// Delete the VM
-	r.Recorder.Event(vm, "Normal", "Deleting", fmt.Sprintf("VirtualMachine %s is being deleted", vm.Spec.Name))
+	r.Recorder.Eventf(vm, nil, "Normal", "Deleting", "Deleting", fmt.Sprintf("VirtualMachine %s is being deleted", vm.Spec.Name))
 	if vm.Spec.DeletionProtection {
 		logger.Info(fmt.Sprintf("VirtualMachine %s is protected from deletion", vm.Spec.Name))
 		return ctrl.Result{}, nil
@@ -371,7 +371,7 @@ func (r *VirtualMachineReconciler) DeleteVirtualMachine(ctx context.Context,
 			logger.Error(err, "Failed to delete VirtualMachine")
 			var taskErr *proxmox.TaskError
 			if errors.As(err, &taskErr) {
-				r.Recorder.Event(vm, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to delete due to %s", vm.Spec.Name, err))
+				r.Recorder.Eventf(vm, nil, "Warning", "Error", "Error", fmt.Sprintf("VirtualMachine %s failed to delete due to %s", vm.Spec.Name, err))
 				r.Watcher.Unregister(client.ObjectKeyFromObject(vm))
 				return dontRequeue, reconcile.TerminalError(err)
 			}
@@ -393,7 +393,7 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(ctx context.Contex
 	qemuStatus, err := pc.UpdateVMStatus(vm.Spec.Name, vm.Spec.NodeName)
 	if err != nil {
 		// Update the status condition
-		r.Recorder.Event(vm, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to update status due to %s", vm.Spec.Name, err))
+		r.Recorder.Eventf(vm, nil, "Warning", "Error", "Error", fmt.Sprintf("VirtualMachine %s failed to update status due to %s", vm.Spec.Name, err))
 		return err
 	}
 	vm.Status.Status = qemuStatus
@@ -428,7 +428,7 @@ func (r *VirtualMachineReconciler) handleAutoStart(ctx context.Context,
 			if err != nil {
 				var taskErr *proxmox.TaskError
 				if errors.As(err, &taskErr) {
-					r.Recorder.Event(vm, "Warning", "Error", fmt.Sprintf("VirtualMachine %s failed to start due to %s", vmName, err))
+					r.Recorder.Eventf(vm, nil, "Warning", "Error", "Error", fmt.Sprintf("VirtualMachine %s failed to start due to %s", vmName, err))
 					r.Watcher.Unregister(client.ObjectKeyFromObject(vm))
 					return dontRequeue, reconcile.TerminalError(err)
 				}
@@ -452,7 +452,7 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachine(ctx context.Context,
 		logger.Error(err, "Failed to update VirtualMachine")
 		var taskErr *proxmox.TaskError
 		if errors.As(err, &taskErr) {
-			r.Recorder.Event(vm, "Warning", "Error",
+			r.Recorder.Eventf(vm, nil, "Warning", "Error", "Error",
 				fmt.Sprintf("VirtualMachine %s failed to update due to %s", vm.Name, taskErr.ExitStatus))
 			r.Watcher.Unregister(client.ObjectKeyFromObject(vm))
 			return &dontRequeue, reconcile.TerminalError(err)
@@ -465,7 +465,7 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachine(ctx context.Context,
 		logger.Error(err, "Failed to configure VirtualMachine")
 		var taskErr *proxmox.TaskError
 		if errors.As(err, &taskErr) {
-			r.Recorder.Event(vm, "Warning", "Error",
+			r.Recorder.Eventf(vm, nil, "Warning", "Error", "Error",
 				fmt.Sprintf("VirtualMachine %s failed to configure due to %s", vm.Name, taskErr.ExitStatus))
 			r.Watcher.Unregister(client.ObjectKeyFromObject(vm))
 			return &dontRequeue, reconcile.TerminalError(err)
