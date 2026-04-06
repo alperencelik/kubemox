@@ -322,7 +322,7 @@ func (pc *ProxmoxClient) UpdateVirtualMachineTemplate(vmTemplate *proxmoxv1alpha
 	}
 	// Update cloud-init config
 	if reconfigureCloudInit, _ := pc.CheckVirtualMachineTemplateCIConfig(vmTemplate); reconfigureCloudInit {
-		err := pc.SetCloudInitConfig(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName, &vmTemplate.Spec.CloudInitConfig)
+		err := pc.SetCloudInitConfig(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName, vmTemplate.Spec.CloudInitConfig)
 		if err != nil {
 			log.Log.Error(err, "Error updating cloud-init config")
 		}
@@ -333,6 +333,9 @@ func (pc *ProxmoxClient) UpdateVirtualMachineTemplate(vmTemplate *proxmoxv1alpha
 
 func (pc *ProxmoxClient) CheckVirtualMachineTemplateCIConfig(vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (
 	bool, error) {
+	if vmTemplate.Spec.CloudInitConfig == nil {
+		return false, nil
+	}
 	desiredCloudInitConfig := vmTemplate.Spec.CloudInitConfig
 	actualCloudInitConfig, err := pc.GetCloudInitConfig(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
 	if err != nil {
@@ -340,7 +343,7 @@ func (pc *ProxmoxClient) CheckVirtualMachineTemplateCIConfig(vmTemplate *proxmox
 	}
 	// Compare with the desired cloud-init config
 	if !cmp.Equal(desiredCloudInitConfig, actualCloudInitConfig,
-		cloudInitcompareOptions(&vmTemplate.Spec.CloudInitConfig)...) {
+		cloudInitcompareOptions(vmTemplate.Spec.CloudInitConfig)...) {
 		return true, nil
 	}
 	return false, nil

@@ -22,6 +22,8 @@ type ProxmoxClient struct {
 	vmIDMutex  sync.RWMutex
 }
 
+const clientCacheTTL = 1 * time.Hour
+
 var (
 	clientCache      = make(map[string]*CachedClient)
 	clientCacheMutex sync.RWMutex
@@ -30,6 +32,8 @@ var (
 type CachedClient struct {
 	Client          *ProxmoxClient
 	ResourceVersion string
+	CreatedAt       time.Time
+	UsesSession     bool // true when username/password auth is used (session tickets expire)
 }
 
 type NodeCache struct {
@@ -155,12 +159,15 @@ func NewProxmoxClientFromRef(ctx context.Context, c cc.Client,
 		return nil, fmt.Errorf("getting ProxmoxConnection %q: %w", ref.Name, err)
 	}
 
-	// If exists in cache and ResourceVersion matches, return cached client
+	// If exists in cache and ResourceVersion matches, check TTL for session-based auth
 	if exists && cached.ResourceVersion == conn.ResourceVersion {
-		return cached.Client, nil
+		if !cached.UsesSession || time.Since(cached.CreatedAt) < clientCacheTTL {
+			return cached.Client, nil
+		}
 	}
 
-	// If not in cache or ResourceVersion mismatch, create new client
+	// Create new client if not cached, ResourceVersion changed, or session TTL expired
+	usesSession := conn.Spec.Username != "" && conn.Spec.Password != ""
 	client := NewProxmoxClient(conn)
 
 	// Update cache
@@ -168,6 +175,8 @@ func NewProxmoxClientFromRef(ctx context.Context, c cc.Client,
 	clientCache[ref.Name] = &CachedClient{
 		Client:          client,
 		ResourceVersion: conn.ResourceVersion,
+		CreatedAt:       time.Now(),
+		UsesSession:     usesSession,
 	}
 	clientCacheMutex.Unlock()
 

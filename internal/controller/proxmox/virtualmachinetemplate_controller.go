@@ -352,6 +352,10 @@ func (r *VirtualMachineTemplateReconciler) createStorageDownloadURLCR(ctx contex
 func (r *VirtualMachineTemplateReconciler) handleCloudInitOperations(ctx context.Context,
 	pc *proxmox.ProxmoxClient, vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) error {
 	logger := log.FromContext(ctx)
+	// Check if cloud-init config is provided
+	if vmTemplate.Spec.CloudInitConfig == nil {
+		return nil
+	}
 	templateVMName := vmTemplate.Spec.Name
 	nodeName := vmTemplate.Spec.NodeName
 	storageDownloadURL := &proxmoxv1alpha1.StorageDownloadURL{}
@@ -387,7 +391,7 @@ func (r *VirtualMachineTemplateReconciler) handleCloudInitOperations(ctx context
 		return err
 	}
 	// 3. Set cloud-init configuration
-	err = pc.SetCloudInitConfig(templateVMName, nodeName, &vmTemplate.Spec.CloudInitConfig)
+	err = pc.SetCloudInitConfig(templateVMName, nodeName, vmTemplate.Spec.CloudInitConfig)
 	if err != nil {
 		logger.Error(err, "Failed to set cloud-init configuration")
 		return err
