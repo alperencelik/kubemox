@@ -3,6 +3,7 @@ package proxmox
 import (
 	"context"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -83,5 +84,64 @@ func TestNewProxmoxClientFromRef(t *testing.T) {
 
 	if client3 != client4 {
 		t.Errorf("Expected updated cached client to be returned, but got different instance")
+	}
+
+	// Test 5: TTL expiration - should create new client for session-based (username/password) auth
+	clientCacheMutex.Lock()
+	if cached, ok := clientCache["test-conn"]; ok {
+		cached.CreatedAt = time.Now().Add(-2 * clientCacheTTL)
+	}
+	clientCacheMutex.Unlock()
+
+	client5, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "test-conn"})
+	if err != nil {
+		t.Fatalf("Failed to create client after TTL expiry: %v", err)
+	}
+
+	if client4 == client5 {
+		t.Errorf("Expected new client after TTL expiry for session-based auth, but got cached instance")
+	}
+}
+
+func TestNewProxmoxClientFromRef_APITokenNoTTL(t *testing.T) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(proxmoxv1alpha1.AddToScheme(scheme))
+
+	conn := &proxmoxv1alpha1.ProxmoxConnection{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "test-token-conn",
+			ResourceVersion: "1",
+		},
+		Spec: proxmoxv1alpha1.ProxmoxConnectionSpec{
+			Endpoint: "https://localhost:8006",
+			TokenID:  "root@pam!mytoken",
+			Secret:   "some-secret-value",
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(conn).Build()
+
+	// Create initial client
+	client1, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "test-token-conn"})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	// Expire the cache entry's CreatedAt
+	clientCacheMutex.Lock()
+	if cached, ok := clientCache["test-token-conn"]; ok {
+		cached.CreatedAt = time.Now().Add(-2 * clientCacheTTL)
+	}
+	clientCacheMutex.Unlock()
+
+	// Should still return cached client since API tokens don't use session TTL
+	client2, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "test-token-conn"})
+	if err != nil {
+		t.Fatalf("Failed to retrieve cached client: %v", err)
+	}
+
+	if client1 != client2 {
+		t.Errorf("Expected cached client for API token auth (no TTL), but got new instance")
 	}
 }
