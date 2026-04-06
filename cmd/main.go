@@ -37,6 +37,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	"github.com/alperencelik/kube-external-watcher/watcher"
+
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	proxmoxcontroller "github.com/alperencelik/kubemox/internal/controller/proxmox"
 	_ "github.com/alperencelik/kubemox/pkg/kubernetes"
@@ -121,11 +123,59 @@ func main() {
 	PodNamespace := utils.EnsurePodNamespaceEnv()
 	setupLog.Info("Pod namespace has been found as:", "POD_NAMESPACE", PodNamespace)
 
+	watcherLogger := ctrl.Log.WithName("external-watcher")
+	// Skip status-only updates (generation unchanged) to avoid re-registration noise
+	generationFilter := watcher.EventFilter{
+		Update: func(oldObj, newObj client.Object) bool {
+			return oldObj.GetGeneration() != newObj.GetGeneration()
+		},
+	}
+	watcherOpts := []watcher.Option{
+		watcher.WithDefaultPollInterval(20 * time.Second),
+		watcher.WithLogger(watcherLogger),
+	}
+
+	// Create external watchers for each resource type with auto-register
+	vmWatcher := watcher.NewExternalWatcher(&proxmox.VirtualMachineFetcher{Client: mgr.GetClient()},
+		append(watcherOpts,
+			watcher.WithMetrics("VirtualMachine"),
+			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.VirtualMachine{}, proxmox.VMConfigExtractor),
+			watcher.WithAutoRegisterFilter(generationFilter),
+		)...)
+	managedVMWatcher := watcher.NewExternalWatcher(&proxmox.ManagedVirtualMachineFetcher{Client: mgr.GetClient()},
+		append(watcherOpts,
+			watcher.WithMetrics("ManagedVirtualMachine"),
+			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.ManagedVirtualMachine{}, proxmox.ManagedVMConfigExtractor),
+			watcher.WithAutoRegisterFilter(generationFilter),
+		)...)
+	containerWatcher := watcher.NewExternalWatcher(&proxmox.ContainerFetcher{Client: mgr.GetClient()},
+		append(watcherOpts,
+			watcher.WithMetrics("Container"),
+			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.Container{}, proxmox.ContainerConfigExtractor),
+			watcher.WithAutoRegisterFilter(generationFilter),
+		)...)
+	vmTemplateWatcher := watcher.NewExternalWatcher(&proxmox.VirtualMachineTemplateFetcher{Client: mgr.GetClient()},
+		append(watcherOpts,
+			watcher.WithMetrics("VirtualMachineTemplate"),
+			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.VirtualMachineTemplate{},
+				proxmox.VMTemplateConfigExtractor),
+			watcher.WithAutoRegisterFilter(generationFilter),
+		)...)
+
+	// Register watchers as manager runnables
+	for _, ew := range []*watcher.ExternalWatcher{vmWatcher, managedVMWatcher, containerWatcher, vmTemplateWatcher} {
+		if err = mgr.Add(ew); err != nil {
+			setupLog.Error(err, "unable to add external watcher to manager")
+			os.Exit(1)
+		}
+	}
+
 	if err = (&proxmoxcontroller.VirtualMachineReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Watchers: proxmox.NewExternalWatchers(),
-		Recorder: mgr.GetEventRecorderFor("VirtualMachine"),
+		Watcher:  vmWatcher,
+		EventCh:  vmWatcher.EventChannel(),
+		Recorder: mgr.GetEventRecorder("VirtualMachine"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachine")
 		os.Exit(1)
@@ -133,8 +183,8 @@ func main() {
 	if err = (&proxmoxcontroller.ManagedVirtualMachineReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("ManagedVirtualMachine"),
-		Watchers: proxmox.NewExternalWatchers(),
+		Recorder: mgr.GetEventRecorder("ManagedVirtualMachine"),
+		EventCh:  managedVMWatcher.EventChannel(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ManagedVirtualMachine")
 		os.Exit(1)
@@ -163,8 +213,8 @@ func main() {
 	if err = (&proxmoxcontroller.ContainerReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("Container"),
-		Watchers: proxmox.NewExternalWatchers(),
+		Recorder: mgr.GetEventRecorder("Container"),
+		EventCh:  containerWatcher.EventChannel(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Container")
 		os.Exit(1)
@@ -186,8 +236,8 @@ func main() {
 	if err = (&proxmoxcontroller.VirtualMachineTemplateReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Watchers: proxmox.NewExternalWatchers(),
-		Recorder: mgr.GetEventRecorderFor("VirtualMachineTemplate"),
+		EventCh:  vmTemplateWatcher.EventChannel(),
+		Recorder: mgr.GetEventRecorder("VirtualMachineTemplate"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineTemplate")
 		os.Exit(1)

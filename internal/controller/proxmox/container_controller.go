@@ -24,7 +24,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
@@ -32,7 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -44,8 +46,8 @@ import (
 type ContainerReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
-	Watchers *proxmox.ExternalWatchers
+	Recorder events.EventRecorder
+	EventCh  <-chan event.GenericEvent
 }
 
 const (
@@ -91,7 +93,6 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	switch reconcileMode {
 	case kubernetes.ReconcileModeWatchOnly:
 		logger.Info(fmt.Sprintf("Reconciling Container %s in WatchOnly mode", container.Name))
-		r.handleWatcher(ctx, req, container)
 		return ctrl.Result{}, nil
 	case kubernetes.ReconcileModeEnsureExists:
 		logger.Info(fmt.Sprintf("Reconciling Container %s in EnsureExists mode", container.Name))
@@ -150,15 +151,12 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if result != (ctrl.Result{}) {
 		return result, nil
 	}
-	// Handle the external watcher for the Container
-	r.handleWatcher(ctx, req, container)
-
 	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ContainerReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	builder := ctrl.NewControllerManagedBy(mgr).
 		For(&proxmoxv1alpha1.Container{}).
 		WithEventFilter(predicate.Funcs{
 			UpdateFunc: func(e event.UpdateEvent) bool {
@@ -169,14 +167,19 @@ func (r *ContainerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				return condition1 || !condition2
 			},
 		}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
-		Complete(r)
+		WithOptions(controller.Options{MaxConcurrentReconciles: 1})
+
+	if r.EventCh != nil {
+		builder = builder.WatchesRawSource(source.Channel(r.EventCh, &handler.EnqueueRequestForObject{}))
+	}
+
+	return builder.Complete(r)
 }
 
 func (r *ContainerReconciler) CloneContainer(pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) error {
 	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
-	r.Recorder.Event(container, "Normal", "Creating", fmt.Sprintf("Creating Container %s", containerName))
+	r.Recorder.Eventf(container, nil, "Normal", "Creating", "Creating", fmt.Sprintf("Creating Container %s", containerName))
 	err := pc.CloneContainer(container)
 	if err != nil {
 		return err
@@ -185,7 +188,7 @@ func (r *ContainerReconciler) CloneContainer(pc *proxmox.ProxmoxClient, containe
 	if err != nil {
 		return err
 	}
-	r.Recorder.Event(container, "Normal", "Created", fmt.Sprintf("Created Container %s", containerName))
+	r.Recorder.Eventf(container, nil, "Normal", "Created", "Created", fmt.Sprintf("Created Container %s", containerName))
 	return nil
 }
 
@@ -193,7 +196,7 @@ func (r *ContainerReconciler) UpdateContainer(ctx context.Context, pc *proxmox.P
 	if err := pc.UpdateContainer(container); err != nil {
 		return err
 	}
-	r.Recorder.Event(container, "Normal", "Updated", fmt.Sprintf("Updated Container %s", container.Name))
+	r.Recorder.Eventf(container, nil, "Normal", "Updated", "Updated", fmt.Sprintf("Updated Container %s", container.Name))
 	err := r.Update(ctx, container)
 	if err != nil {
 		return err
@@ -292,7 +295,7 @@ func (r *ContainerReconciler) handleCloneContainer(ctx context.Context,
 }
 
 func (r *ContainerReconciler) handleDelete(ctx context.Context,
-	pc *proxmox.ProxmoxClient, req ctrl.Request, container *proxmoxv1alpha1.Container) (
+	pc *proxmox.ProxmoxClient, _ ctrl.Request, container *proxmoxv1alpha1.Container) (
 	ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	var err error
@@ -310,11 +313,6 @@ func (r *ContainerReconciler) handleDelete(ctx context.Context,
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}
 		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
-	}
-	// Stop the watcher if resource is being deleted
-	if stopChan, exists := r.Watchers.Watchers[req.Name]; exists {
-		close(stopChan)
-		delete(r.Watchers.Watchers, req.Name)
 	}
 	// Handle deletion of the Container
 	r.handleContainerDeletion(ctx, pc, container)
@@ -352,7 +350,7 @@ func (r *ContainerReconciler) handleContainerOperations(ctx context.Context,
 	return ctrl.Result{}, nil
 }
 
-func (r *ContainerReconciler) handleAutoStart(ctx context.Context,
+func (r *ContainerReconciler) handleAutoStart(ctx context.Context, //nolint:unused // will be used when auto-start is wired into reconcile
 	pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	containerName := container.Spec.Name
@@ -375,56 +373,12 @@ func (r *ContainerReconciler) handleAutoStart(ctx context.Context,
 	return ctrl.Result{}, nil
 }
 
-func (r *ContainerReconciler) handleWatcher(ctx context.Context, req ctrl.Request, container *proxmoxv1alpha1.Container) {
-	r.Watchers.HandleWatcher(ctx, req, func(ctx context.Context, stopChan chan struct{}) (ctrl.Result, error) {
-		return proxmox.StartWatcher(ctx, container, stopChan, r.fetchResource, r.updateStatus,
-			r.checkDelta, r.handleAutoStartFunc, r.handleReconcileFunc, r.Watchers.DeleteWatcher, r.IsResourceReady)
-	})
-}
-
-func (r *ContainerReconciler) fetchResource(ctx context.Context, key client.ObjectKey, obj proxmox.Resource) error {
-	return r.Get(ctx, key, obj.(*proxmoxv1alpha1.Container))
-}
-
-func (r *ContainerReconciler) updateStatus(ctx context.Context, obj proxmox.Resource) error {
-	logger := log.FromContext(ctx)
-	// Get the Proxmox client reference
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.Container).Spec.ConnectionRef)
-	if err != nil {
-		logger.Error(err, "Error getting Proxmox client reference")
-		return err
-	}
-	return r.UpdateContainerStatus(ctx, pc, obj.(*proxmoxv1alpha1.Container))
-}
-
-func (r *ContainerReconciler) checkDelta(ctx context.Context, obj proxmox.Resource) (bool, error) {
-	logger := log.FromContext(ctx)
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.Container).Spec.ConnectionRef)
-	if err != nil {
-		logger.Error(err, "Error getting Proxmox client reference")
-		return false, err
-	}
-	return pc.CheckContainerDelta(obj.(*proxmoxv1alpha1.Container))
-}
-
-func (r *ContainerReconciler) handleAutoStartFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.Container).Spec.ConnectionRef)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	return r.handleAutoStart(ctx, pc, obj.(*proxmoxv1alpha1.Container))
-}
-
-func (r *ContainerReconciler) handleReconcileFunc(ctx context.Context, obj proxmox.Resource) (ctrl.Result, error) {
-	return r.Reconcile(ctx, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(obj)})
-}
-
 func (r *ContainerReconciler) handleContainerDeletion(ctx context.Context,
 	pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) {
 	logger := log.FromContext(ctx)
 	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
-	r.Recorder.Event(container, "Normal", "Deleting", fmt.Sprintf("Deleting Container %s", containerName))
+	r.Recorder.Eventf(container, nil, "Normal", "Deleting", "Deleting", fmt.Sprintf("Deleting Container %s", containerName))
 	if container.Spec.DeletionProtection {
 		logger.Info(fmt.Sprintf("Container %s is protected from deletion", containerName))
 		return
@@ -434,15 +388,5 @@ func (r *ContainerReconciler) handleContainerDeletion(ctx context.Context,
 			return
 		}
 	}
-	r.Recorder.Event(container, "Normal", "Deleted", fmt.Sprintf("Deleted Container %s", containerName))
-}
-
-func (r *ContainerReconciler) IsResourceReady(ctx context.Context, obj proxmox.Resource) (bool, error) {
-	logger := log.FromContext(ctx)
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, obj.(*proxmoxv1alpha1.Container).Spec.ConnectionRef)
-	if err != nil {
-		logger.Error(err, "Error getting Proxmox client reference")
-		return false, err
-	}
-	return pc.IsContainerReady(obj.(*proxmoxv1alpha1.Container))
+	r.Recorder.Eventf(container, nil, "Normal", "Deleted", "Deleted", fmt.Sprintf("Deleted Container %s", containerName))
 }
