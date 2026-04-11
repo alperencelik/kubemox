@@ -47,6 +47,36 @@ type ProxmoxResourceKey struct {
 	ConnectionRef *corev1.LocalObjectReference
 }
 
+// checkResourceReady is the shared readiness check pattern used by all fetchers.
+func checkResourceReady(
+	ctx context.Context,
+	client cc.Client,
+	key types.NamespacedName,
+	obj cc.Object,
+	connRefFn func() *corev1.LocalObjectReference,
+	readyFn func(pc *ProxmoxClient) (bool, error),
+) bool {
+	logger := log.FromContext(ctx).WithValues("resource", key.String())
+	if err := client.Get(ctx, key, obj); err != nil {
+		logger.V(2).Info("readiness check: failed to get CR", "error", err)
+		return false
+	}
+	pc, err := NewProxmoxClientFromRef(ctx, client, connRefFn())
+	if err != nil {
+		logger.V(2).Info("readiness check: failed to get Proxmox client", "error", err)
+		return false
+	}
+	ready, err := readyFn(pc)
+	if err != nil {
+		logger.V(2).Info("readiness check: resource not ready", "error", err)
+		return false
+	}
+	if !ready {
+		logger.V(2).Info("readiness check: resource not ready (not found or locked)")
+	}
+	return ready
+}
+
 // --- VirtualMachine Fetcher ---
 
 // VirtualMachineFetcher implements watcher.ResourceStateFetcher for VirtualMachine resources.
@@ -132,26 +162,11 @@ func (f *VirtualMachineFetcher) TransformExternalState(raw any) (any, error) {
 }
 
 func (f *VirtualMachineFetcher) IsResourceReadyToWatch(ctx context.Context, key types.NamespacedName) bool {
-	logger := log.FromContext(ctx).WithValues("resource", key.String())
 	vm := &proxmoxv1alpha1.VirtualMachine{}
-	if err := f.Client.Get(ctx, key, vm); err != nil {
-		logger.V(2).Info("readiness check: failed to get CR", "error", err)
-		return false
-	}
-	pc, err := NewProxmoxClientFromRef(ctx, f.Client, vm.Spec.ConnectionRef)
-	if err != nil {
-		logger.V(2).Info("readiness check: failed to get Proxmox client", "error", err)
-		return false
-	}
-	ready, err := pc.IsVirtualMachineReady(vm)
-	if err != nil {
-		logger.V(2).Info("readiness check: VM not ready", "vmName", vm.Spec.Name, "error", err)
-		return false
-	}
-	if !ready {
-		logger.V(2).Info("readiness check: VM not ready (no VMID or locked)", "vmName", vm.Spec.Name)
-	}
-	return ready
+	return checkResourceReady(ctx, f.Client, key, vm,
+		func() *corev1.LocalObjectReference { return vm.Spec.ConnectionRef },
+		func(pc *ProxmoxClient) (bool, error) { return pc.IsVirtualMachineReady(vm) },
+	)
 }
 
 func (f *VirtualMachineFetcher) UpdateResourceStatus(ctx context.Context, key types.NamespacedName, _ any) error {
@@ -221,26 +236,11 @@ func (f *ManagedVirtualMachineFetcher) TransformExternalState(raw any) (any, err
 }
 
 func (f *ManagedVirtualMachineFetcher) IsResourceReadyToWatch(ctx context.Context, key types.NamespacedName) bool {
-	logger := log.FromContext(ctx).WithValues("resource", key.String())
 	vm := &proxmoxv1alpha1.ManagedVirtualMachine{}
-	if err := f.Client.Get(ctx, key, vm); err != nil {
-		logger.V(2).Info("readiness check: failed to get CR", "error", err)
-		return false
-	}
-	pc, err := NewProxmoxClientFromRef(ctx, f.Client, vm.Spec.ConnectionRef)
-	if err != nil {
-		logger.V(2).Info("readiness check: failed to get Proxmox client", "error", err)
-		return false
-	}
-	ready, err := pc.IsVirtualMachineReady(vm)
-	if err != nil {
-		logger.V(2).Info("readiness check: VM not ready", "vmName", vm.Spec.Name, "error", err)
-		return false
-	}
-	if !ready {
-		logger.V(2).Info("readiness check: VM not ready (no VMID or locked)", "vmName", vm.Spec.Name)
-	}
-	return ready
+	return checkResourceReady(ctx, f.Client, key, vm,
+		func() *corev1.LocalObjectReference { return vm.Spec.ConnectionRef },
+		func(pc *ProxmoxClient) (bool, error) { return pc.IsVirtualMachineReady(vm) },
+	)
 }
 
 func (f *ManagedVirtualMachineFetcher) UpdateResourceStatus(ctx context.Context,
@@ -315,26 +315,11 @@ func (f *ContainerFetcher) TransformExternalState(raw any) (any, error) {
 }
 
 func (f *ContainerFetcher) IsResourceReadyToWatch(ctx context.Context, key types.NamespacedName) bool {
-	logger := log.FromContext(ctx).WithValues("resource", key.String())
 	container := &proxmoxv1alpha1.Container{}
-	if err := f.Client.Get(ctx, key, container); err != nil {
-		logger.V(2).Info("readiness check: failed to get CR", "error", err)
-		return false
-	}
-	pc, err := NewProxmoxClientFromRef(ctx, f.Client, container.Spec.ConnectionRef)
-	if err != nil {
-		logger.V(2).Info("readiness check: failed to get Proxmox client", "error", err)
-		return false
-	}
-	ready, err := pc.IsContainerReady(container)
-	if err != nil {
-		logger.V(2).Info("readiness check: container not ready", "containerName", container.Spec.Name, "error", err)
-		return false
-	}
-	if !ready {
-		logger.V(2).Info("readiness check: container not ready (not found or locked)", "containerName", container.Spec.Name)
-	}
-	return ready
+	return checkResourceReady(ctx, f.Client, key, container,
+		func() *corev1.LocalObjectReference { return container.Spec.ConnectionRef },
+		func(pc *ProxmoxClient) (bool, error) { return pc.IsContainerReady(container) },
+	)
 }
 
 func (f *ContainerFetcher) UpdateResourceStatus(ctx context.Context, key types.NamespacedName, _ any) error {
@@ -412,26 +397,11 @@ func (f *VirtualMachineTemplateFetcher) TransformExternalState(raw any) (any, er
 }
 
 func (f *VirtualMachineTemplateFetcher) IsResourceReadyToWatch(ctx context.Context, key types.NamespacedName) bool {
-	logger := log.FromContext(ctx).WithValues("resource", key.String())
 	vmTemplate := &proxmoxv1alpha1.VirtualMachineTemplate{}
-	if err := f.Client.Get(ctx, key, vmTemplate); err != nil {
-		logger.V(2).Info("readiness check: failed to get CR", "error", err)
-		return false
-	}
-	pc, err := NewProxmoxClientFromRef(ctx, f.Client, vmTemplate.Spec.ConnectionRef)
-	if err != nil {
-		logger.V(2).Info("readiness check: failed to get Proxmox client", "error", err)
-		return false
-	}
-	ready, err := pc.IsVirtualMachineReady(vmTemplate)
-	if err != nil {
-		logger.V(2).Info("readiness check: VMTemplate not ready", "vmName", vmTemplate.Spec.Name, "error", err)
-		return false
-	}
-	if !ready {
-		logger.V(2).Info("readiness check: VMTemplate not ready (no VMID or locked)", "vmName", vmTemplate.Spec.Name)
-	}
-	return ready
+	return checkResourceReady(ctx, f.Client, key, vmTemplate,
+		func() *corev1.LocalObjectReference { return vmTemplate.Spec.ConnectionRef },
+		func(pc *ProxmoxClient) (bool, error) { return pc.IsVirtualMachineReady(vmTemplate) },
+	)
 }
 
 // --- ConfigExtractorFn implementations for auto-register ---
