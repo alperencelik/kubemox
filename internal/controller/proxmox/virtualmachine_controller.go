@@ -62,8 +62,6 @@ const (
 )
 
 var (
-	Clientset, DynamicClient = kubernetes.GetKubeconfig()
-
 	// Define requeue and dontRequeue
 	requeue     = ctrl.Result{Requeue: true, RequeueAfter: VMreconcilationPeriod * time.Second}
 	dontRequeue = ctrl.Result{}

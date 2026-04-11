@@ -74,7 +74,7 @@ func CreateCertificate(customCert *proxmoxv1alpha1.CustomCertificate) (*unstruct
 		},
 	}
 
-	_, err = DynamicClient.Resource(certificateGVR).Namespace(customCert.ObjectMeta.Namespace).Create(
+	_, err = DynamicClient().Resource(certificateGVR).Namespace(customCert.ObjectMeta.Namespace).Create(
 		context.Background(), certManagerCertificate, metav1.CreateOptions{})
 	if err != nil {
 		return nil, err
@@ -86,7 +86,7 @@ func CreateCertificate(customCert *proxmoxv1alpha1.CustomCertificate) (*unstruct
 func CheckCertificateExists(customCertName, customCertNamespace string) (bool, error) {
 	// Check if certificate exists
 	certificateName := customCertName
-	_, err := DynamicClient.Resource(certificateGVR).Namespace(customCertNamespace).Get(
+	_, err := DynamicClient().Resource(certificateGVR).Namespace(customCertNamespace).Get(
 		context.Background(), certificateName, metav1.GetOptions{})
 	switch {
 	case errors.IsNotFound(err):
@@ -102,7 +102,7 @@ func GetCertificate(customCert *proxmoxv1alpha1.CustomCertificate) (*unstructure
 	// Get certificate
 	certificateName := customCert.Name
 	certificateNamespace := customCert.Namespace
-	certificate, err := DynamicClient.Resource(certificateGVR).Namespace(certificateNamespace).Get(
+	certificate, err := DynamicClient().Resource(certificateGVR).Namespace(certificateNamespace).Get(
 		context.Background(), certificateName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
@@ -134,7 +134,7 @@ func UpdateCertificate(customCertSpec *proxmoxv1alpha1.CertManagerSpec, certific
 		// Update the certificate
 		log.Log.Info("Updating the certificate", "Certificate", certificate.GetName())
 		certificate.Object["spec"] = customCertMap
-		_, err := DynamicClient.Resource(certificateGVR).Namespace(certificate.GetNamespace()).Update(
+		_, err := DynamicClient().Resource(certificateGVR).Namespace(certificate.GetNamespace()).Update(
 			context.Background(), certificate, metav1.UpdateOptions{})
 		if err != nil {
 			return err
@@ -160,7 +160,7 @@ func GetCertificateSecretKeys(certificate *certmanagerv1.Certificate) (tlscrt, t
 	// Get certificate secret
 	secretName := certificate.Spec.SecretName
 	//  Get Kubernetes secret
-	secret, err := Clientset.CoreV1().Secrets(os.Getenv("POD_NAMESPACE")).
+	secret, err := Clientset().CoreV1().Secrets(os.Getenv("POD_NAMESPACE")).
 		Get(context.Background(), secretName, metav1.GetOptions{})
 	if err != nil {
 		return nil, nil, err
@@ -173,7 +173,7 @@ func GetCertificateSecretKeys(certificate *certmanagerv1.Certificate) (tlscrt, t
 
 func checkSecretExists(secretName, namespace string) (bool, error) {
 	// Check if secret exists
-	_, err := Clientset.CoreV1().Secrets(namespace).Get(context.Background(), secretName, metav1.GetOptions{})
+	_, err := Clientset().CoreV1().Secrets(namespace).Get(context.Background(), secretName, metav1.GetOptions{})
 	switch {
 	case errors.IsNotFound(err):
 		return false, nil

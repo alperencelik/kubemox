@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -11,6 +12,22 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 )
+
+// getKubeClients lazily initializes and caches the Kubernetes clients on first access.
+// to success unit tests without requiring a kubeconfig or in-cluster config.
+var getKubeClients = sync.OnceValues(GetKubeconfig)
+
+// Clientset returns the shared Kubernetes clientset, initializing it on first call.
+func Clientset() *kubernetes.Clientset {
+	cs, _ := getKubeClients()
+	return cs
+}
+
+// DynamicClient returns the shared dynamic client, initializing it on first call.
+func DynamicClient() dynamic.Interface {
+	_, dc := getKubeClients()
+	return dc
+}
 
 func InsideCluster() bool {
 	// Check if kubeconfig exists under home directory

@@ -578,7 +578,7 @@ func CheckManagedVMExists(managedVM string) (bool, error) {
 		Resource: crd.Spec.Names.Plural,
 	}
 	// Get managedVirtualMachine CRD
-	ClientManagedVMs, err := kubernetes.DynamicClient.Resource(customResource).List(ctx, metav1.ListOptions{})
+	ClientManagedVMs, err := kubernetes.DynamicClient().Resource(customResource).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return false, err
 	}
