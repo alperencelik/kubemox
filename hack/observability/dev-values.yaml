@@ -1,0 +1,10 @@
+# kubemox Helm chart overrides for local development.
+# Used by `make dev-deploy` when installing on a Kind cluster.
+
+image:
+  pullPolicy: Never
+
+metrics:
+  serviceMonitor:
+    enabled: true
+    interval: 15s

@@ -41,7 +41,6 @@ import (
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	proxmoxcontroller "github.com/alperencelik/kubemox/internal/controller/proxmox"
-	_ "github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/metrics"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 	"github.com/alperencelik/kubemox/pkg/utils"
@@ -123,6 +122,8 @@ func main() {
 	PodNamespace := utils.EnsurePodNamespaceEnv()
 	setupLog.Info("Pod namespace has been found as:", "POD_NAMESPACE", PodNamespace)
 
+	// Watcher setup
+
 	watcherLogger := ctrl.Log.WithName("external-watcher")
 	// Skip status-only updates (generation unchanged) to avoid re-registration noise
 	generationFilter := watcher.EventFilter{
@@ -134,31 +135,38 @@ func main() {
 		watcher.WithDefaultPollInterval(20 * time.Second),
 		watcher.WithLogger(watcherLogger),
 	}
+	// Readiness retry config for auto-registered watchers to handle transient API errors during startup
+	readinessRetry := watcher.ReadinessRetryConfig{
+		InitialInterval: 5 * time.Second,
+	}
 
 	// Create external watchers for each resource type with auto-register
 	vmWatcher := watcher.NewExternalWatcher(&proxmox.VirtualMachineFetcher{Client: mgr.GetClient()},
 		append(watcherOpts,
 			watcher.WithMetrics("VirtualMachine"),
-			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.VirtualMachine{}, proxmox.VMConfigExtractor),
+			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.VirtualMachine{},
+				proxmox.VMConfigExtractor, readinessRetry),
 			watcher.WithAutoRegisterFilter(generationFilter),
 		)...)
 	managedVMWatcher := watcher.NewExternalWatcher(&proxmox.ManagedVirtualMachineFetcher{Client: mgr.GetClient()},
 		append(watcherOpts,
 			watcher.WithMetrics("ManagedVirtualMachine"),
-			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.ManagedVirtualMachine{}, proxmox.ManagedVMConfigExtractor),
+			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.ManagedVirtualMachine{},
+				proxmox.ManagedVMConfigExtractor, readinessRetry),
 			watcher.WithAutoRegisterFilter(generationFilter),
 		)...)
 	containerWatcher := watcher.NewExternalWatcher(&proxmox.ContainerFetcher{Client: mgr.GetClient()},
 		append(watcherOpts,
 			watcher.WithMetrics("Container"),
-			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.Container{}, proxmox.ContainerConfigExtractor),
+			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.Container{},
+				proxmox.ContainerConfigExtractor, readinessRetry),
 			watcher.WithAutoRegisterFilter(generationFilter),
 		)...)
 	vmTemplateWatcher := watcher.NewExternalWatcher(&proxmox.VirtualMachineTemplateFetcher{Client: mgr.GetClient()},
 		append(watcherOpts,
 			watcher.WithMetrics("VirtualMachineTemplate"),
 			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.VirtualMachineTemplate{},
-				proxmox.VMTemplateConfigExtractor),
+				proxmox.VMTemplateConfigExtractor, readinessRetry),
 			watcher.WithAutoRegisterFilter(generationFilter),
 		)...)
 
@@ -169,6 +177,8 @@ func main() {
 			os.Exit(1)
 		}
 	}
+
+	// Controller setup
 
 	if err = (&proxmoxcontroller.VirtualMachineReconciler{
 		Client:   mgr.GetClient(),

@@ -151,6 +151,14 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if result != (ctrl.Result{}) {
 		return result, nil
 	}
+
+	// If EnableAutoStart is true, start the container if it's stopped
+	if res, autoErr := r.handleAutoStart(ctx, pc, container); autoErr != nil {
+		logger.Error(autoErr, "Error handling auto start")
+		return ctrl.Result{Requeue: true}, autoErr
+	} else if res != (ctrl.Result{}) {
+		return res, nil
+	}
 	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
 
@@ -301,10 +309,10 @@ func (r *ContainerReconciler) handleDelete(ctx context.Context,
 	var err error
 	logger.Info("Deleting Container", "name", container.Spec.Name)
 
-	if !meta.IsStatusConditionPresentAndEqual(container.Status.Conditions, typeDeletingContainer, metav1.ConditionTrue) {
+	if !meta.IsStatusConditionPresentAndEqual(container.Status.Conditions, typeDeletingContainer, metav1.ConditionUnknown) {
 		meta.SetStatusCondition(&container.Status.Conditions, metav1.Condition{
 			Type:    typeDeletingContainer,
-			Status:  metav1.ConditionTrue,
+			Status:  metav1.ConditionUnknown,
 			Reason:  "Deleting",
 			Message: "Deleting Container",
 		})
@@ -315,7 +323,10 @@ func (r *ContainerReconciler) handleDelete(ctx context.Context,
 		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 	}
 	// Handle deletion of the Container
-	r.handleContainerDeletion(ctx, pc, container)
+	if err = r.handleContainerDeletion(ctx, pc, container); err != nil {
+		logger.Error(err, "Error deleting Container from Proxmox")
+		return ctrl.Result{Requeue: true}, err
+	}
 	// Remove finalizer
 	logger.Info("Removing finalizer from Container", "name", container.Spec.Name)
 	controllerutil.RemoveFinalizer(container, containerFinalizerName)
@@ -350,7 +361,7 @@ func (r *ContainerReconciler) handleContainerOperations(ctx context.Context,
 	return ctrl.Result{}, nil
 }
 
-func (r *ContainerReconciler) handleAutoStart(ctx context.Context, //nolint:unused // will be used when auto-start is wired into reconcile
+func (r *ContainerReconciler) handleAutoStart(ctx context.Context,
 	pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	containerName := container.Spec.Name
@@ -374,19 +385,18 @@ func (r *ContainerReconciler) handleAutoStart(ctx context.Context, //nolint:unus
 }
 
 func (r *ContainerReconciler) handleContainerDeletion(ctx context.Context,
-	pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) {
+	pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) error {
 	logger := log.FromContext(ctx)
 	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
 	r.Recorder.Eventf(container, nil, "Normal", "Deleting", "Deleting", fmt.Sprintf("Deleting Container %s", containerName))
 	if container.Spec.DeletionProtection {
 		logger.Info(fmt.Sprintf("Container %s is protected from deletion", containerName))
-		return
-	} else {
-		if err := pc.DeleteContainer(containerName, nodeName); err != nil {
-			logger.Error(err, "Failed to delete Container")
-			return
-		}
+		return nil
+	}
+	if err := pc.DeleteContainer(containerName, nodeName); err != nil {
+		return err
 	}
 	r.Recorder.Eventf(container, nil, "Normal", "Deleted", "Deleted", fmt.Sprintf("Deleted Container %s", containerName))
+	return nil
 }

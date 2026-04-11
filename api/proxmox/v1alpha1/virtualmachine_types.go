@@ -198,6 +198,16 @@ type VirtualMachineList struct {
 	Items           []VirtualMachine `json:"items"`
 }
 
+// GetConditions returns the status conditions of the VirtualMachine.
+func (vm *VirtualMachine) GetConditions() []metav1.Condition {
+	return vm.Status.Conditions
+}
+
+// SetConditions sets the status conditions of the VirtualMachine.
+func (vm *VirtualMachine) SetConditions(conditions []metav1.Condition) {
+	vm.Status.Conditions = conditions
+}
+
 func init() { //nolint:gochecknoinits // This is required by kubebuilder
 	SchemeBuilder.Register(&VirtualMachine{}, &VirtualMachineList{})
 }

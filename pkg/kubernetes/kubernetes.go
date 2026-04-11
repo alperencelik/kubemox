@@ -11,10 +11,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var (
-	Clientset, DynamicClient = GetKubeconfig()
-)
-
 func ListCRDs() ([]string, error) {
 	// Create apiextensions client
 	config := ClientConfig()
@@ -53,7 +49,7 @@ func GetManagedVMCRD() (*v1.CustomResourceDefinition, error) {
 
 func GetSecretData(namespace string, selector *corev1.SecretKeySelector) (string, error) {
 	// Get the Secret object
-	secret, err := Clientset.CoreV1().Secrets(namespace).Get(context.TODO(), selector.Name, metav1.GetOptions{})
+	secret, err := Clientset().CoreV1().Secrets(namespace).Get(context.TODO(), selector.Name, metav1.GetOptions{})
 	if err != nil {
 		return "", fmt.Errorf("failed to get secret %s: %w", selector.Name, err)
 	}

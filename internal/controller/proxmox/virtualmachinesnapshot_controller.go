@@ -87,9 +87,13 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
 
-	// Set ownerRef for the VirtualMachineSnapshot
+	// Set ownerRef for the VirtualMachineSnapshot and persist the metadata change
 	if err = controllerutil.SetControllerReference(vm, vmSnapshot, r.Scheme); err != nil {
 		logger.Error(err, "unable to set owner reference for VirtualMachineSnapshot")
+		return ctrl.Result{}, err
+	}
+	if err = r.Update(ctx, vmSnapshot); err != nil {
+		logger.Error(err, "unable to persist owner reference for VirtualMachineSnapshot")
 		return ctrl.Result{}, err
 	}
 	snapshotName := vmSnapshot.Spec.SnapshotName
@@ -180,8 +184,11 @@ func (r *VirtualMachineSnapshotReconciler) handleSnapshotCreation(ctx context.Co
 		}
 		switch statusCode {
 		case 0:
-			vmSnapshot.Status.Status = snapshotCreatedStatus
 			vmSnapshot.Spec.Timestamp = metav1.Now()
+			if err = r.Update(ctx, vmSnapshot); err != nil {
+				return client.IgnoreNotFound(err)
+			}
+			vmSnapshot.Status.Status = snapshotCreatedStatus
 			if err = r.Status().Update(ctx, vmSnapshot); err != nil {
 				return client.IgnoreNotFound(err)
 			}

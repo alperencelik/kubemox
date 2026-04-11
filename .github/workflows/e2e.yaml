@@ -1,0 +1,94 @@
+name: e2e
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "cmd/**"
+      - "internal/**"
+      - "pkg/**"
+      - "charts/**"
+      - "test/e2e/**"
+      - "hack/**"
+      - "Makefile"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/e2e.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "cmd/**"
+      - "internal/**"
+      - "pkg/**"
+      - "charts/**"
+      - "test/e2e/**"
+      - "hack/**"
+      - "Makefile"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/e2e.yaml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      E2E_TIMEOUT: 20m
+      GINKGO_TIMEOUT: 15m
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: KVM sanity check
+        run: |
+          set -euo pipefail
+          echo "=== Kernel ==="
+          uname -a
+          KVER=$(uname -r | cut -d. -f1-2)
+          MAJOR=$(echo "${KVER}" | cut -d. -f1)
+          MINOR=$(echo "${KVER}" | cut -d. -f2)
+          if [ "${MAJOR}" -lt 6 ] || { [ "${MAJOR}" -eq 6 ] && [ "${MINOR}" -lt 6 ]; }; then
+            echo "::warning::Kernel ${KVER} is below 6.6 — containerized-proxmox may not work"
+          fi
+          echo "=== /dev/kvm ==="
+          ls -la /dev/kvm || { echo "::error::/dev/kvm is missing — this runner cannot run nested VMs"; exit 1; }
+          echo "=== kvm-ok ==="
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cpu-checker
+          sudo kvm-ok || { echo "::error::kvm-ok reports no KVM acceleration available"; exit 1; }
+          echo "=== kvm kernel module ==="
+          lsmod | grep -E '^kvm' || echo "::warning::kvm kernel module not loaded (may still work via /dev/kvm)"
+
+      - name: Install Kind
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Run e2e tests
+        run: ./hack/e2e.sh
+        # hack/e2e.sh collects diagnostics into _artifacts/ via its trap
+        # BEFORE tearing down the cluster, so this always runs with live state.
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: _artifacts/
+          if-no-files-found: ignore
+          retention-days: 7

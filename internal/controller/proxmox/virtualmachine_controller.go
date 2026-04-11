@@ -62,8 +62,6 @@ const (
 )
 
 var (
-	Clientset, DynamicClient = kubernetes.GetKubeconfig()
-
 	// Define requeue and dontRequeue
 	requeue     = ctrl.Result{Requeue: true, RequeueAfter: VMreconcilationPeriod * time.Second}
 	dontRequeue = ctrl.Result{}
@@ -82,6 +80,7 @@ type VirtualMachineReconciler struct {
 // +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachines/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachines/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -172,7 +171,34 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	logger.Info(fmt.Sprintf("VirtualMachine %s already exists", vm.Spec.Name))
 
+	// Ensure the Available condition is populated once the VM has been reconciled.
+	if result, err = r.handleStatus(ctx, vm); err != nil {
+		return result, client.IgnoreNotFound(err)
+	}
+
 	return ctrl.Result{}, client.IgnoreNotFound(err)
+}
+
+// handleStatus ensures the VirtualMachine has an Available=True condition set
+// after a successful reconciliation. The QEMU status field is maintained by the
+// external watcher via UpdateResourceStatus, so this method only owns conditions.
+func (r *VirtualMachineReconciler) handleStatus(ctx context.Context,
+	vm *proxmoxv1alpha1.VirtualMachine) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	if meta.IsStatusConditionPresentAndEqual(vm.Status.Conditions, typeAvailableVirtualMachine, metav1.ConditionTrue) {
+		return ctrl.Result{}, nil
+	}
+	meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
+		Type:    typeAvailableVirtualMachine,
+		Status:  metav1.ConditionTrue,
+		Reason:  "Ready",
+		Message: "VirtualMachine is ready",
+	})
+	if err := r.Status().Update(ctx, vm); err != nil {
+		logger.Error(err, "Failed to update VirtualMachine status")
+		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+	}
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -277,7 +303,10 @@ func (r *VirtualMachineReconciler) handleCreateFromTemplate(ctx context.Context,
 		if errors.As(err, &notFoundErr) {
 			r.Recorder.Eventf(vm, nil, "Warning", "Error", "Error",
 				fmt.Sprintf("VirtualMachine %s failed to create due to %s", vmName, err))
-			return dontRequeue, reconcile.TerminalError(err)
+			// TODO: The template might not be ready but it might be creating as well,
+			// so might need to requeue with a delay instead of returning a terminal error,
+			// need to check the error message for now return dontRequeue
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 		var taskErr *proxmox.TaskError
 		if errors.As(err, &taskErr) {
@@ -400,6 +429,12 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(ctx context.Contex
 	if err := r.Status().Update(ctx, vm); err != nil {
 		return err
 	}
+	// if err := r.Client.Status().Patch(ctx, vm, client.Apply,
+	// client.FieldOwner("proxmox-controller"),
+	// client.ForceOwnership,
+	// ); err != nil {
+	// return err
+	// }
 	return nil
 }
 
@@ -523,8 +558,8 @@ func (r *VirtualMachineReconciler) handleDelete(ctx context.Context, _ ctrl.Requ
 	// Remove finalizer
 	logger.Info("Removing finalizer from VirtualMachine", "name", vm.Spec.Name)
 	controllerutil.RemoveFinalizer(vm, virtualMachineFinalizerName)
-	if err := r.Update(ctx, vm); err != nil {
-		return ctrl.Result{}, nil
+	if err := r.Update(ctx, vm); client.IgnoreNotFound(err) != nil {
+		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
 }

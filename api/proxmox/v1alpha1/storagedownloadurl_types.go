@@ -82,6 +82,16 @@ type StorageDownloadURLList struct {
 	Items           []StorageDownloadURL `json:"items"`
 }
 
+// GetConditions returns the status conditions of the StorageDownloadURL.
+func (sdu *StorageDownloadURL) GetConditions() []metav1.Condition {
+	return sdu.Status.Conditions
+}
+
+// SetConditions sets the status conditions of the StorageDownloadURL.
+func (sdu *StorageDownloadURL) SetConditions(conditions []metav1.Condition) {
+	sdu.Status.Conditions = conditions
+}
+
 func init() {
 	SchemeBuilder.Register(&StorageDownloadURL{}, &StorageDownloadURLList{})
 }

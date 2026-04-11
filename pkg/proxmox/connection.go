@@ -149,18 +149,17 @@ func NewProxmoxClientFromRef(ctx context.Context, c cc.Client,
 		return nil, fmt.Errorf("ProxmoxConnection reference is nil or empty")
 	}
 
-	// Check the cache first
-	clientCacheMutex.RLock()
-	cached, exists := clientCache[ref.Name]
-	clientCacheMutex.RUnlock()
-
 	conn := &proxmoxv1alpha1.ProxmoxConnection{}
 	if err := c.Get(ctx, cc.ObjectKey{Name: ref.Name}, conn); err != nil {
 		return nil, fmt.Errorf("getting ProxmoxConnection %q: %w", ref.Name, err)
 	}
 
-	// If exists in cache and ResourceVersion matches, check TTL for session-based auth
-	if exists && cached.ResourceVersion == conn.ResourceVersion {
+	// Use a single write lock to avoid TOCTOU race between check and update
+	clientCacheMutex.Lock()
+	defer clientCacheMutex.Unlock()
+
+	// Check the cache under the lock
+	if cached, exists := clientCache[ref.Name]; exists && cached.ResourceVersion == conn.ResourceVersion {
 		if !cached.UsesSession || time.Since(cached.CreatedAt) < clientCacheTTL {
 			return cached.Client, nil
 		}
@@ -170,15 +169,12 @@ func NewProxmoxClientFromRef(ctx context.Context, c cc.Client,
 	usesSession := conn.Spec.Username != "" && conn.Spec.Password != ""
 	client := NewProxmoxClient(conn)
 
-	// Update cache
-	clientCacheMutex.Lock()
 	clientCache[ref.Name] = &CachedClient{
 		Client:          client,
 		ResourceVersion: conn.ResourceVersion,
 		CreatedAt:       time.Now(),
 		UsesSession:     usesSession,
 	}
-	clientCacheMutex.Unlock()
 
 	return client, nil
 }

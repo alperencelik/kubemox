@@ -64,6 +64,16 @@ type ProxmoxConnection struct {
 	Status ProxmoxConnectionStatus `json:"status,omitempty"`
 }
 
+// GetConditions returns the status conditions of the ProxmoxConnection.
+func (pc *ProxmoxConnection) GetConditions() []metav1.Condition {
+	return pc.Status.Conditions
+}
+
+// SetConditions sets the status conditions of the ProxmoxConnection.
+func (pc *ProxmoxConnection) SetConditions(conditions []metav1.Condition) {
+	pc.Status.Conditions = conditions
+}
+
 // ProxmoxConnectionList contains a list of ProxmoxConnection.
 // +kubebuilder:object:root=true
 type ProxmoxConnectionList struct {

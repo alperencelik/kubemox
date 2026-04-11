@@ -417,11 +417,10 @@ func (pc *ProxmoxClient) StopVM(vmName, nodeName string) error {
 func (pc *ProxmoxClient) GetVMState(vmName, nodeName string) (state string, err error) {
 	// Gets the VMstate from Proxmox API
 	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
-	VirtualMachineState := VirtualMachine.Status
 	if err != nil {
 		return "unknown", err
 	}
-	switch VirtualMachineState {
+	switch VirtualMachine.Status {
 	case VirtualMachineRunningState:
 		return VirtualMachineRunningState, nil
 	case VirtualMachineStoppedState:
@@ -579,7 +578,7 @@ func CheckManagedVMExists(managedVM string) (bool, error) {
 		Resource: crd.Spec.Names.Plural,
 	}
 	// Get managedVirtualMachine CRD
-	ClientManagedVMs, err := kubernetes.DynamicClient.Resource(customResource).List(ctx, metav1.ListOptions{})
+	ClientManagedVMs, err := kubernetes.DynamicClient().Resource(customResource).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return false, err
 	}
@@ -1784,7 +1783,12 @@ func (pc *ProxmoxClient) IsVirtualMachineReady(obj Resource) (bool, error) {
 		return false, nil
 	}
 
-	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
+	// Fetch fresh VM state from the API instead of using the cache.
+	node, err := pc.getNode(ctx, nodeName)
+	if err != nil {
+		return false, err
+	}
+	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for checking readiness")
 		return false, err
