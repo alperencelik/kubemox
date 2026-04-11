@@ -50,11 +50,21 @@ type Framework struct {
 	Scheme     *runtime.Scheme
 }
 
+// E2EProxmoxEndpointEnv lets callers (typically hack/e2e.sh) override the
+// Proxmox endpoint discovered in the e2e config. This matters when the
+// Proxmox container is running on the same Docker network as the Kind
+// cluster but its hostname cannot be resolved from inside cluster pods —
+// the caller can inspect the container and pass its IP directly.
+const E2EProxmoxEndpointEnv = "E2E_PROXMOX_ENDPOINT"
+
 // NewFramework creates a new e2e test framework from the given config path.
 func NewFramework(configPath string) (*Framework, error) {
 	cfg, err := loadConfig(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("loading e2e config: %w", err)
+	}
+	if override := os.Getenv(E2EProxmoxEndpointEnv); override != "" {
+		cfg.Proxmox.Endpoint = override
 	}
 
 	scheme := runtime.NewScheme()

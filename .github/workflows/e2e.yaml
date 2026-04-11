@@ -81,28 +81,8 @@ jobs:
 
       - name: Run e2e tests
         run: ./hack/e2e.sh
-
-      - name: Collect logs on failure
-        if: failure()
-        run: |
-          set +e
-          mkdir -p _artifacts
-          kind export logs _artifacts/kind-logs --name kubemox-dev
-          kubectl cluster-info dump --all-namespaces --output-directory _artifacts/cluster-dump
-          kubectl get all -A -o wide > _artifacts/all-resources.txt
-          kubectl get events -A --sort-by=.lastTimestamp > _artifacts/events.txt
-          kubectl describe pods -l app.kubernetes.io/name=kubemox > _artifacts/operator-describe.txt
-          kubectl logs -l app.kubernetes.io/name=kubemox --tail=2000 --all-containers=true > _artifacts/operator-logs.txt
-          kubectl logs -l app.kubernetes.io/name=kubemox --tail=2000 --all-containers=true --previous > _artifacts/operator-logs-previous.txt
-          # Kubemox CRs - dump everything to capture state at failure time
-          for crd in virtualmachines managedvirtualmachines containers virtualmachinesets virtualmachinesnapshots virtualmachinesnapshotpolicies virtualmachinetemplates customcertificates storagedownloadurls proxmoxconnections; do
-            kubectl get ${crd}.proxmox.alperen.cloud -A -o yaml >> _artifacts/crs.yaml 2>/dev/null || true
-          done
-          # Proxmox container logs
-          docker logs proxmox-dev > _artifacts/proxmox.log 2>&1 || true
-          docker inspect proxmox-dev > _artifacts/proxmox-inspect.json 2>&1 || true
-          # Kind node state
-          docker ps -a > _artifacts/docker-ps.txt
+        # hack/e2e.sh collects diagnostics into _artifacts/ via its trap
+        # BEFORE tearing down the cluster, so this always runs with live state.
 
       - name: Upload artifacts
         if: always()
