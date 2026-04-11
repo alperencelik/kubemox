@@ -1,0 +1,64 @@
+name: test
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "cmd/**"
+      - "internal/**"
+      - "pkg/**"
+      - "test/**"
+      - "Makefile"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/test.yaml"
+  push:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "cmd/**"
+      - "internal/**"
+      - "pkg/**"
+      - "test/**"
+      - "Makefile"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/test.yaml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: unit + envtest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Run unit tests
+        run: make test
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ github.run_id }}
+          path: cover.out
+          if-no-files-found: ignore
+          retention-days: 7

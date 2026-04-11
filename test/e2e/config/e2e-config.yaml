@@ -1,0 +1,20 @@
+proxmox:
+  # Docker DNS name — reachable from inside Kind cluster
+  endpoint: "proxmox-dev"
+  # Host endpoint — reachable from the host when running operator locally
+  hostEndpoint: "localhost"
+  port: 8006
+  # Proxmox node name (matches --hostname in dev-proxmox target)
+  nodeName: "proxmox-dev"
+  username: "root@pam"
+  password: "123"
+  insecureSkipVerify: true
+
+operator:
+  namespace: "default"
+  deploymentName: "kubemox"
+
+timeouts:
+  resourceReady: 5m
+  proxmoxOperation: 10m
+  cleanup: 2m
