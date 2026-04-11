@@ -19,6 +19,7 @@ package proxmox
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -39,6 +40,9 @@ import (
 type VirtualMachineSnapshotPolicyReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+
+	// cronJobs tracks active cron instances per policy to prevent goroutine leaks.
+	cronJobs sync.Map // map[string]*cron.Cron keyed by policy namespaced name
 }
 
 const (
@@ -125,18 +129,21 @@ func VMSnapshotCR(vmName, snapshotName, namespace, connectionName string) *proxm
 func (r *VirtualMachineSnapshotPolicyReconciler) StartSnapshotCronJobs(ctx context.Context,
 	vmSnapshotPolicy *proxmoxv1alpha1.VirtualMachineSnapshotPolicy) error {
 	logger := log.FromContext(ctx)
+	policyKey := fmt.Sprintf("%s/%s", vmSnapshotPolicy.Namespace, vmSnapshotPolicy.Name)
 	cronSpec := vmSnapshotPolicy.Spec.SnapshotSchedule
-	// Get matching VirtualMachines
-	MatchingVirtualMachines := GetMatchingVirtualMachines(vmSnapshotPolicy, r, ctx)
-	// Get connection name
 	connectionName := vmSnapshotPolicy.Spec.ConnectionRef.Name
 
-	// Iterate over matching VirtualMachines to create snapshot
+	// Stop any existing cron for this policy to prevent goroutine leaks
+	if existing, loaded := r.cronJobs.LoadAndDelete(policyKey); loaded {
+		existing.(*cron.Cron).Stop()
+	}
+
 	c := cron.New()
 	if _, err := c.AddFunc(cronSpec, func() {
-		for i := range MatchingVirtualMachines {
-			vm := &MatchingVirtualMachines[i]
-			// Create snapshot
+		// Re-fetch matching VMs at cron fire time so new VMs are picked up
+		matchingVMs := GetMatchingVirtualMachines(vmSnapshotPolicy, r, ctx)
+		for i := range matchingVMs {
+			vm := &matchingVMs[i]
 			vmName := vm.Spec.Name
 			snapshotName := fmt.Sprintf("snapshot_%s", time.Now().Format("2006_01_02T15_04_05"))
 			namespace := vm.Namespace
@@ -163,6 +170,7 @@ func (r *VirtualMachineSnapshotPolicyReconciler) StartSnapshotCronJobs(ctx conte
 		return err
 	}
 	c.Start()
+	r.cronJobs.Store(policyKey, c)
 
 	return nil
 }

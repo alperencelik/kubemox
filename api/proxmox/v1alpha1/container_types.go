@@ -121,6 +121,16 @@ type ContainerList struct {
 	Items           []Container `json:"items"`
 }
 
+// GetConditions returns the status conditions of the Container.
+func (c *Container) GetConditions() []metav1.Condition {
+	return c.Status.Conditions
+}
+
+// SetConditions sets the status conditions of the Container.
+func (c *Container) SetConditions(conditions []metav1.Condition) {
+	c.Status.Conditions = conditions
+}
+
 func init() { //nolint:gochecknoinits // This is required by kubebuilder
 	SchemeBuilder.Register(&Container{}, &ContainerList{})
 }

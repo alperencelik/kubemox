@@ -252,10 +252,16 @@ func (r *VirtualMachineTemplateReconciler) handleVMCreation(ctx context.Context,
 			return err
 		}
 		// Wait for the task to complete
-		_, taskCompleted, err := task.WaitForCompleteStatus(ctx, 3, 7)
+		taskStatus, taskCompleted, err := task.WaitForCompleteStatus(ctx, 3, 7)
 		if !taskCompleted {
-			logger.Error(err, "Failed to create VM for template")
-			return err
+			if err != nil {
+				logger.Error(err, "Failed to create VM for template")
+				return err
+			}
+			return fmt.Errorf("VM creation task timed out for template %s", templateVMName)
+		}
+		if !taskStatus {
+			return &proxmox.TaskError{ExitStatus: task.ExitStatus}
 		}
 		// Handle additional configuration
 		err = r.handleAdditionalConfig(ctx, pc, vmTemplate)

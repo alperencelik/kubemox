@@ -186,6 +186,16 @@ type VirtualMachineTemplateList struct {
 	Items           []VirtualMachineTemplate `json:"items"`
 }
 
+// GetConditions returns the status conditions of the VirtualMachineTemplate.
+func (vmt *VirtualMachineTemplate) GetConditions() []metav1.Condition {
+	return vmt.Status.Conditions
+}
+
+// SetConditions sets the status conditions of the VirtualMachineTemplate.
+func (vmt *VirtualMachineTemplate) SetConditions(conditions []metav1.Condition) {
+	vmt.Status.Conditions = conditions
+}
+
 func init() {
 	SchemeBuilder.Register(&VirtualMachineTemplate{}, &VirtualMachineTemplateList{})
 }

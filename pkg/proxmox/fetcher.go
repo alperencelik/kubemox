@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	cc "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // Resource is a Kubernetes client.Object used for Proxmox resource operations.
@@ -131,17 +132,24 @@ func (f *VirtualMachineFetcher) TransformExternalState(raw any) (any, error) {
 }
 
 func (f *VirtualMachineFetcher) IsResourceReadyToWatch(ctx context.Context, key types.NamespacedName) bool {
+	logger := log.FromContext(ctx).WithValues("resource", key.String())
 	vm := &proxmoxv1alpha1.VirtualMachine{}
 	if err := f.Client.Get(ctx, key, vm); err != nil {
+		logger.V(2).Info("readiness check: failed to get CR", "error", err)
 		return false
 	}
 	pc, err := NewProxmoxClientFromRef(ctx, f.Client, vm.Spec.ConnectionRef)
 	if err != nil {
+		logger.V(2).Info("readiness check: failed to get Proxmox client", "error", err)
 		return false
 	}
 	ready, err := pc.IsVirtualMachineReady(vm)
 	if err != nil {
+		logger.V(2).Info("readiness check: VM not ready", "vmName", vm.Spec.Name, "error", err)
 		return false
+	}
+	if !ready {
+		logger.V(2).Info("readiness check: VM not ready (no VMID or locked)", "vmName", vm.Spec.Name)
 	}
 	return ready
 }
@@ -213,17 +221,24 @@ func (f *ManagedVirtualMachineFetcher) TransformExternalState(raw any) (any, err
 }
 
 func (f *ManagedVirtualMachineFetcher) IsResourceReadyToWatch(ctx context.Context, key types.NamespacedName) bool {
+	logger := log.FromContext(ctx).WithValues("resource", key.String())
 	vm := &proxmoxv1alpha1.ManagedVirtualMachine{}
 	if err := f.Client.Get(ctx, key, vm); err != nil {
+		logger.V(2).Info("readiness check: failed to get CR", "error", err)
 		return false
 	}
 	pc, err := NewProxmoxClientFromRef(ctx, f.Client, vm.Spec.ConnectionRef)
 	if err != nil {
+		logger.V(2).Info("readiness check: failed to get Proxmox client", "error", err)
 		return false
 	}
 	ready, err := pc.IsVirtualMachineReady(vm)
 	if err != nil {
+		logger.V(2).Info("readiness check: VM not ready", "vmName", vm.Spec.Name, "error", err)
 		return false
+	}
+	if !ready {
+		logger.V(2).Info("readiness check: VM not ready (no VMID or locked)", "vmName", vm.Spec.Name)
 	}
 	return ready
 }
@@ -300,17 +315,24 @@ func (f *ContainerFetcher) TransformExternalState(raw any) (any, error) {
 }
 
 func (f *ContainerFetcher) IsResourceReadyToWatch(ctx context.Context, key types.NamespacedName) bool {
+	logger := log.FromContext(ctx).WithValues("resource", key.String())
 	container := &proxmoxv1alpha1.Container{}
 	if err := f.Client.Get(ctx, key, container); err != nil {
+		logger.V(2).Info("readiness check: failed to get CR", "error", err)
 		return false
 	}
 	pc, err := NewProxmoxClientFromRef(ctx, f.Client, container.Spec.ConnectionRef)
 	if err != nil {
+		logger.V(2).Info("readiness check: failed to get Proxmox client", "error", err)
 		return false
 	}
 	ready, err := pc.IsContainerReady(container)
 	if err != nil {
+		logger.V(2).Info("readiness check: container not ready", "containerName", container.Spec.Name, "error", err)
 		return false
+	}
+	if !ready {
+		logger.V(2).Info("readiness check: container not ready (not found or locked)", "containerName", container.Spec.Name)
 	}
 	return ready
 }
@@ -390,17 +412,24 @@ func (f *VirtualMachineTemplateFetcher) TransformExternalState(raw any) (any, er
 }
 
 func (f *VirtualMachineTemplateFetcher) IsResourceReadyToWatch(ctx context.Context, key types.NamespacedName) bool {
+	logger := log.FromContext(ctx).WithValues("resource", key.String())
 	vmTemplate := &proxmoxv1alpha1.VirtualMachineTemplate{}
 	if err := f.Client.Get(ctx, key, vmTemplate); err != nil {
+		logger.V(2).Info("readiness check: failed to get CR", "error", err)
 		return false
 	}
 	pc, err := NewProxmoxClientFromRef(ctx, f.Client, vmTemplate.Spec.ConnectionRef)
 	if err != nil {
+		logger.V(2).Info("readiness check: failed to get Proxmox client", "error", err)
 		return false
 	}
 	ready, err := pc.IsVirtualMachineReady(vmTemplate)
 	if err != nil {
+		logger.V(2).Info("readiness check: VMTemplate not ready", "vmName", vmTemplate.Spec.Name, "error", err)
 		return false
+	}
+	if !ready {
+		logger.V(2).Info("readiness check: VMTemplate not ready (no VMID or locked)", "vmName", vmTemplate.Spec.Name)
 	}
 	return ready
 }

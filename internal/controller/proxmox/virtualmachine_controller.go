@@ -82,6 +82,7 @@ type VirtualMachineReconciler struct {
 // +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachines/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachines/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -400,6 +401,12 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(ctx context.Contex
 	if err := r.Status().Update(ctx, vm); err != nil {
 		return err
 	}
+	// if err := r.Client.Status().Patch(ctx, vm, client.Apply,
+	// client.FieldOwner("proxmox-controller"),
+	// client.ForceOwnership,
+	// ); err != nil {
+	// return err
+	// }
 	return nil
 }
 
@@ -523,8 +530,8 @@ func (r *VirtualMachineReconciler) handleDelete(ctx context.Context, _ ctrl.Requ
 	// Remove finalizer
 	logger.Info("Removing finalizer from VirtualMachine", "name", vm.Spec.Name)
 	controllerutil.RemoveFinalizer(vm, virtualMachineFinalizerName)
-	if err := r.Update(ctx, vm); err != nil {
-		return ctrl.Result{}, nil
+	if err := r.Update(ctx, vm); client.IgnoreNotFound(err) != nil {
+		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
 }

@@ -1,8 +1,8 @@
 github.com/Masterminds/semver/v3 v3.1.1/go.mod h1:VPu/7SZ7ePZ3QOrcuXROw5FAcLl4a0cBrbBpGY/8hQs=
 github.com/Masterminds/semver/v3 v3.4.0 h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1Xbatp0=
 github.com/Masterminds/semver/v3 v3.4.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
-github.com/alperencelik/kube-external-watcher v0.0.4 h1:iHehe5SSjj41AIf7uJyL+ol8dlEXXjHwH7PK/VQcetY=
-github.com/alperencelik/kube-external-watcher v0.0.4/go.mod h1:X8k0yudcEt9g8C+Vx/FrUTD49LIt0vT4pqU8jrw8OCA=
+github.com/alperencelik/kube-external-watcher v0.0.6 h1:czPVV/7IXdv9zqtEUztXs1d8aLDfx8C5jpiek8NNP5c=
+github.com/alperencelik/kube-external-watcher v0.0.6/go.mod h1:X8k0yudcEt9g8C+Vx/FrUTD49LIt0vT4pqU8jrw8OCA=
 github.com/anchore/go-lzo v0.1.0 h1:NgAacnzqPeGH49Ky19QKLBZEuFRqtTG9cdaucc3Vncs=
 github.com/anchore/go-lzo v0.1.0/go.mod h1:3kLx0bve2oN1iDwgM1U5zGku1Tfbdb0No5qp1eL1fIk=
 github.com/andybalholm/brotli v1.0.1 h1:KqhlKozYbRtJvsPrrEeXcO+N2l6NYT5A2QAFmSULpEc=

@@ -155,10 +155,7 @@ func (r *VirtualMachineSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&proxmoxv1alpha1.VirtualMachine{}).
 		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: VMSetmaxConcurrentReconciles}).
-		Complete(&VirtualMachineSetReconciler{
-			Client: mgr.GetClient(),
-			Scheme: mgr.GetScheme(),
-		})
+		Complete(r)
 }
 
 func (r *VirtualMachineSetReconciler) createOrUpdateVirtualMachineCRs(ctx context.Context, vmSet *proxmoxv1alpha1.VirtualMachineSet) error {
@@ -328,13 +325,12 @@ func (r *VirtualMachineSetReconciler) handleDelete(ctx context.Context, vmSet *p
 
 	if len(vmList.Items) == 0 {
 		// Remove finalizer
-		if ok := controllerutil.RemoveFinalizer(vmSet, virtualMachineSetFinalizerName); !ok {
-			logger.Error(err, "Error removing finalizer from VirtualMachineSet")
-		}
+		controllerutil.RemoveFinalizer(vmSet, virtualMachineSetFinalizerName)
 		if err = r.Update(ctx, vmSet); err != nil {
-			logger.Error(err, "Error updating VirtualMachineSet")
+			logger.Error(err, "Error removing finalizer from VirtualMachineSet")
+			return ctrl.Result{}, err
 		}
-		return ctrl.Result{RequeueAfter: 1 * time.Second}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, nil
 	}
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: 1 * time.Second}, nil
 }
