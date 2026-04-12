@@ -228,7 +228,7 @@ func (pc *ProxmoxClient) CheckVM(vmName, nodeName string) (bool, error) {
 	return false, nil
 }
 
-func (pc *ProxmoxClient) GetVMIPAddress(vmName, nodeName string) string {
+func (pc *ProxmoxClient) GetVMIPv4Address(vmName, nodeName string) string {
 	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM")
@@ -242,7 +242,9 @@ func (pc *ProxmoxClient) GetVMIPAddress(vmName, nodeName string) string {
 	}
 	for _, iface := range VirtualMachineIfaces {
 		for _, ip := range iface.IPAddresses {
-			return ip.IPAddress
+			if ip.IPAddressType == "ipv4" {
+				return ip.IPAddress
+			}
 		}
 	}
 	return ""
@@ -625,7 +627,7 @@ func (pc *ProxmoxClient) UpdateVMStatus(vmName, nodeName string) (*proxmoxv1alph
 			return nil, err
 		}
 		if agentRunning {
-			VirtualMachineIP = pc.GetVMIPAddress(vmName, nodeName)
+			VirtualMachineIP = pc.GetVMIPv4Address(vmName, nodeName)
 			VirtualMachineOS = pc.GetOSInfo(vmName, nodeName)
 		} else {
 			VirtualMachineIP = "nil"

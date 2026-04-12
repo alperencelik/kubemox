@@ -171,13 +171,14 @@ func (r *CustomCertificateReconciler) handleDelete(ctx context.Context,
 
 	// Update the condition for the CustomCertificate if it is being deleted
 	if !meta.IsStatusConditionPresentAndEqual(customCert.Status.Conditions, typeDeletingCustomCertificate, metav1.ConditionTrue) {
+		patch := client.MergeFrom(customCert.DeepCopy())
 		meta.SetStatusCondition(&customCert.Status.Conditions, metav1.Condition{
 			Type:    typeDeletingCustomCertificate,
 			Status:  metav1.ConditionTrue,
 			Reason:  "Deleting",
 			Message: "Deleting CustomCertificate",
 		})
-		if err = r.Status().Update(ctx, customCert); err != nil {
+		if err = r.Status().Patch(ctx, customCert, patch); err != nil {
 			logger.Error(err, "Error updating CustomCertificate status")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}
@@ -244,13 +245,14 @@ func (r *CustomCertificateReconciler) handleCertificate(ctx context.Context,
 	}
 	// Update the condition for the CustomCertificate
 	if !meta.IsStatusConditionPresentAndEqual(customCert.Status.Conditions, typeAvailableCustomCertificate, metav1.ConditionTrue) {
+		patch := client.MergeFrom(customCert.DeepCopy())
 		meta.SetStatusCondition(&customCert.Status.Conditions, metav1.Condition{
 			Type:    typeAvailableCustomCertificate,
 			Status:  metav1.ConditionTrue,
 			Reason:  "Available",
 			Message: "CustomCertificate is available",
 		})
-		if err = r.Status().Update(ctx, customCert); err != nil {
+		if err = r.Status().Patch(ctx, customCert, patch); err != nil {
 			logger.Error(err, "Error updating CustomCertificate status")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}

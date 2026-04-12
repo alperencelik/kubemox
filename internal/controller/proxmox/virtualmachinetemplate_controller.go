@@ -440,13 +440,14 @@ func (r *VirtualMachineTemplateReconciler) handleStorageDownloadURL(ctx context.
 	}
 	// Update the condition for the VirtualMachineTemplate if it's not already available
 	if !meta.IsStatusConditionPresentAndEqual(vmTemplate.Status.Conditions, typeAvailableVirtualMachineTemplate, metav1.ConditionTrue) {
+		patch := client.MergeFrom(vmTemplate.DeepCopy())
 		meta.SetStatusCondition(&vmTemplate.Status.Conditions, metav1.Condition{
 			Type:    typeAvailableVirtualMachineTemplate,
 			Status:  metav1.ConditionTrue,
 			Reason:  "Available",
 			Message: "VirtualMachineTemplate is available",
 		})
-		if err = r.Status().Update(ctx, vmTemplate); err != nil {
+		if err = r.Status().Patch(ctx, vmTemplate, patch); err != nil {
 			logger.Error(err, "Failed to update VirtualMachineTemplate status")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}
@@ -469,13 +470,14 @@ func (r *VirtualMachineTemplateReconciler) handleStatus(ctx context.Context,
 	vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	if !meta.IsStatusConditionPresentAndEqual(vmTemplate.Status.Conditions, typeAvailableVirtualMachineTemplate, metav1.ConditionTrue) {
+		patch := client.MergeFrom(vmTemplate.DeepCopy())
 		meta.SetStatusCondition(&vmTemplate.Status.Conditions, metav1.Condition{
 			Type:    typeAvailableVirtualMachineTemplate,
 			Status:  metav1.ConditionTrue,
 			Reason:  "Ready",
 			Message: "VirtualMachineTemplate is ready",
 		})
-		if err := r.Status().Update(ctx, vmTemplate); err != nil {
+		if err := r.Status().Patch(ctx, vmTemplate, patch); err != nil {
 			logger.Error(err, "Failed to update VirtualMachineTemplate status")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}
@@ -487,13 +489,14 @@ func (r *VirtualMachineTemplateReconciler) handleDelete(ctx context.Context,
 	_ ctrl.Request, pc *proxmox.ProxmoxClient, vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	if !meta.IsStatusConditionPresentAndEqual(vmTemplate.Status.Conditions, typeDeletingVirtualMachineTemplate, metav1.ConditionUnknown) {
+		patch := client.MergeFrom(vmTemplate.DeepCopy())
 		meta.SetStatusCondition(&vmTemplate.Status.Conditions, metav1.Condition{
 			Type:    typeDeletingVirtualMachineTemplate,
 			Status:  metav1.ConditionUnknown,
 			Reason:  "Deleting",
 			Message: "VirtualMachineTemplate is being deleted",
 		})
-		if err := r.Status().Update(ctx, vmTemplate); err != nil {
+		if err := r.Status().Patch(ctx, vmTemplate, patch); err != nil {
 			logger.Error(err, "Failed to update VirtualMachineTemplate status")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}

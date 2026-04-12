@@ -188,13 +188,14 @@ func (r *VirtualMachineReconciler) handleStatus(ctx context.Context,
 	if meta.IsStatusConditionPresentAndEqual(vm.Status.Conditions, typeAvailableVirtualMachine, metav1.ConditionTrue) {
 		return ctrl.Result{}, nil
 	}
+	patch := client.MergeFrom(vm.DeepCopy())
 	meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
 		Type:    typeAvailableVirtualMachine,
 		Status:  metav1.ConditionTrue,
 		Reason:  "Ready",
 		Message: "VirtualMachine is ready",
 	})
-	if err := r.Status().Update(ctx, vm); err != nil {
+	if err := r.Status().Patch(ctx, vm, patch); err != nil {
 		logger.Error(err, "Failed to update VirtualMachine status")
 		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 	}
@@ -318,7 +319,7 @@ func (r *VirtualMachineReconciler) handleCreateFromTemplate(ctx context.Context,
 			r.Watcher.Unregister(client.ObjectKeyFromObject(vm))
 			return dontRequeue, reconcile.TerminalError(err)
 		}
-		if updateErr := r.Status().Update(ctx, vm); updateErr != nil {
+		if updateErr := r.Status().Patch(ctx, vm, client.MergeFrom(vm.DeepCopy())); updateErr != nil {
 			return requeue, updateErr
 		}
 		return requeue, err
@@ -346,7 +347,7 @@ func (r *VirtualMachineReconciler) handleCreateFromScratch(ctx context.Context, 
 			r.Watcher.Unregister(client.ObjectKeyFromObject(vm))
 			return dontRequeue, reconcile.TerminalError(err)
 		}
-		if updateErr := r.Status().Update(ctx, vm); updateErr != nil {
+		if updateErr := r.Status().Patch(ctx, vm, client.MergeFrom(vm.DeepCopy())); updateErr != nil {
 			return requeue, updateErr
 		}
 		return requeue, err
@@ -412,30 +413,21 @@ func (r *VirtualMachineReconciler) DeleteVirtualMachine(ctx context.Context,
 
 func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(ctx context.Context,
 	pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine) error {
+	// Update the QEMU status
+	qemuStatus, err := pc.UpdateVMStatus(vm.Spec.Name, vm.Spec.NodeName)
+	if err != nil {
+		r.Recorder.Eventf(vm, nil, "Warning", "Error", "Error", fmt.Sprintf("VirtualMachine %s failed to update status due to %s", vm.Spec.Name, err))
+		return err
+	}
+	patch := client.MergeFrom(vm.DeepCopy())
 	meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
 		Type:    typeAvailableVirtualMachine,
 		Status:  metav1.ConditionTrue,
 		Reason:  "Available",
 		Message: "VirtualMachine status is updated",
 	})
-	// Update the QEMU status
-	qemuStatus, err := pc.UpdateVMStatus(vm.Spec.Name, vm.Spec.NodeName)
-	if err != nil {
-		// Update the status condition
-		r.Recorder.Eventf(vm, nil, "Warning", "Error", "Error", fmt.Sprintf("VirtualMachine %s failed to update status due to %s", vm.Spec.Name, err))
-		return err
-	}
 	vm.Status.Status = qemuStatus
-	if err := r.Status().Update(ctx, vm); err != nil {
-		return err
-	}
-	// if err := r.Client.Status().Patch(ctx, vm, client.Apply,
-	// client.FieldOwner("proxmox-controller"),
-	// client.ForceOwnership,
-	// ); err != nil {
-	// return err
-	// }
-	return nil
+	return r.Status().Patch(ctx, vm, patch)
 }
 
 func (r *VirtualMachineReconciler) handleResourceNotFound(ctx context.Context, err error) error {
@@ -533,13 +525,14 @@ func (r *VirtualMachineReconciler) handleDelete(ctx context.Context, _ ctrl.Requ
 
 	// Update the condition for the VirtualMachine if it is not already deleting
 	if !meta.IsStatusConditionPresentAndEqual(vm.Status.Conditions, typeDeletingVirtualMachine, metav1.ConditionUnknown) {
+		patch := client.MergeFrom(vm.DeepCopy())
 		meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
 			Type:    typeDeletingVirtualMachine,
 			Status:  metav1.ConditionUnknown,
 			Reason:  "Deleting",
 			Message: "Deleting VirtualMachine",
 		})
-		if err := r.Status().Update(ctx, vm); err != nil {
+		if err := r.Status().Patch(ctx, vm, patch); err != nil {
 			logger.Error(err, "Error updating VirtualMachine status")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}

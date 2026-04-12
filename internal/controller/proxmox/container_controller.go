@@ -225,13 +225,10 @@ func (r *ContainerReconciler) UpdateContainerStatus(ctx context.Context, pc *pro
 		Uptime: containerStatus.Uptime,
 		ID:     containerStatus.ID,
 	}
+	patch := client.MergeFrom(container.DeepCopy())
 	container.Status.Status = qemuStatus
 	// Update Container
-	err = r.Status().Update(ctx, container)
-	if err != nil {
-		return err
-	}
-	return nil
+	return r.Status().Patch(ctx, container, patch)
 }
 
 func (r *ContainerReconciler) handleResourceNotFound(ctx context.Context, err error) error {
@@ -310,13 +307,14 @@ func (r *ContainerReconciler) handleDelete(ctx context.Context,
 	logger.Info("Deleting Container", "name", container.Spec.Name)
 
 	if !meta.IsStatusConditionPresentAndEqual(container.Status.Conditions, typeDeletingContainer, metav1.ConditionUnknown) {
+		patch := client.MergeFrom(container.DeepCopy())
 		meta.SetStatusCondition(&container.Status.Conditions, metav1.Condition{
 			Type:    typeDeletingContainer,
 			Status:  metav1.ConditionUnknown,
 			Reason:  "Deleting",
 			Message: "Deleting Container",
 		})
-		if err = r.Status().Update(ctx, container); err != nil {
+		if err = r.Status().Patch(ctx, container, patch); err != nil {
 			logger.Error(err, "Error updating Container status")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}

@@ -70,6 +70,7 @@ func (r *ProxmoxConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if err != nil {
 		logger.Error(err, "unable to get version")
 		// Update the status with the connection error
+		patch := client.MergeFrom(proxmoxConnection.DeepCopy())
 		meta.SetStatusCondition(&proxmoxConnection.Status.Conditions, metav1.Condition{
 			LastTransitionTime: metav1.Now(),
 			Type:               "Ready",
@@ -77,7 +78,7 @@ func (r *ProxmoxConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			Reason:             "ProxmoxConnectionError",
 			Message:            err.Error(),
 		})
-		if err := r.Status().Update(ctx, proxmoxConnection); err != nil {
+		if err := r.Status().Patch(ctx, proxmoxConnection, patch); err != nil {
 			logger.Error(err, "unable to update ProxmoxConnection status")
 			return ctrl.Result{}, err
 		}
@@ -86,6 +87,7 @@ func (r *ProxmoxConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	logger.Info("Proxmox connection successful", "version", *version)
 	// Update the status with the version
+	patch := client.MergeFrom(proxmoxConnection.DeepCopy())
 	proxmoxConnection.Status.Version = *version
 	// Update the status with the connection status
 	meta.SetStatusCondition(&proxmoxConnection.Status.Conditions, metav1.Condition{
@@ -95,7 +97,7 @@ func (r *ProxmoxConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		Reason:             "ProxmoxConnectionReady",
 		Message:            "Proxmox connection is ready",
 	})
-	if err := r.Status().Update(ctx, proxmoxConnection); err != nil {
+	if err := r.Status().Patch(ctx, proxmoxConnection, patch); err != nil {
 		logger.Error(err, "unable to update ProxmoxConnection status")
 		return ctrl.Result{}, err
 	}

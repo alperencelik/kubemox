@@ -147,6 +147,7 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 	} else {
 		logger.Info("File exists in the storage")
 		if !meta.IsStatusConditionPresentAndEqual(storageDownloadURL.Status.Conditions, typeAvailableStorageDownloadURL, metav1.ConditionTrue) {
+			patch := client.MergeFrom(storageDownloadURL.DeepCopy())
 			meta.SetStatusCondition(&storageDownloadURL.Status.Conditions, metav1.Condition{
 				Type:   typeAvailableStorageDownloadURL,
 				Status: metav1.ConditionTrue,
@@ -155,7 +156,7 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 					storageDownloadURL.Spec.Filename, storageDownloadURL.Spec.Storage),
 			})
 			storageDownloadURL.Status.Status = typeCompletedStorageDownloadURL
-			if err := r.Status().Update(ctx, storageDownloadURL); err != nil {
+			if err := r.Status().Patch(ctx, storageDownloadURL, patch); err != nil {
 				logger.Error(err, "unable to update StorageDownloadURL status")
 				return ctrl.Result{}, err
 			}
@@ -225,6 +226,7 @@ func (r *StorageDownloadURLReconciler) handleDownloadURL(ctx context.Context,
 	case taskCompleted:
 		logger.Info("Download task completed")
 		// Update the status
+		patch := client.MergeFrom(storageDownloadURL.DeepCopy())
 		meta.SetStatusCondition(&storageDownloadURL.Status.Conditions, metav1.Condition{
 			Type:   typeAvailableStorageDownloadURL,
 			Status: metav1.ConditionTrue,
@@ -233,7 +235,7 @@ func (r *StorageDownloadURLReconciler) handleDownloadURL(ctx context.Context,
 				storageDownloadURL.Spec.Filename, storageDownloadURL.Spec.Storage),
 		})
 		storageDownloadURL.Status.Status = typeCompletedStorageDownloadURL
-		if err := r.Status().Update(ctx, storageDownloadURL); err != nil {
+		if err := r.Status().Patch(ctx, storageDownloadURL, patch); err != nil {
 			logger.Error(err, "unable to update StorageDownloadURL status")
 			return err
 		}
@@ -248,13 +250,14 @@ func (r *StorageDownloadURLReconciler) handleDelete(ctx context.Context,
 	logger := log.FromContext(ctx)
 	var err error
 	if !meta.IsStatusConditionPresentAndEqual(storageDownloadURL.Status.Conditions, typeDeletingStorageDownloadURL, metav1.ConditionTrue) {
+		patch := client.MergeFrom(storageDownloadURL.DeepCopy())
 		meta.SetStatusCondition(&storageDownloadURL.Status.Conditions, metav1.Condition{
 			Type:    typeDeletingStorageDownloadURL,
 			Status:  metav1.ConditionTrue,
 			Reason:  "Deleting",
 			Message: "Deleting StorageDownloadURL",
 		})
-		if err = r.Status().Update(ctx, storageDownloadURL); err != nil {
+		if err = r.Status().Patch(ctx, storageDownloadURL, patch); err != nil {
 			logger.Error(err, "unable to update StorageDownloadURL status")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}
