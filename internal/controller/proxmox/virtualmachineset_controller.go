@@ -267,13 +267,14 @@ func (r *VirtualMachineSetReconciler) handleVMsetOperations(ctx context.Context,
 			return err
 		}
 		// Set the condition for the VirtualMachineSet
+		patch := client.MergeFrom(vmSet.DeepCopy())
 		meta.SetStatusCondition(&vmSet.Status.Conditions, metav1.Condition{
 			Type:    typeScalingDownVirtualMachineSet,
 			Status:  metav1.ConditionTrue,
 			Reason:  "ScaledDown",
 			Message: "VirtualMachines scaled down",
 		})
-		if err := r.Status().Update(ctx, vmSet); err != nil {
+		if err := r.Status().Patch(ctx, vmSet, patch); err != nil {
 			logger.Error(err, "Error updating VirtualMachineSet status")
 			return err
 		}
@@ -303,13 +304,14 @@ func (r *VirtualMachineSetReconciler) handleDelete(ctx context.Context, vmSet *p
 	var err error
 
 	if !meta.IsStatusConditionPresentAndEqual(vmSet.Status.Conditions, typeDeletingVirtualMachineSet, metav1.ConditionUnknown) {
+		patch := client.MergeFrom(vmSet.DeepCopy())
 		meta.SetStatusCondition(&vmSet.Status.Conditions, metav1.Condition{
 			Type:    "Deleting",
 			Status:  metav1.ConditionUnknown,
 			Reason:  "Deleting",
 			Message: "Deleting VirtualMachineSet",
 		})
-		if err = r.Status().Update(ctx, vmSet); err != nil {
+		if err = r.Status().Patch(ctx, vmSet, patch); err != nil {
 			logger.Info("Error updating VirtualMachineSet status")
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}

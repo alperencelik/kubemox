@@ -182,8 +182,9 @@ func (f *VirtualMachineFetcher) UpdateResourceStatus(ctx context.Context, key ty
 	if err != nil {
 		return err
 	}
+	patch := cc.MergeFrom(vm.DeepCopy())
 	vm.Status.Status = qemuStatus
-	return f.Client.Status().Update(ctx, vm)
+	return f.Client.Status().Patch(ctx, vm, patch)
 }
 
 // --- ManagedVirtualMachine Fetcher ---
@@ -261,8 +262,9 @@ func (f *ManagedVirtualMachineFetcher) UpdateResourceStatus(ctx context.Context,
 	if err != nil {
 		return err
 	}
+	patch := cc.MergeFrom(vm.DeepCopy())
 	vm.Status.Status = qemuStatus
-	return f.Client.Status().Update(ctx, vm)
+	return f.Client.Status().Patch(ctx, vm, patch)
 }
 
 // --- Container Fetcher ---
@@ -335,13 +337,14 @@ func (f *ContainerFetcher) UpdateResourceStatus(ctx context.Context, key types.N
 	if err != nil {
 		return err
 	}
+	patch := cc.MergeFrom(container.DeepCopy())
 	container.Status.Status = proxmoxv1alpha1.QEMUStatus{
 		State:  containerStatus.State,
 		Node:   containerStatus.Node,
 		Uptime: containerStatus.Uptime,
 		ID:     containerStatus.ID,
 	}
-	return f.Client.Status().Update(ctx, container)
+	return f.Client.Status().Patch(ctx, container, patch)
 }
 
 // --- VirtualMachineTemplate Fetcher ---

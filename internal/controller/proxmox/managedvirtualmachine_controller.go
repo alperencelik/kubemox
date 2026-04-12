@@ -248,12 +248,6 @@ func (r *ManagedVirtualMachineReconciler) handleAutoStart(ctx context.Context,
 func (r *ManagedVirtualMachineReconciler) UpdateManagedVirtualMachineStatus(ctx context.Context,
 	pc *proxmox.ProxmoxClient, managedVM *proxmoxv1alpha1.ManagedVirtualMachine) error {
 	// Update ManagedVMStatus
-	meta.SetStatusCondition(&managedVM.Status.Conditions, metav1.Condition{
-		Type:    typeAvailableVirtualMachine,
-		Status:  metav1.ConditionTrue,
-		Reason:  "Available",
-		Message: "VirtualMachine status is updated",
-	})
 	managedVMName := managedVM.Name
 	nodeName, err := pc.GetNodeOfVM(managedVMName)
 	if err != nil {
@@ -264,11 +258,15 @@ func (r *ManagedVirtualMachineReconciler) UpdateManagedVirtualMachineStatus(ctx 
 	if err != nil {
 		return err
 	}
+	patch := client.MergeFrom(managedVM.DeepCopy())
+	meta.SetStatusCondition(&managedVM.Status.Conditions, metav1.Condition{
+		Type:    typeAvailableVirtualMachine,
+		Status:  metav1.ConditionTrue,
+		Reason:  "Available",
+		Message: "VirtualMachine status is updated",
+	})
 	managedVM.Status.Status = ManagedVMStatus
-	if err := r.Status().Update(ctx, managedVM); err != nil {
-		return err
-	}
-	return nil
+	return r.Status().Patch(ctx, managedVM, patch)
 }
 
 func (r *ManagedVirtualMachineReconciler) handleDelete(ctx context.Context, _ ctrl.Request,
@@ -278,13 +276,14 @@ func (r *ManagedVirtualMachineReconciler) handleDelete(ctx context.Context, _ ct
 	var err error
 
 	if !meta.IsStatusConditionPresentAndEqual(managedVM.Status.Conditions, typeDeletingManagedVirtualMachine, metav1.ConditionTrue) {
+		patch := client.MergeFrom(managedVM.DeepCopy())
 		meta.SetStatusCondition(&managedVM.Status.Conditions, metav1.Condition{
 			Type:    typeDeletingManagedVirtualMachine,
 			Status:  metav1.ConditionTrue,
 			Reason:  "Deleting",
 			Message: "Deleting ManagedVirtualMachine",
 		})
-		if err = r.Status().Update(ctx, managedVM); err != nil {
+		if err = r.Status().Patch(ctx, managedVM, patch); err != nil {
 			logger.Error(err, "Error updating ManagedVirtualMachine status")
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}

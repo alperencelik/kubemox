@@ -169,9 +169,9 @@ func (r *VirtualMachineSnapshotReconciler) handleSnapshotCreation(ctx context.Co
 	// If snapshotName is exists in the snapshots, return
 	if utils.ExistsIn([]string{snapshotName}, snapshots) {
 		logger.Info("Snapshot is already exists")
+		patch := client.MergeFrom(vmSnapshot.DeepCopy())
 		vmSnapshot.Status.Status = snapshotCreatedStatus
-		err = r.Status().Update(ctx, vmSnapshot)
-		if err != nil {
+		if err = r.Status().Patch(ctx, vmSnapshot, patch); err != nil {
 			return client.IgnoreNotFound(err)
 		}
 		return nil
@@ -188,15 +188,17 @@ func (r *VirtualMachineSnapshotReconciler) handleSnapshotCreation(ctx context.Co
 			if err = r.Update(ctx, vmSnapshot); err != nil {
 				return client.IgnoreNotFound(err)
 			}
+			patch := client.MergeFrom(vmSnapshot.DeepCopy())
 			vmSnapshot.Status.Status = snapshotCreatedStatus
-			if err = r.Status().Update(ctx, vmSnapshot); err != nil {
+			if err = r.Status().Patch(ctx, vmSnapshot, patch); err != nil {
 				return client.IgnoreNotFound(err)
 			}
 			logger.Info(fmt.Sprintf("Snapshot %s is created for %s", snapshotName, vmName))
 		default:
 			// Snapshot creation failed, return
+			patch := client.MergeFrom(vmSnapshot.DeepCopy())
 			vmSnapshot.Status.ErrorMessage = "Snapshot creation failed"
-			if err = r.Status().Update(ctx, vmSnapshot); err != nil {
+			if err = r.Status().Patch(ctx, vmSnapshot, patch); err != nil {
 				return client.IgnoreNotFound(err)
 			}
 		}
