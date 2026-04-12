@@ -8,7 +8,7 @@ on:
       - 'charts/**'
   push:
     branches:
-      - '**'
+      - main
     paths-ignore:
       - '.github/**'
       - 'charts/**'
