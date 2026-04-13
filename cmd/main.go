@@ -132,7 +132,7 @@ func main() {
 		},
 	}
 	watcherOpts := []watcher.Option{
-		watcher.WithDefaultPollInterval(20 * time.Second),
+		watcher.WithDefaultPollInterval(60 * time.Second),
 		watcher.WithLogger(watcherLogger),
 	}
 	// Readiness retry config for auto-registered watchers to handle transient API errors during startup

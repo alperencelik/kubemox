@@ -163,7 +163,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	result, err := r.handleVirtualMachineOperations(ctx, pc, vm)
 	if err != nil {
 		logger.Error(err, "Error handling VirtualMachine operations")
-		return result, reconcile.TerminalError(err)
+		return result, err
 	}
 	if result != (ctrl.Result{}) {
 		return result, nil
@@ -238,7 +238,7 @@ func (r *VirtualMachineReconciler) handleVirtualMachineOperations(ctx context.Co
 			return ctrl.Result{}, reconcile.TerminalError(err)
 		}
 		logger.Error(err, "Error checking VirtualMachine")
-		return ctrl.Result{Requeue: true, RequeueAfter: VMreconcilationPeriod}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	if !vmExists {
 		// If not exists, create the VM
@@ -272,6 +272,11 @@ func (r *VirtualMachineReconciler) handleVirtualMachineOperations(ctx context.Co
 			logger.Error(err, "Failed to start VirtualMachine")
 			return res, err
 		}
+	}
+	// Ensure the operator tag is present on the VM
+	if err = pc.EnsureVMTag(vmName, nodeName); err != nil {
+		logger.Error(err, "Error ensuring VM tag")
+		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, client.IgnoreNotFound(err)
 }
@@ -537,6 +542,9 @@ func (r *VirtualMachineReconciler) handleDelete(ctx context.Context, _ ctrl.Requ
 			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}
 	}
+	// Stop watching before deleting since delete can't be reverted
+	r.Watcher.Unregister(client.ObjectKeyFromObject(vm))
+
 	// Perform all operations to delete the VM if the VM is not marked as deleting
 	// TODO: Evaluate the requirement of check mechanism for VM whether it's already deleting
 	res, err := r.DeleteVirtualMachine(ctx, pc, vm)

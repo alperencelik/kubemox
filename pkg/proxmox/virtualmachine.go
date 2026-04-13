@@ -95,10 +95,6 @@ func (pc *ProxmoxClient) CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine
 	defer func() { <-createVMSemaphore }()
 
 	nodeName := vm.Spec.NodeName
-	node, err := pc.getNode(ctx, nodeName)
-	if err != nil {
-		return err
-	}
 	templateVMName := vm.Spec.Template.Name
 	templateVM, err := pc.getVirtualMachine(templateVMName, nodeName)
 	if err != nil {
@@ -116,12 +112,12 @@ func (pc *ProxmoxClient) CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine
 	// Make sure that not two VMs are created at the exact time
 	mutex.Lock()
 	newID, task, err := templateVM.Clone(ctx, &CloneOptions)
+	mutex.Unlock()
 	if err != nil {
 		log.Log.Error(err, "Error creating VM")
 		return err
 	}
 	log.Log.Info(fmt.Sprintf("New VM %s has been creating with ID: %d", vm.Name, newID))
-	mutex.Unlock()
 	// TODO: Implement a better way to watch the tasks.
 	if EnableProxmoxTaskLogs {
 		logChan, err := task.Watch(ctx, 0)
@@ -143,27 +139,6 @@ func (pc *ProxmoxClient) CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine
 	if !taskCompleted {
 		log.Log.Error(taskErr, "Can't stop VM")
 		return taskErr
-	}
-	// Add tag to VM
-	VirtualMachine, err := node.VirtualMachine(ctx, newID)
-	if err != nil {
-		log.Log.Error(err, "Error getting VM")
-		return err
-	}
-	task, err = VirtualMachine.AddTag(ctx, virtualMachineTag)
-	// TODO: Use strings instead of numbers
-	taskStatus, taskCompleted, taskErr = task.WaitForCompleteStatus(ctx, 3, 5)
-	if !taskStatus {
-		// Return the task.ExitStatus as error
-		return &TaskError{ExitStatus: task.ExitStatus}
-	}
-	if !taskCompleted {
-		log.Log.Error(taskErr, "Error adding tag to VM")
-		return taskErr
-	}
-
-	if err != nil {
-		return err
 	}
 	// Cache the new VM ID
 	pc.setCachedVMID(nodeName, vm.Name, newID)
@@ -237,7 +212,8 @@ func (pc *ProxmoxClient) GetVMIPv4Address(vmName, nodeName string) string {
 	// Get VM IP
 	VirtualMachineIfaces, err := VirtualMachine.AgentGetNetworkIFaces(ctx)
 	if err != nil {
-		log.Log.Error(err, "Error getting VM IP")
+		// Agent may stop between the readiness check and this call (VM shutting down/deleting)
+		log.Log.V(1).Info("Unable to get VM IP, guest agent may not be running", "vm", vmName, "error", err)
 		return ""
 	}
 	for _, iface := range VirtualMachineIfaces {
@@ -259,7 +235,8 @@ func (pc *ProxmoxClient) GetOSInfo(vmName, nodeName string) string {
 	// Get VM OS
 	VirtualMachineOS, err := VirtualMachine.AgentOsInfo(ctx)
 	if err != nil {
-		log.Log.Error(err, "Error getting VM OS")
+		// Agent may stop between the readiness check and this call (VM shutting down/deleting)
+		log.Log.V(1).Info("Unable to get VM OS info, guest agent may not be running", "vm", vmName, "error", err)
 		return ""
 	}
 	// Check either the OS name or pretty name is empty
@@ -506,37 +483,27 @@ func (pc *ProxmoxClient) CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine)
 		}
 	}
 	// Make sure that not two VMs are created at the exact time
-	mutex.Lock()
-	// Get next VMID
-	vmID, err := getNextVMID(pc.Client)
+	var vmID int
+	var task *proxmox.Task
+	func() {
+		mutex.Lock()
+		defer mutex.Unlock()
+		// Get next VMID
+		vmID, err = getNextVMID(pc.Client)
+		if err != nil {
+			log.Log.Error(err, "Error getting next VMID")
+			return
+		}
+		// Create VM
+		task, err = node.NewVirtualMachine(ctx, vmID, VMOptions...)
+		if err != nil {
+			log.Log.Error(err, "Error creating VM")
+		}
+	}()
 	if err != nil {
-		log.Log.Error(err, "Error getting next VMID")
 		return err
 	}
-	// Create VM
-	task, err := node.NewVirtualMachine(ctx, vmID, VMOptions...)
-	if err != nil {
-		log.Log.Error(err, "Error creating VM")
-		return err
-	}
-	mutex.Unlock()
 	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 10, 10)
-	if !taskStatus {
-		// Return the task.ExitStatus as an error
-		return &TaskError{ExitStatus: task.ExitStatus}
-	}
-	if !taskCompleted {
-		return taskErr
-	}
-	VirtualMachine, err := node.VirtualMachine(ctx, vmID)
-	if err != nil {
-		return err
-	}
-	addTagTask, err := VirtualMachine.AddTag(ctx, virtualMachineTag)
-	if err != nil {
-		return err
-	}
-	taskStatus, taskCompleted, taskErr = addTagTask.WaitForCompleteStatus(ctx, 3, 10)
 	if !taskStatus {
 		// Return the task.ExitStatus as an error
 		return &TaskError{ExitStatus: task.ExitStatus}
@@ -936,6 +903,29 @@ func (pc *ProxmoxClient) RemoveVirtualMachineTag(vmName, nodeName, tag string) e
 	}
 	if !taskCompleted {
 		log.Log.Error(taskErr, "Error removing tag from VirtualMachine")
+		return taskErr
+	}
+	return nil
+}
+
+// EnsureVMTag checks if the VM has the operator tag and adds it if missing.
+func (pc *ProxmoxClient) EnsureVMTag(vmName, nodeName string) error {
+	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
+	if err != nil {
+		return err
+	}
+	addTagTask, err := VirtualMachine.AddTag(ctx, virtualMachineTag)
+	if err != nil {
+		if proxmox.IsErrNoop(err) {
+			return nil
+		}
+		return err
+	}
+	taskStatus, taskCompleted, taskErr := addTagTask.WaitForCompleteStatus(ctx, 3, 5)
+	if !taskStatus {
+		return &TaskError{ExitStatus: addTagTask.ExitStatus}
+	}
+	if !taskCompleted {
 		return taskErr
 	}
 	return nil
