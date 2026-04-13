@@ -1,0 +1,25 @@
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: Container
+metadata:
+  name: container-from-oci
+spec:
+  connectionRef:
+    name: proxmoxconnection-sample
+  name: container-from-oci
+  nodeName: lowtower
+  deletionProtection: false
+  enableAutoStart: true
+  template:
+    image:
+      reference: nginx:alpine
+      # File-based Proxmox pool for oci-registry-pull (not lvmthin)
+      storage: local
+    cores: 2
+    memory: 4096
+    disk:
+      - storage: nvme
+        size: 50
+        type: scsi
+    network:
+      - model: virtio
+        bridge: vmbr0

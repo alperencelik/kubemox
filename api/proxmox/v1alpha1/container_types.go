@@ -26,6 +26,9 @@ import (
 
 // ContainerSpec defines the desired state of Container
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.connectionRef) || has(self.connectionRef)", message="ConnectionRef is required once set"
+// +kubebuilder:validation:XValidation:rule="(has(self.template.name) && self.template.name != \"\") != has(self.template.image)", message="Set exactly one of template.name or template.image"
+// +kubebuilder:validation:XValidation:rule="!has(self.template.image) || (size(self.template.disk) > 0)", message="template.disk is required when template.image is set (rootfs volume)"
+// +kubebuilder:validation:XValidation:rule="!has(self.template.image) || (has(self.template.image.reference) && self.template.image.reference != \"\" && has(self.template.image.storage) && self.template.image.storage != \"\")", message="template.image.reference and template.image.storage are required when template.image is set"
 //
 //nolint:lll // CEL validation rule is too long
 type ContainerSpec struct {
@@ -53,8 +56,11 @@ type ContainerSpec struct {
 }
 
 type ContainerTemplate struct {
-	// Name of the template
+	// Name of the template container on Proxmox to clone from (mutually exclusive with Image)
 	Name string `json:"name,omitempty"`
+	// Image pulls an OCI image into Proxmox storage and clones from the resulting template CT.
+	// Mutually exclusive with Name.
+	Image *ContainerTemplateImage `json:"image,omitempty"`
 	// Cores is the number of CPU cores
 	// +kubebuilder:validation:Minimum=1
 	Cores int `json:"cores,omitempty"`
@@ -65,6 +71,17 @@ type ContainerTemplate struct {
 	Disk []ContainerTemplateDisk `json:"disk,omitempty"`
 	// Networks is the list of networks
 	Network []ContainerTemplateNetwork `json:"network,omitempty"`
+}
+
+// ContainerTemplateImage is an OCI image and the Proxmox datastore used for oci-registry-pull.
+type ContainerTemplateImage struct {
+	// Reference is the OCI image (for example nginx:alpine).
+	// +kubebuilder:validation:MinLength=1
+	Reference string `json:"reference"`
+	// Storage is the Proxmox storage ID where the image is pulled and stored. It must be file-based
+	// (dir, nfs, zfs, ...); lvmthin cannot store OCI blobs. template.disk[0].storage is only for rootfs.
+	// +kubebuilder:validation:MinLength=1
+	Storage string `json:"storage"`
 }
 
 type ContainerTemplateDisk struct {
@@ -90,6 +107,13 @@ type ContainerStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"` //nolint:lll // This is required by kubebuilder
 	Status     QEMUStatus         `json:"status,omitempty"`
+	// AppliedImageReference is the OCI reference the running Proxmox CT was created from (template.image only).
+	// If spec.template.image.reference (or storage) diverges, the controller replaces the CT.
+	// +optional
+	AppliedImageReference string `json:"appliedImageReference,omitempty"`
+	// AppliedImageStorage is the OCI blob storage ID used when the CT was created (template.image only).
+	// +optional
+	AppliedImageStorage string `json:"appliedImageStorage,omitempty"`
 }
 
 // +kubebuilder:object:root=true

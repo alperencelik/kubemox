@@ -2,7 +2,11 @@ package proxmox
 
 import (
 	"fmt"
+	"net"
+	"reflect"
+	"strings"
 	"time"
+	"unsafe"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/utils"
@@ -10,17 +14,99 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+func isLXCNotRunningErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "not running")
+}
+
+func setProxmoxContainerClient(c *proxmox.Container, client *proxmox.Client) {
+	rv := reflect.ValueOf(c).Elem()
+	f := rv.FieldByName("client")
+	reflect.NewAt(f.Type(), unsafe.Pointer(f.UnsafeAddr())).Elem().Set(reflect.ValueOf(client))
+}
+
+func (pc *ProxmoxClient) lxcFromConfigWhenStopped(nodeName string, containerID int) (*proxmox.Container, error) {
+	cc := new(proxmox.ContainerConfig)
+	path := fmt.Sprintf("/nodes/%s/lxc/%d/config", nodeName, containerID)
+	if err := pc.Client.Get(ctx, path, &cc); err != nil {
+		return nil, err
+	}
+	c := &proxmox.Container{
+		Node:            nodeName,
+		Status:          VirtualMachineStoppedState,
+		ContainerConfig: cc,
+		VMID:            proxmox.StringOrUint64(uint64(containerID)),
+		Name:            cc.Hostname,
+		CPUs:            cc.Cores,
+	}
+	if cc.Memory > 0 {
+		c.MaxMem = uint64(cc.Memory) * 1024 * 1024
+	}
+	setProxmoxContainerClient(c, pc.Client)
+	return c, nil
+}
+
+// parseIPv4FromLXCInet parses Proxmox LXC interface Inet (e.g. "192.168.1.5/24" or "192.168.1.5").
+func parseIPv4FromLXCInet(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.Contains(raw, "/") {
+		ip, _, err := net.ParseCIDR(raw)
+		if err != nil || ip == nil {
+			return ""
+		}
+		if ip4 := ip.To4(); ip4 != nil && !ip4.IsLoopback() {
+			return ip4.String()
+		}
+		return ""
+	}
+	ip := net.ParseIP(raw)
+	if ip != nil {
+		if ip4 := ip.To4(); ip4 != nil && !ip4.IsLoopback() {
+			return ip4.String()
+		}
+	}
+	return ""
+}
+
+func firstIPv4FromContainerInterfaces(ifaces proxmox.ContainerInterfaces) string {
+	for _, iface := range ifaces {
+		if strings.EqualFold(iface.Name, "lo") {
+			continue
+		}
+		if v := parseIPv4FromLXCInet(iface.Inet); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func lxcOSInfoFromContainer(c *proxmox.Container) string {
+	if c != nil && c.ContainerConfig != nil {
+		if t := strings.TrimSpace(c.ContainerConfig.OSType); t != "" {
+			return t
+		}
+	}
+	return "LXC"
+}
+
 // CloneContainer clones a container from a template
 func (pc *ProxmoxClient) CloneContainer(container *proxmoxv1alpha1.Container) error {
 	// Returning an error is quite reasonable here since that error moved up
 	// to the controller and will be handled there as requeue
 	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
-	node, err := pc.getNode(ctx, nodeName)
-	if err != nil {
+	if _, err := pc.getNode(ctx, nodeName); err != nil {
 		return err
 	}
-	templateContainerName := container.Spec.Template.Name
+	if container.Spec.Template.Image != nil {
+		return pc.CreateContainerFromOCIImage(container)
+	}
+	templateContainerName := TemplateContainerName(container.Spec.Template)
 	templateContainerID, err := pc.GetContainerID(templateContainerName, nodeName)
 	if err != nil {
 		return err
@@ -29,7 +115,7 @@ func (pc *ProxmoxClient) CloneContainer(container *proxmoxv1alpha1.Container) er
 	if templateContainerID == 0 {
 		return fmt.Errorf("template container %s not found on node %s", templateContainerName, nodeName)
 	}
-	templateContainer, err := node.Container(ctx, templateContainerID)
+	templateContainer, err := pc.GetContainer(templateContainerName, nodeName)
 	if err != nil {
 		return err
 	}
@@ -124,7 +210,12 @@ func (pc *ProxmoxClient) GetContainer(containerName, nodeName string) (*proxmox.
 	// If not in cache, fetch from API
 	container, err := node.Container(ctx, containerID)
 	if err != nil {
-		return nil, err
+		if isLXCNotRunningErr(err) {
+			container, err = pc.lxcFromConfigWhenStopped(nodeName, containerID)
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 	// Store in cache
 	pc.setCachedContainer(nodeName, containerID, container)
@@ -203,27 +294,30 @@ func (pc *ProxmoxClient) StartContainer(containerName, nodeName string) error {
 	// and the operator will try to start an already running VM.
 	err = container.Ping(ctx)
 	if err != nil {
-		return err
-	}
-	containerStatus := container.Status
-	if containerStatus == VirtualMachineRunningState {
-		// Return early since container is already running
+		if !isLXCNotRunningErr(err) {
+			return err
+		}
+	} else if container.Status == VirtualMachineRunningState {
 		return nil
 	}
-	// Start container
 	taskID, err := container.Start(ctx)
 	if err != nil {
 		return err
 	}
-	_, taskCompleted, taskErr := taskID.WaitForCompleteStatus(ctx, 5, 5)
-	switch taskCompleted {
-	case false:
-		log.Log.Error(taskErr, "Can't start container")
-	case true:
-		log.Log.Info(fmt.Sprintf("Container %s has been started", containerName))
-	default:
-		log.Log.Info("Container is already started")
+	// step*timesNum seconds max (e.g. 3*120=360s); LXC first boot can exceed the old 5*5=25s window.
+	taskStatus, taskCompleted, taskErr := taskID.WaitForCompleteStatus(ctx, 120, 3)
+	if !taskCompleted {
+		if taskErr != nil {
+			log.Log.Error(taskErr, "Can't start container")
+			return taskErr
+		}
+		return fmt.Errorf("timeout waiting for container %s start task to finish", containerName)
 	}
+	if !taskStatus {
+		return &TaskError{ExitStatus: taskID.ExitStatus}
+	}
+	log.Log.Info(fmt.Sprintf("Container %s has been started", containerName))
+	pc.deleteCachedContainerObject(nodeName, int(container.VMID))
 	return nil
 }
 
@@ -243,11 +337,23 @@ func (pc *ProxmoxClient) UpdateContainerStatus(containerName, nodeName string) (
 		return proxmoxv1alpha1.QEMUStatus{}, err
 	}
 
+	ip := "nil"
+	if container.Status == VirtualMachineRunningState {
+		if ifaces, err := container.Interfaces(ctx); err == nil {
+			if v := firstIPv4FromContainerInterfaces(ifaces); v != "" {
+				ip = v
+			}
+		}
+	}
+	osInfo := lxcOSInfoFromContainer(container)
+
 	containerStatus := proxmoxv1alpha1.QEMUStatus{
-		State:  container.Status,
-		Node:   container.Node,
-		Uptime: utils.FormatUptime(int(container.Uptime)),
-		ID:     int(container.VMID),
+		State:     container.Status,
+		Node:      container.Node,
+		Uptime:    utils.FormatUptime(int(container.Uptime)),
+		ID:        int(container.VMID),
+		IPAddress: ip,
+		OSInfo:    osInfo,
 	}
 	return containerStatus, nil
 }
