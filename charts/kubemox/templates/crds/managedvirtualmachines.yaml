@@ -189,10 +189,12 @@ spec:
                   node, uptime, id, IP address, os info)
                 properties:
                   IPAddress:
-                    description: IPAddress is the IP address of the VM
+                    description: IPAddress is the IP address of the VM (or LXC). Optional
+                      so status subresources can be patched incrementally.
                     type: string
                   OSInfo:
-                    description: OSInfo is the OS information of the VM
+                    description: OSInfo is the OS information of the VM (or LXC, often
+                      config ostype).
                     type: string
                   id:
                     description: ID is the ID of the VM
@@ -207,8 +209,6 @@ spec:
                     description: Uptime is the uptime of the VM
                     type: string
                 required:
-                - IPAddress
-                - OSInfo
                 - id
                 - node
                 - state
