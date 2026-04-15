@@ -186,7 +186,9 @@ DEV_IMAGES ?= \
 	quay.io/kiwigrid/k8s-sidecar:2.5.4 \
 	quay.io/prometheus-operator/prometheus-operator:v0.89.0 \
 	quay.io/prometheus-operator/prometheus-config-reloader:v0.89.0 \
-	quay.io/prometheus/prometheus:v3.11.0
+	quay.io/prometheus/prometheus:v3.11.0 \
+	docker.io/otel/opentelemetry-collector-contrib:0.120.0 \
+	docker.io/grafana/tempo:2.7.2
 
 .PHONY: dev-cluster
 dev-cluster: ## Create Kind cluster for local development
@@ -244,6 +246,16 @@ dev-observability: ## Install Prometheus + Grafana observability stack
 		-f hack/observability/prometheus-values.yaml \
 		--wait --timeout 5m
 
+.PHONY: dev-tracing
+dev-tracing: ## Install OpenTelemetry Collector + Grafana Tempo for distributed tracing
+	@echo "Deploying Tempo..."
+	$(KUBECTL) apply -f hack/observability/tempo.yaml
+	$(KUBECTL) rollout status deployment/tempo -n tracing --timeout=3m
+	@echo "Deploying OpenTelemetry Collector..."
+	$(KUBECTL) apply -f hack/observability/otel-collector.yaml
+	$(KUBECTL) rollout status deployment/otel-collector -n tracing --timeout=3m
+	@echo "Tracing stack ready — view traces in Grafana Explore (Tempo datasource)"
+
 .PHONY: dev-grafana-dashboard
 dev-grafana-dashboard: ## Install Grafana dashboards (operator overview + controller-runtime)
 	$(KUBECTL) create configmap kubemox-operator-dashboard \
@@ -274,11 +286,12 @@ dev-deploy: docker-build-dev ## Build, load into Kind, and deploy operator with 
 		--wait --timeout 3m
 
 .PHONY: dev-setup
-dev-setup: dev-cluster dev-observability dev-grafana-dashboard ## Full dev environment setup (cluster + observability + dashboards)
+dev-setup: dev-cluster dev-observability dev-grafana-dashboard dev-tracing ## Full dev environment setup (cluster + observability + dashboards + tracing)
 	@echo ""
 	@echo "=== Dev environment is ready ==="
 	@echo "Grafana:    http://localhost:30300 (admin/admin)"
 	@echo "Prometheus: http://localhost:30900"
+	@echo "Traces:     Grafana > Explore > Tempo datasource"
 	@echo ""
 	@echo "Next steps:"
 	@echo "  make dev-proxmox   # Start containerized Proxmox"
@@ -294,6 +307,7 @@ dev-all: dev-setup dev-proxmox dev-deploy ## Full dev environment: cluster + obs
 	@echo ""
 	@echo "  Grafana:    http://localhost:30300 (admin/admin)"
 	@echo "  Prometheus: http://localhost:30900"
+	@echo "  Traces:     Grafana > Explore > Tempo datasource"
 	@echo "  Proxmox:    https://localhost:8006 (root/123)"
 	@echo ""
 	@echo "  Run 'make dev-status' to verify the stack."
@@ -317,12 +331,17 @@ dev-status: ## Verify the dev environment stack is healthy
 	@echo "=== Grafana Dashboards ==="
 	@$(KUBECTL) get configmap -n monitoring -l grafana_dashboard=1 --no-headers 2>/dev/null || echo "  ✗ No dashboards installed"
 	@echo ""
+	@echo "=== Tracing (OTel Collector + Tempo) ==="
+	@$(KUBECTL) get pods -n tracing -l app=otel-collector -o wide 2>/dev/null | head -5 || echo "  ✗ OTel Collector not running"
+	@$(KUBECTL) get pods -n tracing -l app=tempo -o wide 2>/dev/null | head -5 || echo "  ✗ Tempo not running"
+	@echo ""
 	@echo "=== Proxmox Container ==="
 	@$(CONTAINER_TOOL) ps --filter name=$(PROXMOX_CONTAINER_NAME) --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || echo "  ✗ Proxmox not running"
 	@echo ""
 	@echo "=== Access URLs ==="
 	@echo "  Grafana:    http://localhost:30300"
 	@echo "  Prometheus: http://localhost:30900"
+	@echo "  Traces:     Grafana > Explore > Tempo"
 	@echo "  Proxmox:    https://localhost:8006"
 
 .PHONY: dev-teardown

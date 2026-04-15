@@ -31,6 +31,17 @@ grafana:
     datasources:
       enabled: true
       defaultDatasourceEnabled: true
+  additionalDataSources:
+    - name: Tempo
+      type: tempo
+      access: proxy
+      url: http://tempo.tracing.svc.cluster.local:3200
+      jsonData:
+        httpMethod: GET
+        tracesToMetrics:
+          datasourceUid: prometheus
+        serviceMap:
+          datasourceUid: prometheus
 
 prometheus:
   service:

@@ -45,6 +45,11 @@ spec:
           #   httpGet:
           #     path: /
           #     port: http
+          {{- if .Values.tracing.enabled }}
+          args:
+            - "--enable-tracing"
+            - "--otlp-endpoint={{ .Values.tracing.otlpEndpoint }}"
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           env:

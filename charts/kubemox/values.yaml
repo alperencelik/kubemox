@@ -65,6 +65,12 @@ metrics:
     # -- Prometheus ServiceMonitor annotations
     annotations: {}
 
+tracing:
+  # -- Enable distributed tracing via OpenTelemetry
+  enabled: false
+  # -- OTLP HTTP endpoint for trace export
+  otlpEndpoint: "otel-collector.tracing.svc.cluster.local:4318"
+
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""

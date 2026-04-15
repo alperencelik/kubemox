@@ -8,3 +8,7 @@ metrics:
   serviceMonitor:
     enabled: true
     interval: 15s
+
+tracing:
+  enabled: true
+  otlpEndpoint: "otel-collector.tracing.svc.cluster.local:4318"
