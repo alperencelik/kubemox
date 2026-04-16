@@ -1,0 +1,10 @@
+# kubemox Helm chart overrides for e2e tests.
+# Used by hack/e2e.sh when installing on a Kind cluster.
+# Tracing is disabled to avoid operatortrace injecting invalid
+# conditions (missing Reason field) that the API server rejects.
+
+image:
+  pullPolicy: Never
+
+tracing:
+  enabled: false

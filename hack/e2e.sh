@@ -12,6 +12,7 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${ROOT_DIR}"
 
 ARTIFACTS_DIR="${ARTIFACTS_DIR:-${ROOT_DIR}/_artifacts}"
+export DEV_HELM_VALUES="${DEV_HELM_VALUES:-hack/e2e-values.yaml}"
 
 collect_logs() {
     echo "=== Collecting diagnostic logs to ${ARTIFACTS_DIR} ==="
@@ -58,8 +59,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "=== Setting up dev environment (Kind + CRDs + observability) ==="
-make dev-setup
+echo "=== Setting up dev environment (Kind cluster) ==="
+make dev-cluster
 
 echo "=== Starting containerized Proxmox ==="
 make dev-proxmox
