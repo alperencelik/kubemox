@@ -43,6 +43,7 @@ import (
 	proxmoxcontroller "github.com/alperencelik/kubemox/internal/controller/proxmox"
 	"github.com/alperencelik/kubemox/pkg/metrics"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
+	"github.com/alperencelik/kubemox/pkg/tracing"
 	"github.com/alperencelik/kubemox/pkg/utils"
 	// +kubebuilder:scaffold:imports
 )
@@ -77,6 +78,13 @@ func main() {
 
 	flag.BoolVar(&proxmox.EnableProxmoxTaskLogs, "enable-task-logs", proxmox.EnableProxmoxTaskLogs,
 		"Enable verbose task logging specific to Proxmox tasks. Can also be set via ENABLE_PROXMOX_TASK_LOG env var.")
+
+	var enableTracing bool
+	var otlpEndpoint string
+	flag.BoolVar(&enableTracing, "enable-tracing", false,
+		"Enable distributed tracing via OpenTelemetry and operatortrace.")
+	flag.StringVar(&otlpEndpoint, "otlp-endpoint", "localhost:4318",
+		"OTLP HTTP endpoint for trace export (used when --enable-tracing is set).")
 
 	opts := zap.Options{
 		Development: true,
@@ -122,6 +130,22 @@ func main() {
 	PodNamespace := utils.EnsurePodNamespaceEnv()
 	setupLog.Info("Pod namespace has been found as:", "POD_NAMESPACE", PodNamespace)
 
+	// Resolve which client to use — tracing-wrapped or plain.
+	var k8sClient client.Client
+	if enableTracing {
+		tracingClient, shutdownTracer, err := tracing.Setup(context.Background(),
+			otlpEndpoint, mgr.GetClient(), mgr.GetAPIReader(), mgr.GetScheme())
+		if err != nil {
+			setupLog.Error(err, "unable to setup tracing")
+			os.Exit(1)
+		}
+		defer shutdownTracer()
+		k8sClient = tracingClient
+		setupLog.Info("tracing enabled", "otlp-endpoint", otlpEndpoint)
+	} else {
+		k8sClient = mgr.GetClient()
+	}
+
 	// Watcher setup
 
 	watcherLogger := ctrl.Log.WithName("external-watcher")
@@ -141,28 +165,28 @@ func main() {
 	}
 
 	// Create external watchers for each resource type with auto-register
-	vmWatcher := watcher.NewExternalWatcher(&proxmox.VirtualMachineFetcher{Client: mgr.GetClient()},
+	vmWatcher := watcher.NewExternalWatcher(&proxmox.VirtualMachineFetcher{Client: k8sClient},
 		append(watcherOpts,
 			watcher.WithMetrics("VirtualMachine"),
 			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.VirtualMachine{},
 				proxmox.VMConfigExtractor, readinessRetry),
 			watcher.WithAutoRegisterFilter(generationFilter),
 		)...)
-	managedVMWatcher := watcher.NewExternalWatcher(&proxmox.ManagedVirtualMachineFetcher{Client: mgr.GetClient()},
+	managedVMWatcher := watcher.NewExternalWatcher(&proxmox.ManagedVirtualMachineFetcher{Client: k8sClient},
 		append(watcherOpts,
 			watcher.WithMetrics("ManagedVirtualMachine"),
 			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.ManagedVirtualMachine{},
 				proxmox.ManagedVMConfigExtractor, readinessRetry),
 			watcher.WithAutoRegisterFilter(generationFilter),
 		)...)
-	containerWatcher := watcher.NewExternalWatcher(&proxmox.ContainerFetcher{Client: mgr.GetClient()},
+	containerWatcher := watcher.NewExternalWatcher(&proxmox.ContainerFetcher{Client: k8sClient},
 		append(watcherOpts,
 			watcher.WithMetrics("Container"),
 			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.Container{},
 				proxmox.ContainerConfigExtractor, readinessRetry),
 			watcher.WithAutoRegisterFilter(generationFilter),
 		)...)
-	vmTemplateWatcher := watcher.NewExternalWatcher(&proxmox.VirtualMachineTemplateFetcher{Client: mgr.GetClient()},
+	vmTemplateWatcher := watcher.NewExternalWatcher(&proxmox.VirtualMachineTemplateFetcher{Client: k8sClient},
 		append(watcherOpts,
 			watcher.WithMetrics("VirtualMachineTemplate"),
 			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.VirtualMachineTemplate{},
@@ -181,7 +205,7 @@ func main() {
 	// Controller setup
 
 	if err = (&proxmoxcontroller.VirtualMachineReconciler{
-		Client:   mgr.GetClient(),
+		Client:   k8sClient,
 		Scheme:   mgr.GetScheme(),
 		Watcher:  vmWatcher,
 		EventCh:  vmWatcher.EventChannel(),
@@ -191,7 +215,7 @@ func main() {
 		os.Exit(1)
 	}
 	if err = (&proxmoxcontroller.ManagedVirtualMachineReconciler{
-		Client:   mgr.GetClient(),
+		Client:   k8sClient,
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorder("ManagedVirtualMachine"),
 		EventCh:  managedVMWatcher.EventChannel(),
@@ -200,28 +224,28 @@ func main() {
 		os.Exit(1)
 	}
 	if err = (&proxmoxcontroller.VirtualMachineSetReconciler{
-		Client: mgr.GetClient(),
+		Client: k8sClient,
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineSet")
 		os.Exit(1)
 	}
 	if err = (&proxmoxcontroller.VirtualMachineSnapshotReconciler{
-		Client: mgr.GetClient(),
+		Client: k8sClient,
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineSnapshot")
 		os.Exit(1)
 	}
 	if err = (&proxmoxcontroller.VirtualMachineSnapshotPolicyReconciler{
-		Client: mgr.GetClient(),
+		Client: k8sClient,
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineSnapshotPolicy")
 		os.Exit(1)
 	}
 	if err = (&proxmoxcontroller.ContainerReconciler{
-		Client:   mgr.GetClient(),
+		Client:   k8sClient,
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorder("Container"),
 		EventCh:  containerWatcher.EventChannel(),
@@ -230,21 +254,21 @@ func main() {
 		os.Exit(1)
 	}
 	if err = (&proxmoxcontroller.CustomCertificateReconciler{
-		Client: mgr.GetClient(),
+		Client: k8sClient,
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CustomCertificate")
 		os.Exit(1)
 	}
 	if err = (&proxmoxcontroller.StorageDownloadURLReconciler{
-		Client: mgr.GetClient(),
+		Client: k8sClient,
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "StorageDownloadURL")
 		os.Exit(1)
 	}
 	if err = (&proxmoxcontroller.VirtualMachineTemplateReconciler{
-		Client:   mgr.GetClient(),
+		Client:   k8sClient,
 		Scheme:   mgr.GetScheme(),
 		EventCh:  vmTemplateWatcher.EventChannel(),
 		Recorder: mgr.GetEventRecorder("VirtualMachineTemplate"),
@@ -253,7 +277,7 @@ func main() {
 		os.Exit(1)
 	}
 	if err = (&proxmoxcontroller.ProxmoxConnectionReconciler{
-		Client: mgr.GetClient(),
+		Client: k8sClient,
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ProxmoxConnection")
@@ -270,7 +294,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	startMetricsUpdater(context.Background(), mgr.GetClient())
+	startMetricsUpdater(context.Background(), k8sClient)
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
