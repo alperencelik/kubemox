@@ -22,7 +22,8 @@ const tracerName = "kubemox-operator"
 // an operatortrace TracingClient that wraps the given base client.
 // The returned shutdown function flushes any pending spans and should be
 // deferred by the caller.
-func Setup(ctx context.Context, otlpEndpoint string, baseClient client.Client, scheme *runtime.Scheme) (otclient.TracingClient, func(), error) {
+func Setup(ctx context.Context, otlpEndpoint string, baseClient client.Client,
+	apiReader client.Reader, scheme *runtime.Scheme) (otclient.TracingClient, func(), error) {
 	exporter, err := otlptracehttp.New(ctx,
 		otlptracehttp.WithEndpoint(otlpEndpoint),
 		otlptracehttp.WithInsecure(),
@@ -48,7 +49,9 @@ func Setup(ctx context.Context, otlpEndpoint string, baseClient client.Client, s
 	tracer := otel.Tracer(tracerName)
 	logger := ctrl.Log.WithName("tracing")
 
-	tracingClient := otclient.NewTracingClient(baseClient, baseClient, tracer, logger, scheme)
+	tracingClient := otclient.NewTracingClientWithOptions(baseClient, apiReader, tracer, logger, scheme,
+		otclient.WithIncomingTraceRelationship(otclient.TraceParentRelationshipParent),
+	)
 
 	shutdown := func() {
 		if err := provider.Shutdown(ctx); err != nil {

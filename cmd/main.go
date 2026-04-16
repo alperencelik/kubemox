@@ -133,7 +133,8 @@ func main() {
 	// Resolve which client to use — tracing-wrapped or plain.
 	var k8sClient client.Client
 	if enableTracing {
-		tracingClient, shutdownTracer, err := tracing.Setup(context.Background(), otlpEndpoint, mgr.GetClient(), mgr.GetScheme())
+		tracingClient, shutdownTracer, err := tracing.Setup(context.Background(),
+			otlpEndpoint, mgr.GetClient(), mgr.GetAPIReader(), mgr.GetScheme())
 		if err != nil {
 			setupLog.Error(err, "unable to setup tracing")
 			os.Exit(1)
