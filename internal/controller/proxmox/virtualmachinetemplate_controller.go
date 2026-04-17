@@ -39,6 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
+	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 )
 
@@ -90,6 +91,17 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 	if err := r.Get(ctx, req.NamespacedName, vmTemplate); err != nil {
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
+
+	reconcileMode := kubernetes.GetReconcileMode(vmTemplate)
+
+	switch reconcileMode {
+	case kubernetes.ReconcileModeDisable:
+		logger.Info(fmt.Sprintf("Reconciliation is disabled for VirtualMachineTemplate %s", vmTemplate.Name))
+		return ctrl.Result{}, nil
+	default:
+		break
+	}
+
 	logger.Info(fmt.Sprintf("Reconciling VirtualMachineTemplate %s", vmTemplate.Name))
 
 	// Get the Proxmox client reference
