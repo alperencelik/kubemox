@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
+	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -72,6 +73,21 @@ func (r *VirtualMachineSnapshotPolicyReconciler) Reconcile(ctx context.Context, 
 	err := r.Get(ctx, req.NamespacedName, vmSnapshotPolicy)
 	if err != nil {
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
+	}
+
+	reconcileMode := kubernetes.GetReconcileMode(vmSnapshotPolicy)
+
+	switch reconcileMode {
+	case kubernetes.ReconcileModeDisable:
+		logger.Info(fmt.Sprintf("Reconciliation is disabled for VirtualMachineSnapshotPolicy %s", vmSnapshotPolicy.Name))
+		// Stop the cron so scheduled snapshots don't keep firing while reconciliation is disabled.
+		policyKey := fmt.Sprintf("%s/%s", vmSnapshotPolicy.Namespace, vmSnapshotPolicy.Name)
+		if existing, loaded := r.cronJobs.LoadAndDelete(policyKey); loaded {
+			existing.(*cron.Cron).Stop()
+		}
+		return ctrl.Result{}, nil
+	default:
+		break
 	}
 	// TODO: Add deletion logic for snapshots
 

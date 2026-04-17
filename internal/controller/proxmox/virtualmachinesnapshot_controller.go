@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
+	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 	"github.com/alperencelik/kubemox/pkg/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -72,6 +73,17 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 	if err != nil {
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
+
+	reconcileMode := kubernetes.GetReconcileMode(vmSnapshot)
+
+	switch reconcileMode {
+	case kubernetes.ReconcileModeDisable:
+		logger.Info(fmt.Sprintf("Reconciliation is disabled for VirtualMachineSnapshot %s", vmSnapshot.Name))
+		return ctrl.Result{}, nil
+	default:
+		break
+	}
+
 	logger.Info("Reconciling VirtualMachineSnapshot", "Name", vmSnapshot.Name)
 
 	// Get the Proxmox client reference

@@ -18,6 +18,7 @@ package proxmox
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
+	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 )
 
@@ -60,6 +62,17 @@ func (r *ProxmoxConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		logger.Error(err, "unable to fetch ProxmoxConnection")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
+	reconcileMode := kubernetes.GetReconcileMode(proxmoxConnection)
+
+	switch reconcileMode {
+	case kubernetes.ReconcileModeDisable:
+		logger.Info(fmt.Sprintf("Reconciliation is disabled for ProxmoxConnection %s", proxmoxConnection.Name))
+		return ctrl.Result{}, nil
+	default:
+		break
+	}
+
 	logger.Info("Reconciling ProxmoxConnection", "name", proxmoxConnection.Name)
 
 	// Create Proxmox client

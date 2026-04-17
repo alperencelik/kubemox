@@ -18,6 +18,7 @@ package proxmox
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
@@ -86,6 +87,17 @@ func (r *CustomCertificateReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if err != nil {
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
+
+	reconcileMode := kubernetes.GetReconcileMode(customCert)
+
+	switch reconcileMode {
+	case kubernetes.ReconcileModeDisable:
+		logger.Info(fmt.Sprintf("Reconciliation is disabled for CustomCertificate %s", customCert.Name))
+		return ctrl.Result{}, nil
+	default:
+		break
+	}
+
 	// Get the Proxmox client reference
 	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, customCert.Spec.ConnectionRef)
 	if err != nil {
