@@ -2,7 +2,6 @@ package proxmox
 
 import (
 	"fmt"
-	"net"
 	"reflect"
 	"strings"
 	"time"
@@ -48,37 +47,12 @@ func (pc *ProxmoxClient) lxcFromConfigWhenStopped(nodeName string, containerID i
 	return c, nil
 }
 
-// parseIPv4FromLXCInet parses Proxmox LXC interface Inet (e.g. "192.168.1.5/24" or "192.168.1.5").
-func parseIPv4FromLXCInet(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-	if strings.Contains(raw, "/") {
-		ip, _, err := net.ParseCIDR(raw)
-		if err != nil || ip == nil {
-			return ""
-		}
-		if ip4 := ip.To4(); ip4 != nil && !ip4.IsLoopback() {
-			return ip4.String()
-		}
-		return ""
-	}
-	ip := net.ParseIP(raw)
-	if ip != nil {
-		if ip4 := ip.To4(); ip4 != nil && !ip4.IsLoopback() {
-			return ip4.String()
-		}
-	}
-	return ""
-}
-
 func firstIPv4FromContainerInterfaces(ifaces proxmox.ContainerInterfaces) string {
 	for _, iface := range ifaces {
 		if strings.EqualFold(iface.Name, "lo") {
 			continue
 		}
-		if v := parseIPv4FromLXCInet(iface.Inet); v != "" {
+		if v := utils.ParseIPv4FromLXCInet(iface.Inet); v != "" {
 			return v
 		}
 	}
