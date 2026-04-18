@@ -194,12 +194,7 @@ To learn more about `VirtualMachine`, `VirtualMachineSet`, `Container` and `Virt
 
 ## Developing 
 
-You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) or [K3D](https://k3d.io/stable) to get a local cluster for testing, or run against a remote cluster. The project is using [Kubebuilder](book.kubebuilder.io) to generate the controller and CRDs. For Proxmox interaction the project is using [go-proxmox](https://github.com/luthermonson/go-proxmox) project. The controllers are located under `internal/controllers/proxmox` directory and the external packages `proxmox` and `kubernetes` are located under `pkg` directory.
-
-- To launch k3d cluster
-```
-k3d cluster create kubemox --config k3d.yaml
-```
+You’ll need a Kubernetes cluster to run against. You can use [KIND](https://sigs.k8s.io/kind) to get a local cluster for testing, or run against a remote cluster. The project is using [Kubebuilder](book.kubebuilder.io) to generate the controller and CRDs. For Proxmox interaction the project is using [go-proxmox](https://github.com/luthermonson/go-proxmox) project. The controllers are located under `internal/controllers/proxmox` directory and the external packages `proxmox` and `kubernetes` are located under `pkg` directory.
 
 - To create a new controller you can use the following command:
 
@@ -235,3 +230,4 @@ Thank you for considering contributing to this project! To get started, please f
 ## Disclaimer
 
 Kubemox is under active development and doesn't follow the Custom Resource Definition (CRD) versioning principles. This means that Kubemox doesn't guarantee version updates on breaking changes and also there is no guarantee for the backward compatibility of the CRDs. Please be aware of this before using Kubemox in production environments.
+
