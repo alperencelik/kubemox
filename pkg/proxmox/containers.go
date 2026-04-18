@@ -304,8 +304,7 @@ func (pc *ProxmoxClient) StartContainer(containerName, nodeName string) error {
 	if err != nil {
 		return err
 	}
-	// step*timesNum seconds max (e.g. 3*120=360s); LXC first boot can exceed the old 5*5=25s window.
-	taskStatus, taskCompleted, taskErr := taskID.WaitForCompleteStatus(ctx, 120, 3)
+	taskStatus, taskCompleted, taskErr := taskID.WaitForCompleteStatus(ctx, 10, 3)
 	if !taskCompleted {
 		if taskErr != nil {
 			log.Log.Error(taskErr, "Can't start container")
