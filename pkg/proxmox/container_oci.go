@@ -250,9 +250,7 @@ func (pc *ProxmoxClient) ociRegistryPull(nodeName, storage, reference, filename 
 		return err
 	}
 	task := pve.NewTask(upid, pc.Client)
-	// go-proxmox WaitForCompleteStatus(ctx, timesNum, step): timeout is timesNum*step seconds, sleep step seconds between pings.
-	// Do not use (1, 600): that polls once then sleeps 600s, so long tasks miss completion before timeout.
-	ok, done, err := task.WaitForCompleteStatus(ctx, 600, 5) // 3000s max (was 5*600), 5s poll
+	ok, done, err := task.WaitForCompleteStatus(ctx, 10, 5)
 	if !ok {
 		return &TaskError{ExitStatus: task.ExitStatus}
 	}
