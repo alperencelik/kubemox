@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strings"
 )
@@ -69,4 +70,29 @@ func IsTimeoutError(err error) bool {
 		return false
 	}
 	return strings.Contains(err.Error(), "timeout")
+}
+
+// it parses Proxmox LXC interface Inet (e.g. "192.168.1.5/24" or "192.168.1.5").
+func ParseIPv4FromLXCInet(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.Contains(raw, "/") {
+		ip, _, err := net.ParseCIDR(raw)
+		if err != nil || ip == nil {
+			return ""
+		}
+		if ip4 := ip.To4(); ip4 != nil && !ip4.IsLoopback() {
+			return ip4.String()
+		}
+		return ""
+	}
+	ip := net.ParseIP(raw)
+	if ip != nil {
+		if ip4 := ip.To4(); ip4 != nil && !ip4.IsLoopback() {
+			return ip4.String()
+		}
+	}
+	return ""
 }
