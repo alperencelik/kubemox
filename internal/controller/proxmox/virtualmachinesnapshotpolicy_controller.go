@@ -98,16 +98,16 @@ func GetMatchingVirtualMachines(vmSnapshotPolicy *proxmoxv1alpha1.VirtualMachine
 	matchingNamepaces := vmSnapshotPolicy.Spec.NamespaceSelector
 	matchingLabels := vmSnapshotPolicy.Spec.LabelSelector.MatchLabels
 	// Find matching VirtualMachines on matching namespaces
-	var MatchingVirtualMachines []proxmoxv1alpha1.VirtualMachine
+	matchingVirtualMachines := make([]proxmoxv1alpha1.VirtualMachine, 0, len(matchingNamepaces.Namespaces))
 	for _, namespace := range matchingNamepaces.Namespaces {
 		// Append to vmList
 		virtualMachineList := &proxmoxv1alpha1.VirtualMachineList{}
 		if err := r.List(ctx, virtualMachineList, client.InNamespace(namespace), client.MatchingLabels(matchingLabels)); err != nil {
 			log.Log.Error(err, "unable to list VirtualMachines")
 		}
-		MatchingVirtualMachines = append(MatchingVirtualMachines, virtualMachineList.Items...)
+		matchingVirtualMachines = append(matchingVirtualMachines, virtualMachineList.Items...)
 	}
-	return MatchingVirtualMachines
+	return matchingVirtualMachines
 }
 
 func VMSnapshotCR(vmName, snapshotName, namespace, connectionName string) *proxmoxv1alpha1.VirtualMachineSnapshot {

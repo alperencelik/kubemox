@@ -5,7 +5,7 @@ import "strings"
 func (pc *ProxmoxClient) GetNodes() ([]string, error) {
 	// Get all nodes
 	nodes, err := pc.Client.Nodes(ctx)
-	nodeNames := []string{}
+	nodeNames := make([]string, 0, len(nodes))
 	for _, node := range nodes {
 		nodeNames = append(nodeNames, node.Node)
 	}

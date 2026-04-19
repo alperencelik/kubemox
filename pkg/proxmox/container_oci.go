@@ -36,7 +36,8 @@ func ociTemplateHostname(imageRef string) string {
 }
 
 // ociPullFilename is the base name passed to oci-registry-pull (Proxmox adds an extension such as .tar).
-// It is derived from the image reference so the stored file is recognizable (e.g. nginx-1.28.3, not kubemox-oci-<hash>).
+// It is derived from the image reference so the stored file is recognizable
+// (e.g. nginx-1.28.3, not kubemox-oci-<hash>).
 func ociPullFilename(imageRef string) string {
 	base := ociReferenceToFileBase(imageRef)
 	if base != "" {

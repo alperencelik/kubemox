@@ -62,6 +62,8 @@ const (
 	virtualMachineDeleteSteps     = 3
 	// The network name
 	netStr = "net"
+	// Placeholder when QEMU agent data is unavailable or the VM does not exist yet
+	virtualMachineStatusNilPlaceholder = "nil"
 )
 
 var (
@@ -630,8 +632,8 @@ func (pc *ProxmoxClient) UpdateVMStatus(vmName, nodeName string) (*proxmoxv1alph
 			VirtualMachineIP = pc.GetVMIPv4Address(vmName, nodeName)
 			VirtualMachineOS = pc.GetOSInfo(vmName, nodeName)
 		} else {
-			VirtualMachineIP = "nil"
-			VirtualMachineOS = "nil"
+			VirtualMachineIP = virtualMachineStatusNilPlaceholder
+			VirtualMachineOS = virtualMachineStatusNilPlaceholder
 		}
 		VirtualmachineStatus = &proxmoxv1alpha1.QEMUStatus{
 			State:     VirtualMachine.Status,
@@ -644,12 +646,12 @@ func (pc *ProxmoxClient) UpdateVMStatus(vmName, nodeName string) (*proxmoxv1alph
 		return VirtualmachineStatus, nil
 	} else {
 		VirtualmachineStatus = &proxmoxv1alpha1.QEMUStatus{
-			State:     "nil",
+			State:     virtualMachineStatusNilPlaceholder,
 			ID:        0,
-			Node:      "nil",
-			Uptime:    "nil",
-			IPAddress: "nil",
-			OSInfo:    "nil",
+			Node:      virtualMachineStatusNilPlaceholder,
+			Uptime:    virtualMachineStatusNilPlaceholder,
+			IPAddress: virtualMachineStatusNilPlaceholder,
+			OSInfo:    virtualMachineStatusNilPlaceholder,
 		}
 		return VirtualmachineStatus, nil
 	}
@@ -899,7 +901,7 @@ func (pc *ProxmoxClient) GetVMSnapshots(vmName string) ([]string, error) {
 	if err != nil {
 		log.Log.Error(err, "Error getting snapshots")
 	}
-	snapshotNames := []string{}
+	snapshotNames := make([]string, 0, len(snapshots))
 	for _, snapshot := range snapshots {
 		snapshotNames = append(snapshotNames, snapshot.Name)
 	}
