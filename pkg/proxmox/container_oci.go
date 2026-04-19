@@ -224,21 +224,6 @@ func (pc *ProxmoxClient) findOCIVolumeID(nodeName, storage, filenameMarker strin
 	}
 }
 
-func (pc *ProxmoxClient) findOCIVolumeIDAfterPull(nodeName, storage, filenameMarker string) (string, error) {
-	var lastErr error
-	for attempt := range 8 {
-		if attempt > 0 {
-			time.Sleep(3 * time.Second)
-		}
-		volid, err := pc.findOCIVolumeID(nodeName, storage, filenameMarker)
-		if err == nil {
-			return volid, nil
-		}
-		lastErr = err
-	}
-	return "", lastErr
-}
-
 func (pc *ProxmoxClient) ociRegistryPull(nodeName, storage, reference, filename string) error {
 	var upid pve.UPID
 	payload := map[string]string{
@@ -293,9 +278,10 @@ func (pc *ProxmoxClient) ensureOCIVolume(ct *proxmoxv1alpha1.Container) (string,
 		if pullErr != nil && ociArtifactAlreadyExistsError(pullErr) {
 			log.Log.Info(fmt.Sprintf("OCI blob already on storage %s, reusing (%v)", storage, pullErr))
 		}
-		volid, err = pc.findOCIVolumeIDAfterPull(nodeName, storage, filename)
+		volid, err = pc.findOCIVolumeID(nodeName, storage, filenameMarker)
 		if err != nil {
-			return "", fmt.Errorf("OCI image not on storage %s after pull or existing-file skip: %w", storage, err)
+			logger.Error(fmt.Errorf("OCI image not on storage %s after pull or existing-file skip: %w", storage, err))
+			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
 		}
 	}
 	return volid, nil
