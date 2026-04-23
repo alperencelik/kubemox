@@ -125,12 +125,32 @@ spec:
                           type: string
                       type: object
                     type: array
+                  image:
+                    description: |-
+                      Image pulls an OCI image into Proxmox storage and clones from the resulting template CT.
+                      Mutually exclusive with Name.
+                    properties:
+                      reference:
+                        description: Reference is the OCI image (for example nginx:alpine).
+                        minLength: 1
+                        type: string
+                      storage:
+                        description: |-
+                          Storage is the Proxmox storage ID where the image is pulled and stored. It must be file-based
+                          (dir, nfs, zfs, ...); lvmthin cannot store OCI blobs. template.disk[0].storage is only for rootfs.
+                        minLength: 1
+                        type: string
+                    required:
+                    - reference
+                    - storage
+                    type: object
                   memory:
                     description: Memory is the amount of memory in MB
                     minimum: 16
                     type: integer
                   name:
-                    description: Name of the template
+                    description: Name of the template container on Proxmox to clone
+                      from (mutually exclusive with Image)
                     type: string
                   network:
                     description: Networks is the list of networks
@@ -153,9 +173,28 @@ spec:
             x-kubernetes-validations:
             - message: ConnectionRef is required once set
               rule: '!has(oldSelf.connectionRef) || has(self.connectionRef)'
+            - message: Set exactly one of template.name or template.image
+              rule: (has(self.template.name) && self.template.name != "") != has(self.template.image)
+            - message: template.disk is required when template.image is set (rootfs
+                volume)
+              rule: '!has(self.template.image) || (size(self.template.disk) > 0)'
+            - message: template.image.reference and template.image.storage are required
+                when template.image is set
+              rule: '!has(self.template.image) || (has(self.template.image.reference)
+                && self.template.image.reference != "" && has(self.template.image.storage)
+                && self.template.image.storage != "")'
           status:
             description: ContainerStatus defines the observed state of Container
             properties:
+              appliedImageReference:
+                description: |-
+                  AppliedImageReference is the OCI reference the running Proxmox CT was created from (template.image only).
+                  If spec.template.image.reference (or storage) diverges, the controller replaces the CT.
+                type: string
+              appliedImageStorage:
+                description: AppliedImageStorage is the OCI blob storage ID used when
+                  the CT was created (template.image only).
+                type: string
               conditions:
                 description: |-
                   INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
@@ -218,10 +257,12 @@ spec:
               status:
                 properties:
                   IPAddress:
-                    description: IPAddress is the IP address of the VM
+                    description: IPAddress is the IP address of the VM (or LXC). Optional
+                      so status subresources can be patched incrementally.
                     type: string
                   OSInfo:
-                    description: OSInfo is the OS information of the VM
+                    description: OSInfo is the OS information of the VM (or LXC, often
+                      config ostype).
                     type: string
                   id:
                     description: ID is the ID of the VM
@@ -236,8 +277,6 @@ spec:
                     description: Uptime is the uptime of the VM
                     type: string
                 required:
-                - IPAddress
-                - OSInfo
                 - id
                 - node
                 - state

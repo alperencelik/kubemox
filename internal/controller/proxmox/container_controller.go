@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -291,10 +292,12 @@ func (r *ContainerReconciler) handleCloneContainer(ctx context.Context,
 		logger.Error(err, "Failed to clone Container")
 		return err
 	}
-	err = pc.StartContainer(container.Spec.Name, container.Spec.NodeName)
-	if err != nil {
-		logger.Error(err, "Failed to start Container")
-		return err
+	if img := container.Spec.Template.Image; img != nil {
+		if err := r.patchAppliedOCIImageStatus(ctx, container, img.Reference, img.Storage); err != nil {
+			return err
+		}
+		container.Status.AppliedImageReference = img.Reference
+		container.Status.AppliedImageStorage = img.Storage
 	}
 	return nil
 }
@@ -316,23 +319,107 @@ func (r *ContainerReconciler) handleDelete(ctx context.Context,
 		})
 		if err = r.Status().Patch(ctx, container, patch); err != nil {
 			logger.Error(err, "Error updating Container status")
-			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
-		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		return ctrl.Result{Requeue: true}, nil
 	}
 	// Handle deletion of the Container
 	if err = r.handleContainerDeletion(ctx, pc, container); err != nil {
 		logger.Error(err, "Error deleting Container from Proxmox")
-		return ctrl.Result{Requeue: true}, err
+		return ctrl.Result{}, err
 	}
 	// Remove finalizer
 	logger.Info("Removing finalizer from Container", "name", container.Spec.Name)
 	controllerutil.RemoveFinalizer(container, containerFinalizerName)
 	if err = r.Update(ctx, container); err != nil {
 		logger.Error(err, "Error updating Container")
-		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	return ctrl.Result{}, nil
+}
+
+func (r *ContainerReconciler) patchAppliedOCIImageStatus(ctx context.Context,
+	c *proxmoxv1alpha1.Container, ref, storage string) error {
+	patch := client.MergeFrom(c.DeepCopy())
+	c.Status.AppliedImageReference = ref
+	c.Status.AppliedImageStorage = storage
+	return r.Status().Patch(ctx, c, patch)
+}
+
+// reconcileOCIImageDrift deletes and clears applied status when OCI spec changes, or bootstraps status from Proxmox tags.
+func (r *ContainerReconciler) reconcileOCIImageDrift(ctx context.Context, pc *proxmox.ProxmoxClient,
+	container *proxmoxv1alpha1.Container, containerExists bool) (bool, error) {
+	img := container.Spec.Template.Image
+	if img == nil {
+		return containerExists, nil
+	}
+	desiredRef, desiredStor := img.Reference, img.Storage
+	logger := log.FromContext(ctx)
+	appliedRef := container.Status.AppliedImageReference
+	appliedStor := container.Status.AppliedImageStorage
+
+	if appliedRef == desiredRef && appliedStor == desiredStor {
+		return containerExists, nil
+	}
+
+	if appliedRef != "" || appliedStor != "" {
+		logger.Info("OCI image or storage changed; replacing Proxmox container",
+			"container", container.Spec.Name, "appliedRef", appliedRef, "desiredRef", desiredRef)
+		r.Recorder.Eventf(container, nil, "Normal", "Replacing", "Replacing",
+			fmt.Sprintf("Replacing Container %s (OCI reference or storage changed)", container.Spec.Name))
+		if err := pc.DeleteContainer(container.Spec.Name, container.Spec.NodeName); err != nil {
+			return false, err
+		}
+		if err := r.patchAppliedOCIImageStatus(ctx, container, "", ""); err != nil {
+			return false, err
+		}
+		container.Status.AppliedImageReference = ""
+		container.Status.AppliedImageStorage = ""
+		return false, nil
+	}
+
+	if !containerExists {
+		return false, nil
+	}
+
+	lxc, err := pc.GetContainer(container.Spec.Name, container.Spec.NodeName)
+	if err != nil {
+		return containerExists, err
+	}
+	tags := ""
+	if lxc.ContainerConfig != nil {
+		tags = lxc.ContainerConfig.Tags
+	}
+	switch {
+	case proxmox.LXCHasOCIImageTag(tags, desiredRef):
+		logger.Info("Bootstrapping applied OCI status from matching Proxmox tag", "container", container.Spec.Name)
+		if err := r.patchAppliedOCIImageStatus(ctx, container, desiredRef, desiredStor); err != nil {
+			return containerExists, err
+		}
+		container.Status.AppliedImageReference = desiredRef
+		container.Status.AppliedImageStorage = desiredStor
+	case strings.TrimSpace(tags) == "":
+		logger.Info("Bootstrapping applied OCI status (no tags on CT; assuming spec matches workload)", "container", container.Spec.Name)
+		if err := r.patchAppliedOCIImageStatus(ctx, container, desiredRef, desiredStor); err != nil {
+			return containerExists, err
+		}
+		container.Status.AppliedImageReference = desiredRef
+		container.Status.AppliedImageStorage = desiredStor
+	default:
+		logger.Info("OCI image tag mismatch; replacing Proxmox container", "container", container.Spec.Name)
+		r.Recorder.Eventf(container, nil, "Normal", "Replacing", "Replacing",
+			fmt.Sprintf("Replacing Container %s (OCI image tag mismatch)", container.Spec.Name))
+		if err := pc.DeleteContainer(container.Spec.Name, container.Spec.NodeName); err != nil {
+			return false, err
+		}
+		if err := r.patchAppliedOCIImageStatus(ctx, container, "", ""); err != nil {
+			return false, err
+		}
+		container.Status.AppliedImageReference = ""
+		container.Status.AppliedImageStorage = ""
+		return false, nil
+	}
+	return containerExists, nil
 }
 
 func (r *ContainerReconciler) handleContainerOperations(ctx context.Context,
@@ -341,7 +428,12 @@ func (r *ContainerReconciler) handleContainerOperations(ctx context.Context,
 	containerExists, err := pc.ContainerExists(container.Spec.Name, container.Spec.NodeName)
 	if err != nil {
 		logger.Error(err, "Failed to check if Container exists")
-		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	containerExists, err = r.reconcileOCIImageDrift(ctx, pc, container, containerExists)
+	if err != nil {
+		logger.Error(err, "Failed to reconcile OCI image drift")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	if containerExists {
 		err := r.StartOrUpdateContainer(ctx, pc, container)

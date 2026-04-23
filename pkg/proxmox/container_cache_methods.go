@@ -69,3 +69,11 @@ func (pc *ProxmoxClient) deleteCachedContainer(nodeName, containerName string) {
 		}
 	}
 }
+
+func (pc *ProxmoxClient) deleteCachedContainerObject(nodeName string, containerID int) {
+	pc.vmIDMutex.Lock()
+	defer pc.vmIDMutex.Unlock()
+	if nodeCache, exists := pc.nodesCache[nodeName]; exists && nodeCache.containerObjs != nil {
+		delete(nodeCache.containerObjs, containerID)
+	}
+}

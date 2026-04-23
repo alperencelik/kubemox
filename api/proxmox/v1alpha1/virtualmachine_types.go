@@ -155,10 +155,10 @@ type QEMUStatus struct {
 	Uptime string `json:"uptime"`
 	// ID is the ID of the VM
 	ID int `json:"id"`
-	// IPAddress is the IP address of the VM
-	IPAddress string `json:"IPAddress"`
-	// OSInfo is the OS information of the VM
-	OSInfo string `json:"OSInfo"`
+	// IPAddress is the IP address of the VM (or LXC). Optional so status subresources can be patched incrementally.
+	IPAddress string `json:"IPAddress,omitempty"`
+	// OSInfo is the OS information of the VM (or LXC, often config ostype).
+	OSInfo string `json:"OSInfo,omitempty"`
 }
 
 // VirtualMachineStatus defines the observed state of VirtualMachine

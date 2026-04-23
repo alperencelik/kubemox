@@ -230,3 +230,4 @@ Thank you for considering contributing to this project! To get started, please f
 ## Disclaimer
 
 Kubemox is under active development and doesn't follow the Custom Resource Definition (CRD) versioning principles. This means that Kubemox doesn't guarantee version updates on breaking changes and also there is no guarantee for the backward compatibility of the CRDs. Please be aware of this before using Kubemox in production environments.
+
