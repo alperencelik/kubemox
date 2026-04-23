@@ -278,10 +278,9 @@ func (pc *ProxmoxClient) ensureOCIVolume(ct *proxmoxv1alpha1.Container) (string,
 		if pullErr != nil && ociArtifactAlreadyExistsError(pullErr) {
 			log.Log.Info(fmt.Sprintf("OCI blob already on storage %s, reusing (%v)", storage, pullErr))
 		}
-		volid, err = pc.findOCIVolumeID(nodeName, storage, filenameMarker)
+		volid, err = pc.findOCIVolumeID(nodeName, storage, filename)
 		if err != nil {
-			logger.Error(fmt.Errorf("OCI image not on storage %s after pull or existing-file skip: %w", storage, err))
-			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			return "", fmt.Errorf("OCI image not on storage %s after pull or existing-file skip: %w", storage, err)
 		}
 	}
 	return volid, nil
