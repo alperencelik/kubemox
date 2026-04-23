@@ -46,21 +46,43 @@ jobs:
         run: |
           # Ensure target directory exists
           mkdir -p helm-charts-repo/charts/kubemox
-          
+
           # Remove old content to ensure clean sync (optional, but good for removing deleted files)
           rm -rf helm-charts-repo/charts/kubemox/*
-          
+
           # Copy new content
           cp -R charts/kubemox/* helm-charts-repo/charts/kubemox/
 
+      - name: Guard against tag collision
+        id: tag_check
+        run: |
+          cd helm-charts-repo
+          VERSION="${{ steps.get_version.outputs.version }}"
+          TAG="kubemox-$VERSION"
+          git fetch --tags origin
+          if git rev-parse --verify "refs/tags/$TAG" >/dev/null 2>&1; then
+            if git diff --quiet "$TAG" -- charts/kubemox; then
+              echo "Chart for $TAG already published and identical — nothing to do."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "::error::Tag $TAG already exists on remote but chart content differs."
+              echo "::error::Bump charts/kubemox/Chart.yaml in alperencelik/kubemox."
+              git --no-pager diff --stat "$TAG" -- charts/kubemox
+              exit 1
+            fi
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Push to Helm Charts Repo
+        if: steps.tag_check.outputs.skip != 'true'
         run: |
           cd helm-charts-repo
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           git add .
-          
+
           # Check if there are changes
           if git diff --staged --quiet; then
             echo "No changes to commit in helm-charts repo"
