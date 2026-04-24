@@ -352,9 +352,8 @@ func (pc *ProxmoxClient) UpdateContainer(container *proxmoxv1alpha1.Container) e
 		_, err := ProxmoxContainer.Config(ctx, cpuOption, memoryOption)
 		if err != nil {
 			return err
-		} else {
-			log.Log.Info(fmt.Sprintf("Container %s has been updated", containerName))
 		}
+		log.Log.Info(fmt.Sprintf("Container %s has been updated", containerName))
 		// Config of container doesn't require restart
 	}
 	return nil
