@@ -292,14 +292,13 @@ func (r *ContainerReconciler) handleCloneContainer(ctx context.Context,
 		logger.Error(err, "Failed to clone Container")
 		return err
 	}
+	patch := client.MergeFrom(container.DeepCopy())
 	if img := container.Spec.Template.Image; img != nil {
-		if err := r.patchAppliedOCIImageStatus(ctx, container, img.Reference, img.Storage); err != nil {
-			return err
-		}
 		container.Status.AppliedImageReference = img.Reference
 		container.Status.AppliedImageStorage = img.Storage
 	}
-	return nil
+	container.Status.AppliedNetworkFingerprint = proxmox.DesiredContainerNet0Fingerprint(container)
+	return r.Status().Patch(ctx, container, patch)
 }
 
 func (r *ContainerReconciler) handleDelete(ctx context.Context,
@@ -346,6 +345,13 @@ func (r *ContainerReconciler) patchAppliedOCIImageStatus(ctx context.Context,
 	return r.Status().Patch(ctx, c, patch)
 }
 
+func (r *ContainerReconciler) patchAppliedNetworkFingerprint(ctx context.Context,
+	c *proxmoxv1alpha1.Container, fingerprint string) error {
+	patch := client.MergeFrom(c.DeepCopy())
+	c.Status.AppliedNetworkFingerprint = fingerprint
+	return r.Status().Patch(ctx, c, patch)
+}
+
 // reconcileOCIImageDrift deletes and clears applied status when OCI spec changes, or bootstraps status from Proxmox tags.
 func (r *ContainerReconciler) reconcileOCIImageDrift(ctx context.Context, pc *proxmox.ProxmoxClient,
 	container *proxmoxv1alpha1.Container, containerExists bool) (bool, error) {
@@ -375,6 +381,10 @@ func (r *ContainerReconciler) reconcileOCIImageDrift(ctx context.Context, pc *pr
 		}
 		container.Status.AppliedImageReference = ""
 		container.Status.AppliedImageStorage = ""
+		if err := r.patchAppliedNetworkFingerprint(ctx, container, ""); err != nil {
+			return false, err
+		}
+		container.Status.AppliedNetworkFingerprint = ""
 		return false, nil
 	}
 
@@ -417,9 +427,90 @@ func (r *ContainerReconciler) reconcileOCIImageDrift(ctx context.Context, pc *pr
 		}
 		container.Status.AppliedImageReference = ""
 		container.Status.AppliedImageStorage = ""
+		if err := r.patchAppliedNetworkFingerprint(ctx, container, ""); err != nil {
+			return false, err
+		}
+		container.Status.AppliedNetworkFingerprint = ""
 		return false, nil
 	}
 	return containerExists, nil
+}
+
+func (r *ContainerReconciler) reconcileContainerNetworkDrift(ctx context.Context, pc *proxmox.ProxmoxClient,
+	container *proxmoxv1alpha1.Container, containerExists bool) (bool, error) {
+	logger := log.FromContext(ctx)
+	desiredFP := proxmox.DesiredContainerNet0Fingerprint(container)
+	appliedFP := container.Status.AppliedNetworkFingerprint
+
+	if appliedFP == desiredFP {
+		return containerExists, nil
+	}
+
+	// Same bridge/VLAN/name identity; status may still differ (legacy stored full net0 including ip=).
+	if appliedFP != "" && proxmox.Net0IdentityCanonical(appliedFP) == desiredFP {
+		if appliedFP != desiredFP {
+			logger.Info("Normalizing applied network fingerprint", "container", container.Spec.Name)
+			if err := r.patchAppliedNetworkFingerprint(ctx, container, desiredFP); err != nil {
+				return containerExists, err
+			}
+			container.Status.AppliedNetworkFingerprint = desiredFP
+		}
+		return containerExists, nil
+	}
+
+	if !containerExists {
+		if appliedFP != "" {
+			if err := r.patchAppliedNetworkFingerprint(ctx, container, ""); err != nil {
+				return false, err
+			}
+			container.Status.AppliedNetworkFingerprint = ""
+		}
+		return false, nil
+	}
+
+	if appliedFP != "" {
+		logger.Info("Container net0 definition changed (e.g. VLAN); replacing Proxmox container",
+			"container", container.Spec.Name, "appliedFingerprint", appliedFP, "desiredFingerprint", desiredFP)
+		r.Recorder.Eventf(container, nil, "Normal", "Replacing", "Replacing",
+			fmt.Sprintf("Replacing Container %s (network / VLAN changed)", container.Spec.Name))
+		if err := pc.DeleteContainer(container.Spec.Name, container.Spec.NodeName); err != nil {
+			return false, err
+		}
+		if err := r.patchAppliedNetworkFingerprint(ctx, container, ""); err != nil {
+			return false, err
+		}
+		container.Status.AppliedNetworkFingerprint = ""
+		return false, nil
+	}
+
+	lxc, err := pc.GetContainer(container.Spec.Name, container.Spec.NodeName)
+	if err != nil {
+		return containerExists, err
+	}
+	gotNet0 := ""
+	if lxc.ContainerConfig != nil {
+		gotNet0 = lxc.ContainerConfig.Net0
+	}
+	if proxmox.ContainerNet0MatchesSpec(gotNet0, container) {
+		logger.Info("Bootstrapping applied network fingerprint from Proxmox net0", "container", container.Spec.Name)
+		if err := r.patchAppliedNetworkFingerprint(ctx, container, desiredFP); err != nil {
+			return containerExists, err
+		}
+		container.Status.AppliedNetworkFingerprint = desiredFP
+		return containerExists, nil
+	}
+
+	logger.Info("Proxmox net0 does not match spec; replacing Proxmox container", "container", container.Spec.Name)
+	r.Recorder.Eventf(container, nil, "Normal", "Replacing", "Replacing",
+		fmt.Sprintf("Replacing Container %s (network / VLAN mismatch)", container.Spec.Name))
+	if err := pc.DeleteContainer(container.Spec.Name, container.Spec.NodeName); err != nil {
+		return false, err
+	}
+	if err := r.patchAppliedNetworkFingerprint(ctx, container, ""); err != nil {
+		return false, err
+	}
+	container.Status.AppliedNetworkFingerprint = ""
+	return false, nil
 }
 
 func (r *ContainerReconciler) handleContainerOperations(ctx context.Context,
@@ -433,6 +524,11 @@ func (r *ContainerReconciler) handleContainerOperations(ctx context.Context,
 	containerExists, err = r.reconcileOCIImageDrift(ctx, pc, container, containerExists)
 	if err != nil {
 		logger.Error(err, "Failed to reconcile OCI image drift")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	containerExists, err = r.reconcileContainerNetworkDrift(ctx, pc, container, containerExists)
+	if err != nil {
+		logger.Error(err, "Failed to reconcile container network drift")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	if containerExists {

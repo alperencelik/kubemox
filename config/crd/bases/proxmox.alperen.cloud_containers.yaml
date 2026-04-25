@@ -165,6 +165,13 @@ spec:
                         model:
                           description: Name is the name of the network
                           type: string
+                        vlan:
+                          description: VLAN is the Proxmox VLAN tag (1-4094) for net0.
+                            Omit for untagged traffic on the bridge.
+                          format: int32
+                          maximum: 4094
+                          minimum: 1
+                          type: integer
                       type: object
                     type: array
                 type: object
@@ -197,6 +204,11 @@ spec:
               appliedImageStorage:
                 description: AppliedImageStorage is the OCI blob storage ID used when
                   the CT was created (template.image only).
+                type: string
+              appliedNetworkFingerprint:
+                description: |-
+                  AppliedNetworkFingerprint is a normalized net0 identity (bridge, VLAN tag, etc.) last applied to the CT.
+                  If spec-derived net0 changes (e.g. VLAN), the controller replaces the Proxmox container instead of hot-plugging net0.
                 type: string
               conditions:
                 description: |-

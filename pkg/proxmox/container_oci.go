@@ -47,17 +47,16 @@ func ociPullFilename(imageRef string) string {
 }
 
 // OCIImageProxmoxTag builds one Proxmox tag from the OCI reference (charset-safe, length-limited).
-// Proxmox tags use semicolons between values; a single image maps to one tag prefixed with img-.
+// Proxmox tags use semicolons between values; a single image maps to one tag
 func OCIImageProxmoxTag(imageRef string) string {
 	ref := strings.TrimSpace(imageRef)
 	if ref == "" {
 		return ""
 	}
-	base := ociReferenceToFileBase(ref)
-	if base == "" {
-		base = "x-" + ociImageID(ref)
+	tag := ociReferenceToFileBase(ref)
+	if tag == "" {
+		tag = "x-" + ociImageID(ref)
 	}
-	tag := "img-" + base
 	if len(tag) > 120 {
 		tag = tag[:120]
 		tag = strings.TrimRight(tag, "-.")
@@ -127,18 +126,6 @@ func firstRootFS(ct *proxmoxv1alpha1.Container) (string, error) {
 		return "", fmt.Errorf("template.disk[0] must set storage and size")
 	}
 	return fmt.Sprintf("%s:%d", d.Storage, d.Size), nil
-}
-
-func net0FromSpec(ct *proxmoxv1alpha1.Container) string {
-	if len(ct.Spec.Template.Network) == 0 {
-		return "name=eth0,bridge=vmbr0,ip=dhcp"
-	}
-	n := ct.Spec.Template.Network[0]
-	br := n.Bridge
-	if br == "" {
-		br = "vmbr0"
-	}
-	return fmt.Sprintf("name=eth0,bridge=%s,ip=dhcp", br)
 }
 
 func ociBasenameFromVolid(volid string) string {
