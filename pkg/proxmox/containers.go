@@ -3,6 +3,8 @@ package proxmox
 import (
 	"fmt"
 	"reflect"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unsafe"
@@ -68,6 +70,119 @@ func lxcOSInfoFromContainer(c *proxmox.Container) string {
 	return "LXC"
 }
 
+func parseLXCNet0(net string) map[string]string {
+	out := make(map[string]string)
+	for _, part := range strings.Split(net, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(part, "=")
+		if !ok {
+			continue
+		}
+		out[strings.ToLower(strings.TrimSpace(k))] = strings.TrimSpace(v)
+	}
+	return out
+}
+
+func normalizeLXCNet0(net string) string {
+	m := parseLXCNet0(net)
+	if len(m) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		b.WriteString(k)
+		b.WriteString("=")
+		b.WriteString(m[k])
+	}
+	return b.String()
+}
+
+func lxcNet0Equivalent(a, b string) bool {
+	return normalizeLXCNet0(a) == normalizeLXCNet0(b)
+}
+
+// net0IdentityMap keeps only bridge / VLAN tag / iface name (what kubemox owns in spec). Ignores ip, firewall, etc.
+func net0IdentityMap(net string) map[string]string {
+	m := parseLXCNet0(strings.TrimSpace(net))
+	keep := make(map[string]string)
+	if v := strings.TrimSpace(m["name"]); v != "" {
+		keep["name"] = v
+	} else {
+		keep["name"] = "eth0"
+	}
+	if v := strings.TrimSpace(m["bridge"]); v != "" {
+		keep["bridge"] = v
+	} else {
+		keep["bridge"] = "vmbr0"
+	}
+	if v := strings.TrimSpace(m["tag"]); v != "" {
+		keep["tag"] = v
+	}
+	return keep
+}
+
+func net0StringFromIdentityMap(keep map[string]string) string {
+	keys := make([]string, 0, len(keep))
+	for k := range keep {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		b.WriteString(k)
+		b.WriteString("=")
+		b.WriteString(keep[k])
+	}
+	return b.String()
+}
+
+// Net0IdentityCanonical returns a stable fingerprint for net0 drift and bootstrap matching.
+// Proxmox expands ip=dhcp to a real address and adds other keys; those must not force a false mismatch.
+func Net0IdentityCanonical(net string) string {
+	return normalizeLXCNet0(net0StringFromIdentityMap(net0IdentityMap(net)))
+}
+
+// DesiredContainerNet0Fingerprint returns identity (bridge, tag, name) from spec for status and drift checks.
+func DesiredContainerNet0Fingerprint(ct *proxmoxv1alpha1.Container) string {
+	return Net0IdentityCanonical(net0FromSpec(ct))
+}
+
+// ContainerNet0MatchesSpec reports whether Proxmox net0 matches spec for bridge / VLAN / iface name.
+func ContainerNet0MatchesSpec(gotNet0 string, ct *proxmoxv1alpha1.Container) bool {
+	return Net0IdentityCanonical(gotNet0) == Net0IdentityCanonical(net0FromSpec(ct))
+}
+
+// net0FromSpec builds the Proxmox net0 string (first template.network entry, or defaults).
+func net0FromSpec(ct *proxmoxv1alpha1.Container) string {
+	if len(ct.Spec.Template.Network) == 0 {
+		return "name=eth0,bridge=vmbr0,ip=dhcp"
+	}
+	n := ct.Spec.Template.Network[0]
+	br := n.Bridge
+	if br == "" {
+		br = "vmbr0"
+	}
+	s := fmt.Sprintf("name=eth0,bridge=%s,ip=dhcp", br)
+	if n.VLAN != nil && *n.VLAN >= 1 && *n.VLAN <= 4094 {
+		s += ",tag=" + strconv.Itoa(int(*n.VLAN))
+	}
+	return s
+}
+
 // CloneContainer clones a container from a template
 func (pc *ProxmoxClient) CloneContainer(container *proxmoxv1alpha1.Container) error {
 	// Returning an error is quite reasonable here since that error moved up
@@ -115,6 +230,15 @@ func (pc *ProxmoxClient) CloneContainer(container *proxmoxv1alpha1.Container) er
 	}
 	// Cache the new container ID
 	pc.setCachedContainerID(nodeName, containerName, newID)
+
+	newContainer, err := pc.GetContainer(containerName, nodeName)
+	if err != nil {
+		return err
+	}
+	net0Option := proxmox.ContainerOption{Name: "net0", Value: net0FromSpec(container)}
+	if _, err := newContainer.Config(ctx, net0Option); err != nil {
+		return err
+	}
 	return nil
 }
 
