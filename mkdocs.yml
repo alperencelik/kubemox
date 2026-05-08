@@ -9,7 +9,6 @@ nav:
   - Overview: crds/index.md
   - Virtual Machines (QEMU): 
     - VirtualMachine: crds/virtualmachine.md
-    - ManagedVirtualMachine: crds/managedvirtualmachine.md
     - VirtualMachineTemplate: crds/virtualmachinetemplate.md
     - VirtualMachineSet: crds/virtualmachineset.md
     - VirtualMachineSnapshot: crds/virtualmachinesnapshot.md

@@ -21,12 +21,6 @@ type Resource interface {
 	cc.Object
 }
 
-// ManagedVMDesiredState represents the comparable desired/actual state for a ManagedVirtualMachine.
-type ManagedVMDesiredState struct {
-	Cores  int
-	Memory int
-}
-
 // ContainerDesiredState represents the comparable desired/actual state for a Container.
 type ContainerDesiredState struct {
 	Cores  int
@@ -187,86 +181,6 @@ func (f *VirtualMachineFetcher) UpdateResourceStatus(ctx context.Context, key ty
 	return f.Client.Status().Patch(ctx, vm, patch)
 }
 
-// --- ManagedVirtualMachine Fetcher ---
-
-// ManagedVirtualMachineFetcher implements watcher.ResourceStateFetcher for ManagedVirtualMachine resources.
-type ManagedVirtualMachineFetcher struct {
-	Client cc.Client
-}
-
-func (f *ManagedVirtualMachineFetcher) GetDesiredState(ctx context.Context, key types.NamespacedName) (any, error) {
-	vm := &proxmoxv1alpha1.ManagedVirtualMachine{}
-	if err := f.Client.Get(ctx, key, vm); err != nil {
-		return nil, err
-	}
-	reconcileMode := kubernetes.GetReconcileMode(vm)
-	if reconcileMode == kubernetes.ReconcileModeWatchOnly || reconcileMode == kubernetes.ReconcileModeEnsureExists {
-		return nil, nil
-	}
-	return ManagedVMDesiredState{
-		Cores:  vm.Spec.Cores,
-		Memory: vm.Spec.Memory,
-	}, nil
-}
-
-func (f *ManagedVirtualMachineFetcher) FetchExternalResource(ctx context.Context, objKey any) (any, error) {
-	key, ok := objKey.(ProxmoxResourceKey)
-	if !ok {
-		return nil, fmt.Errorf("unexpected resource key type: %T", objKey)
-	}
-	pc, err := NewProxmoxClientFromRef(ctx, f.Client, key.ConnectionRef)
-	if err != nil {
-		return nil, fmt.Errorf("getting Proxmox client: %w", err)
-	}
-	vm, err := pc.getVirtualMachine(key.Name, key.NodeName)
-	if err != nil {
-		return nil, err
-	}
-	return vm, nil
-}
-
-func (f *ManagedVirtualMachineFetcher) TransformExternalState(raw any) (any, error) {
-	vm, ok := raw.(*gopxmx.VirtualMachine)
-	if !ok {
-		return nil, fmt.Errorf("unexpected external state type: %T", raw)
-	}
-	return ManagedVMDesiredState{
-		Cores:  vm.VirtualMachineConfig.Cores,
-		Memory: int(vm.VirtualMachineConfig.Memory),
-	}, nil
-}
-
-func (f *ManagedVirtualMachineFetcher) IsResourceReadyToWatch(ctx context.Context, key types.NamespacedName) bool {
-	vm := &proxmoxv1alpha1.ManagedVirtualMachine{}
-	return checkResourceReady(ctx, f.Client, key, vm,
-		func() *corev1.LocalObjectReference { return vm.Spec.ConnectionRef },
-		func(pc *ProxmoxClient) (bool, error) { return pc.IsVirtualMachineReady(vm) },
-	)
-}
-
-func (f *ManagedVirtualMachineFetcher) UpdateResourceStatus(ctx context.Context,
-	key types.NamespacedName, _ any) error {
-	vm := &proxmoxv1alpha1.ManagedVirtualMachine{}
-	if err := f.Client.Get(ctx, key, vm); err != nil {
-		return err
-	}
-	pc, err := NewProxmoxClientFromRef(ctx, f.Client, vm.Spec.ConnectionRef)
-	if err != nil {
-		return err
-	}
-	nodeName, err := pc.GetNodeOfVM(vm.Name)
-	if err != nil {
-		return err
-	}
-	qemuStatus, err := pc.UpdateVMStatus(vm.Name, nodeName)
-	if err != nil {
-		return err
-	}
-	patch := cc.MergeFrom(vm.DeepCopy())
-	vm.Status.Status = qemuStatus
-	return f.Client.Status().Patch(ctx, vm, patch)
-}
-
 // --- Container Fetcher ---
 
 // ContainerFetcher implements watcher.ResourceStateFetcher for Container resources.
@@ -412,18 +326,6 @@ func (f *VirtualMachineTemplateFetcher) IsResourceReadyToWatch(ctx context.Conte
 // VMConfigExtractor extracts watcher.ResourceConfig from a VirtualMachine object.
 func VMConfigExtractor(obj cc.Object) watcher.ResourceConfig {
 	vm := obj.(*proxmoxv1alpha1.VirtualMachine)
-	return watcher.ResourceConfig{
-		ResourceKey: ProxmoxResourceKey{
-			Name:          vm.Spec.Name,
-			NodeName:      vm.Spec.NodeName,
-			ConnectionRef: vm.Spec.ConnectionRef,
-		},
-	}
-}
-
-// ManagedVMConfigExtractor extracts watcher.ResourceConfig from a ManagedVirtualMachine object.
-func ManagedVMConfigExtractor(obj cc.Object) watcher.ResourceConfig {
-	vm := obj.(*proxmoxv1alpha1.ManagedVirtualMachine)
 	return watcher.ResourceConfig{
 		ResourceKey: ProxmoxResourceKey{
 			Name:          vm.Spec.Name,

@@ -209,6 +209,9 @@ func (r *VirtualMachineSetReconciler) createOrUpdateVirtualMachineCRs(ctx contex
 			return nil
 		})
 		if err != nil {
+			if kerrors.IsAlreadyExists(err) {
+				continue
+			}
 			return err
 		}
 	}
