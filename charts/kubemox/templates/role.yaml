@@ -6,10 +6,7 @@ metadata:
 rules:
 # Custom Resources
 - apiGroups: ["proxmox.alperen.cloud"]
-  resources: 
-  - "managedvirtualmachines"
-  - "managedvirtualmachines/finalizers"
-  - "managedvirtualmachines/status"
+  resources:
   - "virtualmachines"
   - "virtualmachines/finalizers"
   - "virtualmachines/status"

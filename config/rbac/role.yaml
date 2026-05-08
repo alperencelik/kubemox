@@ -30,7 +30,6 @@ rules:
   resources:
   - containers
   - customcertificates
-  - managedvirtualmachines
   - proxmoxconnections
   - storagedownloadurls
   - virtualmachines
@@ -51,7 +50,6 @@ rules:
   resources:
   - containers/finalizers
   - customcertificates/finalizers
-  - managedvirtualmachines/finalizers
   - proxmoxconnections/finalizers
   - storagedownloadurls/finalizers
   - virtualmachines/finalizers
@@ -66,7 +64,6 @@ rules:
   resources:
   - containers/status
   - customcertificates/status
-  - managedvirtualmachines/status
   - proxmoxconnections/status
   - storagedownloadurls/status
   - virtualmachines/status

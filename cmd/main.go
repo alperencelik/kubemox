@@ -172,13 +172,6 @@ func main() {
 				proxmox.VMConfigExtractor, readinessRetry),
 			watcher.WithAutoRegisterFilter(generationFilter),
 		)...)
-	managedVMWatcher := watcher.NewExternalWatcher(&proxmox.ManagedVirtualMachineFetcher{Client: k8sClient},
-		append(watcherOpts,
-			watcher.WithMetrics("ManagedVirtualMachine"),
-			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.ManagedVirtualMachine{},
-				proxmox.ManagedVMConfigExtractor, readinessRetry),
-			watcher.WithAutoRegisterFilter(generationFilter),
-		)...)
 	containerWatcher := watcher.NewExternalWatcher(&proxmox.ContainerFetcher{Client: k8sClient},
 		append(watcherOpts,
 			watcher.WithMetrics("Container"),
@@ -195,7 +188,7 @@ func main() {
 		)...)
 
 	// Register watchers as manager runnables
-	for _, ew := range []*watcher.ExternalWatcher{vmWatcher, managedVMWatcher, containerWatcher, vmTemplateWatcher} {
+	for _, ew := range []*watcher.ExternalWatcher{vmWatcher, containerWatcher, vmTemplateWatcher} {
 		if err = mgr.Add(ew); err != nil {
 			setupLog.Error(err, "unable to add external watcher to manager")
 			os.Exit(1)
@@ -212,15 +205,6 @@ func main() {
 		Recorder: mgr.GetEventRecorder("VirtualMachine"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachine")
-		os.Exit(1)
-	}
-	if err = (&proxmoxcontroller.ManagedVirtualMachineReconciler{
-		Client:   k8sClient,
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorder("ManagedVirtualMachine"),
-		EventCh:  managedVMWatcher.EventChannel(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ManagedVirtualMachine")
 		os.Exit(1)
 	}
 	if err = (&proxmoxcontroller.VirtualMachineSetReconciler{

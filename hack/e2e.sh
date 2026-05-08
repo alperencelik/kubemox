@@ -31,7 +31,7 @@ collect_logs() {
         > "${ARTIFACTS_DIR}/operator-logs-previous.txt" 2>/dev/null || true
     # Kubemox CRs — dump everything to capture state at failure time.
     : > "${ARTIFACTS_DIR}/crs.yaml"
-    for crd in virtualmachines managedvirtualmachines containers virtualmachinesets \
+    for crd in virtualmachines containers virtualmachinesets \
         virtualmachinesnapshots virtualmachinesnapshotpolicies virtualmachinetemplates \
         customcertificates storagedownloadurls proxmoxconnections; do
         kubectl get "${crd}.proxmox.alperen.cloud" -A -o yaml \

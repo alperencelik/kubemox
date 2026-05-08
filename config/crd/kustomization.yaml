@@ -3,7 +3,6 @@
 # It should be run by config/default
 resources:
 - bases/proxmox.alperen.cloud_virtualmachines.yaml
-- bases/proxmox.alperen.cloud_managedvirtualmachines.yaml
 - bases/proxmox.alperen.cloud_virtualmachinesets.yaml
 - bases/proxmox.alperen.cloud_virtualmachinesnapshots.yaml
 - bases/proxmox.alperen.cloud_virtualmachinesnapshotpolicies.yaml
@@ -18,7 +17,6 @@ patches:
 # [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix.
 # patches here are for enabling the conversion webhook for each CRD
 #- path: patches/webhook_in_virtualmachines.yaml
-#- path: patches/webhook_in_managedvirtualmachines.yaml
 #- path: patches/webhook_in_virtualmachinesets.yaml
 #- path: patches/webhook_in_virtualmachinesnapshots.yaml
 #- path: patches/webhook_in_virtualmachinesnapshotpolicies.yaml
@@ -30,7 +28,6 @@ patches:
 # [CERTMANAGER] To enable cert-manager, uncomment all the sections with [CERTMANAGER] prefix.
 # patches here are for enabling the CA injection for each CRD
 #- path: patches/cainjection_in_virtualmachines.yaml
-#- path: patches/cainjection_in_managedvirtualmachines.yaml
 #- path: patches/cainjection_in_virtualmachinesets.yaml
 #- path: patches/cainjection_in_virtualmachinesnapshots.yaml
 #- path: patches/cainjection_in_virtualmachinesnapshotpolicies.yaml

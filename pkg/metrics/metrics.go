@@ -34,28 +34,6 @@ var (
 		Help: "Number of stopped virtualMachines",
 	})
 
-	// ManagedVirtualMachine
-	ManagedVirtualMachineCount = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "kubemox_managed_virtual_machine_count",
-		Help: "Number of managedVirtualMachines exists in Proxmox",
-	})
-	ManagedVirtualMachineCPUCores = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "kubemox_managed_virtual_machine_cpu_cores",
-		Help: "Number of CPU cores of managedVirtualMachine",
-	}, []string{"name", "namespace"})
-	ManagedVirtualMachineMemory = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "kubemox_managed_virtual_machine_memory",
-		Help: "Memory of managedVirtualMachine as MB",
-	}, []string{"name", "namespace"})
-	ManagedVirtualMachineRunningCount = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "kubemox_managed_virtual_machine_running_count",
-		Help: "Number of running managedVirtualMachines",
-	})
-	ManagedVirtualMachineStoppedCount = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "kubemox_managed_virtual_machine_stopped_count",
-		Help: "Number of stopped managedVirtualMachines",
-	})
-
 	// Container
 	containerCount = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "kubemox_container_count",
@@ -138,12 +116,6 @@ var KubemoxMetrics = []prometheus.Collector{
 	virtualMachineMemory,
 	virtualMachineRunningCount,
 	virtualMachineStoppedCount,
-	// ManagedVirtualMachine
-	ManagedVirtualMachineCount,
-	ManagedVirtualMachineCPUCores,
-	ManagedVirtualMachineMemory,
-	ManagedVirtualMachineRunningCount,
-	ManagedVirtualMachineStoppedCount,
 	// Container
 	containerCount,
 	containerCPUCores,
@@ -182,14 +154,6 @@ func UpdateProxmoxMetrics(ctx context.Context, kubeClient client.Client) {
 		return
 	}
 	updateVirtualMachineMetrics(vmList)
-
-	// Get all managed virtual machines
-	managedVMList := &proxmoxv1alpha1.ManagedVirtualMachineList{}
-	if err := kubeClient.List(ctx, managedVMList); err != nil {
-		logger.Error(err, "unable to list managed virtual machines")
-		return
-	}
-	updateManagedVirtualMachineMetrics(managedVMList)
 
 	// Get all containers
 	containerList := &proxmoxv1alpha1.ContainerList{}
@@ -254,16 +218,6 @@ func updateVirtualMachineMetrics(vmList *proxmoxv1alpha1.VirtualMachineList) {
 		vm := &vmList.Items[i]
 		virtualMachineCPUCores.WithLabelValues(vm.Name, vm.Namespace).Set(float64(proxmox.GetCores(vm)))
 		virtualMachineMemory.WithLabelValues(vm.Name, vm.Namespace).Set(float64(proxmox.GetMemory(vm)))
-	}
-}
-
-func updateManagedVirtualMachineMetrics(managedVMList *proxmoxv1alpha1.ManagedVirtualMachineList) {
-	ManagedVirtualMachineCount.Set(float64(len(managedVMList.Items)))
-
-	for i := range managedVMList.Items {
-		managedVM := &managedVMList.Items[i]
-		ManagedVirtualMachineCPUCores.WithLabelValues(managedVM.Name, managedVM.Namespace).Set(float64(managedVM.Spec.Cores))
-		ManagedVirtualMachineMemory.WithLabelValues(managedVM.Name, managedVM.Namespace).Set(float64(managedVM.Spec.Memory))
 	}
 }
 

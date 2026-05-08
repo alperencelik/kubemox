@@ -12,12 +12,9 @@ import (
 	"sync"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
-	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/utils"
 	"github.com/google/go-cmp/cmp"
 	proxmox "github.com/luthermonson/go-proxmox"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -68,7 +65,6 @@ const (
 
 var (
 	virtualMachineTag         string
-	ManagedVirtualMachineTag  string
 	virtualMachineTemplateTag string
 	EnableProxmoxTaskLogs     bool
 )
@@ -77,10 +73,6 @@ func init() {
 	virtualMachineTag = os.Getenv("VIRTUAL_MACHINE_TAG")
 	if virtualMachineTag == "" {
 		virtualMachineTag = "kubemox"
-	}
-	ManagedVirtualMachineTag = os.Getenv("MANAGED_VIRTUAL_MACHINE_TAG")
-	if ManagedVirtualMachineTag == "" {
-		ManagedVirtualMachineTag = "kubemox-managed-vm"
 	}
 	virtualMachineTemplateTag = os.Getenv("VIRTUAL_MACHINE_TEMPLATE_TAG")
 	if virtualMachineTemplateTag == "" {
@@ -533,47 +525,6 @@ func CheckVMType(vm *proxmoxv1alpha1.VirtualMachine) string {
 	return VMType
 }
 
-func CheckManagedVMExists(managedVM string) (bool, error) {
-	// Theoretically this should be handled with the reconciler.List method
-	// but since this one is used before the reconciler build it's cache
-	// we have to retrieve the objects from API server directly
-	existingManagedVMNames := []string{}
-	// Get managed VMs
-	crd, err := kubernetes.GetManagedVMCRD()
-	if err != nil {
-		return false, err
-	}
-	customResource := schema.GroupVersionResource{
-		Group:    crd.Spec.Group,
-		Version:  crd.Spec.Versions[0].Name,
-		Resource: crd.Spec.Names.Plural,
-	}
-	// Get managedVirtualMachine CRD
-	ClientManagedVMs, err := kubernetes.DynamicClient().Resource(customResource).List(ctx, metav1.ListOptions{})
-	if err != nil {
-		return false, err
-	}
-	// Get all managed VM names as array
-	for _, ClientManagedVM := range ClientManagedVMs.Items {
-		existingManagedVMNames = append(existingManagedVMNames, ClientManagedVM.GetName())
-	}
-	// Check if managed VM exists
-	return utils.StringInSlice(managedVM, existingManagedVMNames), nil
-}
-
-func (pc *ProxmoxClient) GetManagedVMSpec(managedVMName, nodeName string) (cores, memory, disk int) {
-	// Get spec of VM
-	VirtualMachine, err := pc.getVirtualMachine(managedVMName, nodeName)
-	if err != nil {
-		log.Log.Error(err, "Error getting VM for managed VM spec")
-	}
-	cores = VirtualMachine.CPUs
-	memory = int(VirtualMachine.MaxMem / 1024 / 1024) // As MB
-	disk = int(VirtualMachine.MaxDisk / 1024 / 1024 / 1024)
-
-	return cores, memory, disk
-}
-
 func (pc *ProxmoxClient) UpdateVMStatus(vmName, nodeName string) (*proxmoxv1alpha1.QEMUStatus, error) {
 	var VirtualMachineIP string
 	var VirtualMachineOS string
@@ -688,142 +639,6 @@ func (pc *ProxmoxClient) UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) (bool, err
 		}
 	}
 	return updateStatus, nil
-}
-
-func (pc *ProxmoxClient) CreateManagedVM(managedVM string) (*proxmoxv1alpha1.ManagedVirtualMachine, error) {
-	nodeName, err := pc.GetNodeOfVM(managedVM)
-	if err != nil {
-		return nil, err
-	}
-	cores, memory, disk := pc.GetManagedVMSpec(managedVM, nodeName)
-
-	// Create VM object
-	VirtualMachine := &proxmoxv1alpha1.ManagedVirtualMachine{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "proxmox.alperen.cloud/v1alpha1",
-			Kind:       "ManagedVirtualMachine",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: strings.ToLower(managedVM),
-		},
-		Spec: proxmoxv1alpha1.ManagedVirtualMachineSpec{
-			Name:     managedVM,
-			NodeName: nodeName,
-			Cores:    cores,
-			Memory:   memory,
-			Disk:     disk,
-		},
-	}
-	return VirtualMachine, err
-}
-
-func (pc *ProxmoxClient) GetManagedVMs() ([]string, error) {
-	// Get VMs with tag managedVirtualMachineTag
-	nodes, err := pc.GetOnlineNodes()
-	if err != nil {
-		return nil, err
-	}
-	var ManagedVMs []string
-	for _, nodeName := range nodes {
-		node, err := pc.getNode(ctx, nodeName)
-		if err != nil {
-			return nil, err
-		}
-		VirtualMachines, err := node.VirtualMachines(ctx)
-		if err != nil {
-			return nil, err
-		}
-		for _, VirtualMachine := range VirtualMachines {
-			vmTags := strings.Split(VirtualMachine.Tags, ";")
-			// Check if VM has managedVirtualMachineTag but not kubemox tag
-			if utils.StringInSlice(ManagedVirtualMachineTag, vmTags) && !utils.StringInSlice(virtualMachineTag, vmTags) {
-				ManagedVMs = append(ManagedVMs, VirtualMachine.Name)
-				// Cache the VM ID
-				pc.setCachedVMID(nodeName, VirtualMachine.Name, int(VirtualMachine.VMID))
-			}
-		}
-	}
-	return ManagedVMs, nil
-}
-
-func (pc *ProxmoxClient) UpdateManagedVM(ctx context.Context, managedVM *proxmoxv1alpha1.ManagedVirtualMachine) error {
-	managedVMName := managedVM.Spec.Name
-	nodeName, err := pc.GetNodeOfVM(managedVMName)
-	if err != nil {
-		return err
-	}
-	vmState, err := pc.GetVMState(managedVMName, nodeName)
-	if err != nil {
-		return err
-	}
-	if vmState != VirtualMachineRunningState {
-		return fmt.Errorf("managed virtual machine %s is not running, update can't be applied", managedVMName)
-	} else {
-		VirtualMachine, err := pc.getVirtualMachine(managedVMName, nodeName)
-		if err != nil {
-			return err
-		}
-		VirtualMachineMem := VirtualMachine.MaxMem / 1024 / 1024 // As MB
-		var cpuOption proxmox.VirtualMachineOption
-		var memoryOption proxmox.VirtualMachineOption
-		cpuOption.Name = virtualMachineCPUOption
-		cpuOption.Value = managedVM.Spec.Cores
-		memoryOption.Name = virtualMachineMemoryOption
-		memoryOption.Value = managedVM.Spec.Memory
-		// Disk
-		diskSize := managedVM.Spec.Disk
-		// TODO: Need to retrieve disk name from external resource
-		disk := "scsi0"
-		VirtualMachineMaxDisk := VirtualMachine.MaxDisk / 1024 / 1024 / 1024 // As GB
-		// convert string to uint64
-		if VirtualMachineMaxDisk <= uint64(diskSize) {
-			// Resize Disk
-			// TODO: Review if I need to track the disk resize task
-			_, err := VirtualMachine.ResizeDisk(ctx, disk, strconv.Itoa(diskSize)+"G")
-			if err != nil {
-				log.Log.Error(err, "Can't resize disk")
-			}
-		} else {
-			log.Log.Info(fmt.Sprintf("External resource: %d || Custom Resource: %d", VirtualMachineMaxDisk, diskSize))
-			log.Log.Info(fmt.Sprintf("VirtualMachine %s disk %s can't shrink.", managedVMName, disk))
-			// Revert the update since it's not possible to shrink disk
-			managedVM.Spec.Disk = int(VirtualMachineMaxDisk)
-		}
-
-		if VirtualMachine.CPUs != managedVM.Spec.Cores || VirtualMachineMem != uint64(managedVM.Spec.Memory) {
-			// Update VM
-			// log.Log.Info(fmt.Sprintf("The comparison between CR and external resource: CPU: %d, %d
-			// || Memory: %d, %d", managedVM.Spec.Cores, VirtualMachine.CPUs, managedVM.Spec.Memory, VirtualMachineMem))
-			task, err := VirtualMachine.Config(ctx, cpuOption, memoryOption)
-			if err != nil {
-				log.Log.Error(err, "Can't update VM")
-				return err
-			}
-			taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx,
-				virtualMachineUpdateTimesNum, virtualMachineUpdateSteps)
-			if !taskStatus {
-				// Return the taks.ExitStatus as error
-				return &TaskError{ExitStatus: task.ExitStatus}
-			}
-			if !taskCompleted {
-				return taskErr
-			}
-			task, err = pc.RestartVM(managedVMName, nodeName)
-			if err != nil {
-				return err
-			}
-			taskStatus, taskCompleted, taskErr = task.WaitForCompleteStatus(ctx,
-				virtualMachineRestartTimesNum, virtualMachineRestartSteps)
-			if !taskStatus {
-				// Return the taks.ExitStatus as error
-				return &TaskError{ExitStatus: task.ExitStatus}
-			}
-			if !taskCompleted {
-				return taskErr
-			}
-		}
-	}
-	return nil
 }
 
 func (pc *ProxmoxClient) CreateVMSnapshot(vmName, snapshotName string) (statusCode int, err error) {
@@ -1404,24 +1219,6 @@ func sortDisks(disks []proxmoxv1alpha1.VirtualMachineDisk) []proxmoxv1alpha1.Vir
 	return disks
 }
 
-func (pc *ProxmoxClient) CheckManagedVMDelta(managedVM *proxmoxv1alpha1.ManagedVirtualMachine) (
-	bool, error) {
-	// Compare the actual state of the VM with the desired state
-	// If there is a difference, return true
-	VirtualMachine, err := pc.getVirtualMachine(managedVM.Spec.Name, managedVM.Spec.NodeName)
-	if err != nil {
-		log.Log.Error(err, "Error getting VM for watching")
-		return false, err
-	}
-	VirtualMachineConfig := VirtualMachine.VirtualMachineConfig
-
-	// Compare the actual VM with the desired VM
-	if VirtualMachineConfig.Cores != managedVM.Spec.Cores || int(VirtualMachineConfig.Memory) != managedVM.Spec.Memory {
-		return true, nil
-	}
-	return false, nil
-}
-
 func getNextVMID(client *proxmox.Client) (int, error) {
 	cluster, err := client.Cluster(ctx)
 	if err != nil {
@@ -1761,9 +1558,6 @@ func (pc *ProxmoxClient) IsVirtualMachineReady(obj Resource) (bool, error) {
 	case "VirtualMachine":
 		vmName = obj.(*proxmoxv1alpha1.VirtualMachine).Spec.Name
 		nodeName = obj.(*proxmoxv1alpha1.VirtualMachine).Spec.NodeName
-	case "ManagedVirtualMachine":
-		vmName = obj.(*proxmoxv1alpha1.ManagedVirtualMachine).Spec.Name
-		nodeName = obj.(*proxmoxv1alpha1.ManagedVirtualMachine).Spec.NodeName
 	case "VirtualMachineTemplate":
 		vmName = obj.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.Name
 		nodeName = obj.(*proxmoxv1alpha1.VirtualMachineTemplate).Spec.NodeName

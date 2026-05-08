@@ -62,15 +62,13 @@ helm install kubemox ./ -f values.yaml -n $NAMESPACE
 
 ## Usage
 
-Currently Kubemox brings five different CRDs for only VirtualMachines in Proxmox. These are `VirtualMachine`, `VirtualMachineSet`, `ManagedVirtualMachine`, `VirtualMachineSnapshot` and `VirtualMachineSnapshotPolicy`. You can use these CRDs to create and manage VirtualMachine(s) in Proxmox. 
+Currently Kubemox brings four different CRDs for VirtualMachines in Proxmox. These are `VirtualMachine`, `VirtualMachineSet`, `VirtualMachineSnapshot` and `VirtualMachineSnapshotPolicy`. You can use these CRDs to create and manage VirtualMachine(s) in Proxmox.
 
 ### VirtualMachine
 
-`VirtualMachine` is a way to create new VirtualMachines in Proxmox via operator. You can create `VirtualMachine` resource and Kubemox will create it for you in Proxmox. `VirtualMachine` is also reconciled by the operator which means every change on `VirtualMachine` resource will be reflected to Proxmox as well. 
+`VirtualMachine` is a way to create new VirtualMachines in Proxmox via operator. You can create `VirtualMachine` resource and Kubemox will create it for you in Proxmox. `VirtualMachine` is also reconciled by the operator which means every change on `VirtualMachine` resource will be reflected to Proxmox as well.
 
-`VirtualMachineSet` is a way to create multiple VirtualMachines in Proxmox. The relationship between `VirtualMachineSet` and `VirtualMachine` is similar to the relationship between `Deployment` and `Pod`. `VirtualMachineSet` creates multiple `VirtualMachine` resources and Kubemox will create them for you in Proxmox. You can only use `VirtualMachineSet` with templates. Creating multiple VirtualMachines from scratch is not supported yet. 
-
-`ManagedVirtualMachine` is a way to bring your existing VirtualMachines in Proxmox to Kubernetes. As an user you don't need to create `ManagedVirtualMachine` resource. Kubemox will create it for you after the deployment at startup of controller. `ManagedVirtualMachine` is also reconciled by the operator so if you do any change on those (delete, update, etc.) it will be reflected to Proxmox. 
+`VirtualMachineSet` is a way to create multiple VirtualMachines in Proxmox. The relationship between `VirtualMachineSet` and `VirtualMachine` is similar to the relationship between `Deployment` and `Pod`. `VirtualMachineSet` creates multiple `VirtualMachine` resources and Kubemox will create them for you in Proxmox. You can only use `VirtualMachineSet` with templates. Creating multiple VirtualMachines from scratch is not supported yet.
 
 `VirtualMachineSnapshot` is helping to create snapshots for `VirtualMachine` object. This object mostly considered for the milestone snapshots. This will create only one snapshot for the `VirtualMachine` object. Also deleting the `VirtualMachineSnapshot` object won't be deleting the snapshot from Proxmox since the current proxmox client the project uses doesn't have an implementation for deleting snapshots.
 
