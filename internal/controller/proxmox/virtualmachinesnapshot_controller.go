@@ -117,7 +117,7 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 	// Handle snapshot creation
 	err = r.handleSnapshotCreation(ctx, pc, vmSnapshot, snapshotName)
 	if err != nil {
-		return ctrl.Result{Requeue: true, RequeueAfter: VMSnapshotreconcilationPeriod}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	return ctrl.Result{}, client.IgnoreNotFound(err)

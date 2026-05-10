@@ -4,7 +4,7 @@ go 1.25.7
 
 require (
 	github.com/Azure/operatortrace/operatortrace-go v0.5.0
-	github.com/alperencelik/kube-external-watcher v0.0.7
+	github.com/alperencelik/kube-external-watcher v0.0.8
 	github.com/carolynvs/magex v0.9.0
 	github.com/cert-manager/cert-manager v1.18.2
 	github.com/google/go-cmp v0.7.0

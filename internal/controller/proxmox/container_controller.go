@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -101,13 +102,13 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		containerExists, err = pc.ContainerExists(container.Spec.Name, container.Spec.NodeName)
 		if err != nil {
 			logger.Error(err, "Failed to check if Container exists")
-			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 		if !containerExists {
 			err = r.handleCloneContainer(ctx, pc, container)
 			if err != nil {
 				logger.Error(err, "Failed to clone Container")
-				return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+				return ctrl.Result{}, client.IgnoreNotFound(err)
 			}
 		}
 		return ctrl.Result{}, nil
@@ -147,7 +148,7 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	result, err := r.handleContainerOperations(ctx, pc, container)
 	if err != nil {
 		logger.Error(err, "Failed to handle Container operations")
-		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	if result != (ctrl.Result{}) {
 		return result, nil
@@ -156,7 +157,7 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// If EnableAutoStart is true, start the container if it's stopped
 	if res, autoErr := r.handleAutoStart(ctx, pc, container); autoErr != nil {
 		logger.Error(autoErr, "Error handling auto start")
-		return ctrl.Result{Requeue: true}, autoErr
+		return ctrl.Result{}, autoErr
 	} else if res != (ctrl.Result{}) {
 		return res, nil
 	}
@@ -321,7 +322,7 @@ func (r *ContainerReconciler) handleDelete(ctx context.Context,
 			logger.Error(err, "Error updating Container status")
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
 	// Handle deletion of the Container
 	if err = r.handleContainerDeletion(ctx, pc, container); err != nil {
@@ -439,13 +440,13 @@ func (r *ContainerReconciler) handleContainerOperations(ctx context.Context,
 		err := r.StartOrUpdateContainer(ctx, pc, container)
 		if err != nil {
 			logger.Error(err, "Failed to start or update Container")
-			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 	} else {
 		err := r.handleCloneContainer(ctx, pc, container)
 		if err != nil {
 			logger.Error(err, "Failed to clone Container")
-			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 	}
 	return ctrl.Result{}, nil
@@ -460,15 +461,15 @@ func (r *ContainerReconciler) handleAutoStart(ctx context.Context,
 		containerState, err := pc.GetContainerState(containerName, nodeName)
 		if err != nil {
 			logger.Error(err, "Failed to get Container state")
-			return ctrl.Result{Requeue: true}, err
+			return ctrl.Result{}, err
 		}
 		if containerState == typeStoppedContainer {
 			err := pc.StartContainer(containerName, nodeName)
 			if err != nil {
 				logger.Error(err, "Failed to start Container")
-				return ctrl.Result{Requeue: true}, err
+				return ctrl.Result{}, err
 			}
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{RequeueAfter: time.Second}, nil
 		}
 	}
 	return ctrl.Result{}, nil

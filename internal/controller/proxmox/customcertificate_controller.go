@@ -192,7 +192,7 @@ func (r *CustomCertificateReconciler) handleDelete(ctx context.Context,
 		})
 		if err = r.Status().Patch(ctx, customCert, patch); err != nil {
 			logger.Error(err, "Error updating CustomCertificate status")
-			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 	} else {
 		return ctrl.Result{}, nil
@@ -201,7 +201,7 @@ func (r *CustomCertificateReconciler) handleDelete(ctx context.Context,
 	err = pc.DeleteCustomCertificate(customCert.Spec.NodeName)
 	if err != nil {
 		logger.Error(err, "unable to delete CustomCertificate from Proxmox")
-		return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
+		return ctrl.Result{}, err
 	}
 	// Remove the finalizer
 	logger.Info("Removing finalizer from CustomCertificate")
@@ -223,24 +223,24 @@ func (r *CustomCertificateReconciler) handleCertificate(ctx context.Context,
 	certObj, err := r.CreateOrUpdateCertificateObject(ctx, customCert)
 	if err != nil {
 		logger.Error(err, "unable to create or update Certificate object")
-		return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
+		return ctrl.Result{}, err
 	}
 	// Wait till the certificate is ready
 	ready, err := kubernetes.WaitForCertificateReady(certObj)
 	if err != nil {
 		logger.Error(err, "unable to check Certificate whether it's ready")
-		return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
+		return ctrl.Result{}, err
 	}
 	if !ready {
 		logger.Info("Certificate is not ready yet, requeuing")
-		return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, nil
+		return ctrl.Result{RequeueAfter: CustomCertReconcilationPeriod * time.Second}, nil
 	}
 
 	// Retrieve the certificate and private key
 	tlsCrt, tlsKey, err := kubernetes.GetCertificateSecretKeys(certObj)
 	if err != nil {
 		logger.Error(err, "unable to get certificate and private key")
-		return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
+		return ctrl.Result{}, err
 	}
 	// Update the CustomCertificate resource
 	customCert.Spec.ProxmoxCertSpec.Certificate = string(tlsCrt)
@@ -253,7 +253,7 @@ func (r *CustomCertificateReconciler) handleCertificate(ctx context.Context,
 	// Upload the certificate to the Proxmox node
 	if err = pc.CreateCustomCertificate(customCert.Spec.NodeName, &customCert.Spec.ProxmoxCertSpec); err != nil {
 		logger.Error(err, "unable to create CustomCertificate in Proxmox")
-		return ctrl.Result{Requeue: true, RequeueAfter: CustomCertReconcilationPeriod * time.Second}, err
+		return ctrl.Result{}, err
 	}
 	// Update the condition for the CustomCertificate
 	if !meta.IsStatusConditionPresentAndEqual(customCert.Status.Conditions, typeAvailableCustomCertificate, metav1.ConditionTrue) {
@@ -266,7 +266,7 @@ func (r *CustomCertificateReconciler) handleCertificate(ctx context.Context,
 		})
 		if err = r.Status().Patch(ctx, customCert, patch); err != nil {
 			logger.Error(err, "Error updating CustomCertificate status")
-			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 	}
 	logger.Info("CustomCertificate is successfully created/updated")

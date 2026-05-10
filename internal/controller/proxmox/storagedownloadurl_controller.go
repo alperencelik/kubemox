@@ -259,7 +259,7 @@ func (r *StorageDownloadURLReconciler) handleDelete(ctx context.Context,
 		})
 		if err = r.Status().Patch(ctx, storageDownloadURL, patch); err != nil {
 			logger.Error(err, "unable to update StorageDownloadURL status")
-			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 	}
 	// Delete the file from the storage

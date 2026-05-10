@@ -128,7 +128,7 @@ func (r *VirtualMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			}
 		}
 		// Requeue the request until the vmSet has no VirtualMachines
-		return ctrl.Result{Requeue: true, RequeueAfter: VMSetreconcilationPeriod * time.Second}, client.IgnoreNotFound(err)
+		return ctrl.Result{RequeueAfter: VMSetreconcilationPeriod * time.Second}, client.IgnoreNotFound(err)
 	}
 
 	// If the number of the VirtualMachines is less than the desired number of replicas and the object

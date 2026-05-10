@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -61,17 +62,13 @@ const (
 	typeErrorVirtualMachine     = "Error"
 )
 
-var (
-	// Define requeue and dontRequeue
-	requeue     = ctrl.Result{Requeue: true, RequeueAfter: VMreconcilationPeriod * time.Second}
-	dontRequeue = ctrl.Result{}
-)
+var dontRequeue = ctrl.Result{}
 
 // VirtualMachineReconciler reconciles a VirtualMachine object
 type VirtualMachineReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	Watcher  watcher.WatcherManager
+	Watcher  *watcher.ExternalWatcher
 	EventCh  <-chan event.GenericEvent
 	Recorder events.EventRecorder
 }
@@ -92,6 +89,12 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
 	}
+
+	// If this reconcile was triggered by the external watcher detecting an
+	// out-of-band change in Proxmox, surface it as a Kubernetes Event so it
+	// shows up in `kubectl describe vm` and any event-driven alerting.
+	r.emitExternalDriftEventIfAny(vm, req.NamespacedName)
+
 	// Get the Proxmox client reference
 	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, vm.Spec.ConnectionRef)
 	if err != nil {
@@ -111,7 +114,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		vmExists, err = pc.CheckVM(vm.Spec.Name, vm.Spec.NodeName)
 		if err != nil {
 			logger.Error(err, "Error checking VirtualMachine")
-			return ctrl.Result{Requeue: true, RequeueAfter: VMreconcilationPeriod}, client.IgnoreNotFound(err)
+			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 		if !vmExists {
 			// If not exists, create the VM
@@ -143,7 +146,7 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		err = r.handleFinalizer(ctx, vm)
 		if err != nil {
 			logger.Error(err, "Error handling finalizer")
-			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 	} else {
 		// The object is being deleted
@@ -197,9 +200,34 @@ func (r *VirtualMachineReconciler) handleStatus(ctx context.Context,
 	})
 	if err := r.Status().Patch(ctx, vm, patch); err != nil {
 		logger.Error(err, "Failed to update VirtualMachine status")
-		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	return ctrl.Result{}, nil
+}
+
+// emitExternalDriftEventIfAny emits a Warning event on the VirtualMachine
+// when the external watcher recorded a drift for this key. The watcher
+// auto-clears the entry on the next poll where states match, so this is
+// a no-op for reconciles triggered by ordinary CR updates.
+func (r *VirtualMachineReconciler) emitExternalDriftEventIfAny(
+	vm *proxmoxv1alpha1.VirtualMachine, key types.NamespacedName) {
+	if r.Watcher == nil || r.Recorder == nil {
+		return
+	}
+	d, ok := r.Watcher.LastDrift(key)
+	if !ok {
+		return
+	}
+	// Cap the diff so a large cmp.Diff output doesn't push the event past
+	// the API server's message size limit.
+	const maxDiffLen = 512
+	diff := d.Diff
+	if len(diff) > maxDiffLen {
+		diff = diff[:maxDiffLen] + "…(truncated)"
+	}
+	r.Recorder.Eventf(vm, nil, "Warning", "ExternalDrift", "DriftDetected",
+		"VirtualMachine drifted from desired state at %s: %s",
+		d.DetectedAt.Format(time.RFC3339), diff)
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -258,12 +286,12 @@ func (r *VirtualMachineReconciler) handleVirtualMachineOperations(ctx context.Co
 		err = r.handleCloudInitOperations(ctx, pc, vm)
 		if err != nil {
 			logger.Error(err, "Error handling cloud-init operations")
-			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 		err = r.handleAdditionalConfig(ctx, pc, vm)
 		if err != nil {
 			logger.Error(err, "Error handling additional configuration")
-			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 		// Check if auto start is enabled
 		var res ctrl.Result
@@ -319,21 +347,21 @@ func (r *VirtualMachineReconciler) handleCreateFromTemplate(ctx context.Context,
 			r.Recorder.Eventf(vm, nil, "Warning", "Error", "Error",
 				fmt.Sprintf("VirtualMachine %s failed to create due to %s", vmName, err))
 			if utils.IsTimeoutError(err) {
-				return requeue, err
+				return dontRequeue, err
 			}
 			r.Watcher.Unregister(client.ObjectKeyFromObject(vm))
 			return dontRequeue, reconcile.TerminalError(err)
 		}
 		if updateErr := r.Status().Patch(ctx, vm, client.MergeFrom(vm.DeepCopy())); updateErr != nil {
-			return requeue, updateErr
+			return dontRequeue, updateErr
 		}
-		return requeue, err
+		return dontRequeue, err
 	}
 	r.Recorder.Eventf(vm, nil, "Normal", "Created", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
 	err = r.handleAdditionalConfig(ctx, pc, vm)
 	if err != nil {
 		logger.Error(err, "Error handling additional configuration")
-		return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	return r.startCreatedVM(ctx, pc, vm, nodeName)
 }
@@ -353,14 +381,14 @@ func (r *VirtualMachineReconciler) handleCreateFromScratch(ctx context.Context, 
 			return dontRequeue, reconcile.TerminalError(err)
 		}
 		if updateErr := r.Status().Patch(ctx, vm, client.MergeFrom(vm.DeepCopy())); updateErr != nil {
-			return requeue, updateErr
+			return dontRequeue, updateErr
 		}
-		return requeue, err
+		return dontRequeue, err
 	}
 	r.Recorder.Eventf(vm, nil, "Normal", "Created", "Created", fmt.Sprintf("VirtualMachine %s has been created", vmName))
 	err = r.handleCloudInitOperations(ctx, pc, vm)
 	if err != nil {
-		return requeue, err
+		return dontRequeue, err
 	}
 
 	return r.startCreatedVM(ctx, pc, vm, nodeName)
@@ -379,7 +407,7 @@ func (r *VirtualMachineReconciler) startCreatedVM(ctx context.Context, pc *proxm
 			return dontRequeue, reconcile.TerminalError(err)
 		}
 		logger.Error(err, "Failed to start VirtualMachine")
-		return requeue, err
+		return dontRequeue, err
 	}
 	if startResult {
 		logger.Info(fmt.Sprintf("VirtualMachine %s has been started", vm.Spec.Name))
@@ -410,7 +438,7 @@ func (r *VirtualMachineReconciler) DeleteVirtualMachine(ctx context.Context,
 				r.Watcher.Unregister(client.ObjectKeyFromObject(vm))
 				return dontRequeue, reconcile.TerminalError(err)
 			}
-			return requeue, err
+			return dontRequeue, err
 		}
 	}
 	return ctrl.Result{}, nil
@@ -453,7 +481,7 @@ func (r *VirtualMachineReconciler) handleAutoStart(ctx context.Context,
 		nodeName := vm.Spec.NodeName
 		vmState, err := pc.GetVMState(vmName, nodeName)
 		if err != nil {
-			return ctrl.Result{Requeue: true}, err
+			return ctrl.Result{}, err
 		}
 		if vmState == proxmox.VirtualMachineStoppedState {
 			startResult, err := pc.StartVM(vmName, nodeName)
@@ -464,12 +492,12 @@ func (r *VirtualMachineReconciler) handleAutoStart(ctx context.Context,
 					r.Watcher.Unregister(client.ObjectKeyFromObject(vm))
 					return dontRequeue, reconcile.TerminalError(err)
 				}
-				return requeue, err
+				return dontRequeue, err
 			}
 			if startResult {
 				logger.Info(fmt.Sprintf("VirtualMachine %s has been started", vm.Spec.Name))
 			}
-			return ctrl.Result{Requeue: true}, nil
+			return ctrl.Result{RequeueAfter: time.Second}, nil
 		}
 	}
 	return ctrl.Result{}, nil
@@ -489,7 +517,7 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachine(ctx context.Context,
 			r.Watcher.Unregister(client.ObjectKeyFromObject(vm))
 			return &dontRequeue, reconcile.TerminalError(err)
 		}
-		return &requeue, err
+		return &dontRequeue, err
 	}
 	// ConfigureVirtualMachine is checks the delta for Disk and Network and updates the VM without a restart
 	err = pc.ConfigureVirtualMachine(vm)
@@ -502,7 +530,7 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachine(ctx context.Context,
 			r.Watcher.Unregister(client.ObjectKeyFromObject(vm))
 			return &dontRequeue, reconcile.TerminalError(err)
 		}
-		return &requeue, err
+		return &dontRequeue, err
 	}
 	if updateStatus {
 		logger.Info(fmt.Sprintf("VirtualMachine %s is updated", vm.Spec.Name))
@@ -539,7 +567,7 @@ func (r *VirtualMachineReconciler) handleDelete(ctx context.Context, _ ctrl.Requ
 		})
 		if err := r.Status().Patch(ctx, vm, patch); err != nil {
 			logger.Error(err, "Error updating VirtualMachine status")
-			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 	}
 	// Stop watching before deleting since delete can't be reverted
