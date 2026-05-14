@@ -117,13 +117,9 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 	} else {
 		if controllerutil.ContainsFinalizer(storageDownloadURL, storageDownloadURLFinalizerName) {
 			// Delete the storage download URL
-			res, delErr := r.handleDelete(ctx, pc, storageDownloadURL)
-			if delErr != nil {
+			if delErr := r.handleDelete(ctx, pc, storageDownloadURL); delErr != nil {
 				logger.Error(delErr, "unable to delete StorageDownloadURL")
-				return res, delErr
-			}
-			if res != (ctrl.Result{}) {
-				return res, nil
+				return ctrl.Result{}, delErr
 			}
 		}
 		// Stop reconciliation as the object is being deleted
@@ -151,7 +147,7 @@ func (r *StorageDownloadURLReconciler) Reconcile(ctx context.Context, req ctrl.R
 			meta.SetStatusCondition(&storageDownloadURL.Status.Conditions, metav1.Condition{
 				Type:   typeAvailableStorageDownloadURL,
 				Status: metav1.ConditionTrue,
-				Reason: "Available",
+				Reason: conditionAvailable,
 				Message: fmt.Sprintf("File %s exists in the storage %s",
 					storageDownloadURL.Spec.Filename, storageDownloadURL.Spec.Storage),
 			})
@@ -246,32 +242,30 @@ func (r *StorageDownloadURLReconciler) handleDownloadURL(ctx context.Context,
 }
 
 func (r *StorageDownloadURLReconciler) handleDelete(ctx context.Context,
-	pc *proxmox.ProxmoxClient, storageDownloadURL *proxmoxv1alpha1.StorageDownloadURL) (ctrl.Result, error) {
+	pc *proxmox.ProxmoxClient, storageDownloadURL *proxmoxv1alpha1.StorageDownloadURL) error {
 	logger := log.FromContext(ctx)
-	var err error
 	if !meta.IsStatusConditionPresentAndEqual(storageDownloadURL.Status.Conditions, typeDeletingStorageDownloadURL, metav1.ConditionTrue) {
 		patch := client.MergeFrom(storageDownloadURL.DeepCopy())
 		meta.SetStatusCondition(&storageDownloadURL.Status.Conditions, metav1.Condition{
 			Type:    typeDeletingStorageDownloadURL,
 			Status:  metav1.ConditionTrue,
-			Reason:  "Deleting",
+			Reason:  conditionDeleting,
 			Message: "Deleting StorageDownloadURL",
 		})
-		if err = r.Status().Patch(ctx, storageDownloadURL, patch); err != nil {
+		if err := r.Status().Patch(ctx, storageDownloadURL, patch); err != nil {
 			logger.Error(err, "unable to update StorageDownloadURL status")
-			return ctrl.Result{Requeue: true}, client.IgnoreNotFound(err)
+			return client.IgnoreNotFound(err)
 		}
 	}
 	// Delete the file from the storage
-	err = pc.DeleteStorageContent(ctx, storageDownloadURL.Spec.Storage, &storageDownloadURL.Spec)
-	if err != nil {
+	if err := pc.DeleteStorageContent(ctx, storageDownloadURL.Spec.Storage, &storageDownloadURL.Spec); err != nil {
 		logger.Error(err, "unable to delete the file")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return client.IgnoreNotFound(err)
 	}
 	controllerutil.RemoveFinalizer(storageDownloadURL, storageDownloadURLFinalizerName)
-	if err = r.Update(ctx, storageDownloadURL); err != nil {
+	if err := r.Update(ctx, storageDownloadURL); err != nil {
 		logger.Error(err, "unable to update StorageDownloadURL")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return client.IgnoreNotFound(err)
 	}
-	return ctrl.Result{}, nil
+	return nil
 }

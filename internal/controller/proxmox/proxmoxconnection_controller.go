@@ -86,7 +86,7 @@ func (r *ProxmoxConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		patch := client.MergeFrom(proxmoxConnection.DeepCopy())
 		meta.SetStatusCondition(&proxmoxConnection.Status.Conditions, metav1.Condition{
 			LastTransitionTime: metav1.Now(),
-			Type:               "Ready",
+			Type:               conditionReady,
 			Status:             metav1.ConditionFalse,
 			Reason:             "ProxmoxConnectionError",
 			Message:            err.Error(),
@@ -105,7 +105,7 @@ func (r *ProxmoxConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Update the status with the connection status
 	meta.SetStatusCondition(&proxmoxConnection.Status.Conditions, metav1.Condition{
 		LastTransitionTime: metav1.Now(),
-		Type:               "Ready",
+		Type:               conditionReady,
 		Status:             metav1.ConditionTrue,
 		Reason:             "ProxmoxConnectionReady",
 		Message:            "Proxmox connection is ready",
