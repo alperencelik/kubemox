@@ -15,6 +15,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+const (
+	fieldKind = "kind"
+	fieldName = "name"
+)
+
 var (
 	// Cert Manager Resources
 	CertManagerCRDs = []string{"certificates.cert-manager.io", "issuers.cert-manager.io", "clusterissuers.cert-manager.io",
@@ -51,15 +56,15 @@ func CreateCertificate(customCert *proxmoxv1alpha1.CustomCertificate) (*unstruct
 	certManagerCertificate := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "cert-manager.io/v1",
-			"kind":       "Certificate",
+			fieldKind:    "Certificate",
 			"metadata": map[string]any{
-				"name":      customCert.GetName(),
+				fieldName:   customCert.GetName(),
 				"namespace": customCert.GetNamespace(),
 				"ownerReferences": []map[string]any{
 					{
 						"apiVersion": customCert.APIVersion,
-						"kind":       customCert.Kind,
-						"name":       customCert.GetName(),
+						fieldKind:    customCert.Kind,
+						fieldName:    customCert.GetName(),
 						"uid":        customCert.GetUID(),
 					},
 				},
@@ -119,9 +124,9 @@ func UpdateCertificate(customCertSpec *proxmoxv1alpha1.CertManagerSpec, certific
 		"commonName": customCertSpec.CommonName,
 		"dnsNames":   customCertSpec.DNSNames,
 		"issuerRef": map[string]string{
-			"group": customCertSpec.IssuerRef.Group,
-			"kind":  customCertSpec.IssuerRef.Kind,
-			"name":  customCertSpec.IssuerRef.Name,
+			"group":   customCertSpec.IssuerRef.Group,
+			fieldKind: customCertSpec.IssuerRef.Kind,
+			fieldName: customCertSpec.IssuerRef.Name,
 		},
 		"secretName": customCertSpec.SecretName,
 		"usages":     customCertSpec.Usages,

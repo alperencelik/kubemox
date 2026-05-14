@@ -16,6 +16,11 @@ import (
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 )
 
+const (
+	testConnName      = "test-conn"
+	testTokenConnName = "test-token-conn"
+)
+
 func TestNewProxmoxClientFromRef(t *testing.T) {
 	scheme := runtime.NewScheme()
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
@@ -23,7 +28,7 @@ func TestNewProxmoxClientFromRef(t *testing.T) {
 
 	conn := &proxmoxv1alpha1.ProxmoxConnection{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            "test-conn",
+			Name:            testConnName,
 			ResourceVersion: "1",
 		},
 		Spec: proxmoxv1alpha1.ProxmoxConnectionSpec{
@@ -36,13 +41,13 @@ func TestNewProxmoxClientFromRef(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(conn).Build()
 
 	// Test 1: First call - should create new client
-	client1, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "test-conn"})
+	client1, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: testConnName})
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
 	// Test 2: Second call - should return cached client
-	client2, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "test-conn"})
+	client2, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: testConnName})
 	if err != nil {
 		t.Fatalf("Failed to retrieve cached client: %v", err)
 	}
@@ -67,7 +72,7 @@ func TestNewProxmoxClientFromRef(t *testing.T) {
 		t.Fatalf("Failed to get updated connection: %v", err)
 	}
 
-	client3, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "test-conn"})
+	client3, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: testConnName})
 	if err != nil {
 		t.Fatalf("Failed to create new client after update: %v", err)
 	}
@@ -77,7 +82,7 @@ func TestNewProxmoxClientFromRef(t *testing.T) {
 	}
 
 	// Test 4: Verify cache is updated
-	client4, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "test-conn"})
+	client4, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: testConnName})
 	if err != nil {
 		t.Fatalf("Failed to retrieve updated cached client: %v", err)
 	}
@@ -88,12 +93,12 @@ func TestNewProxmoxClientFromRef(t *testing.T) {
 
 	// Test 5: TTL expiration - should create new client for session-based (username/password) auth
 	clientCacheMutex.Lock()
-	if cached, ok := clientCache["test-conn"]; ok {
+	if cached, ok := clientCache[testConnName]; ok {
 		cached.CreatedAt = time.Now().Add(-2 * clientCacheTTL)
 	}
 	clientCacheMutex.Unlock()
 
-	client5, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: "test-conn"})
+	client5, err := NewProxmoxClientFromRef(context.Background(), cl, &corev1.LocalObjectReference{Name: testConnName})
 	if err != nil {
 		t.Fatalf("Failed to create client after TTL expiry: %v", err)
 	}
@@ -110,7 +115,7 @@ func TestNewProxmoxClientFromRef_APITokenNoTTL(t *testing.T) {
 
 	conn := &proxmoxv1alpha1.ProxmoxConnection{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            "test-token-conn",
+			Name:            testTokenConnName,
 			ResourceVersion: "1",
 		},
 		Spec: proxmoxv1alpha1.ProxmoxConnectionSpec{
@@ -124,21 +129,21 @@ func TestNewProxmoxClientFromRef_APITokenNoTTL(t *testing.T) {
 
 	// Create initial client
 	client1, err := NewProxmoxClientFromRef(context.Background(),
-		cl, &corev1.LocalObjectReference{Name: "test-token-conn"})
+		cl, &corev1.LocalObjectReference{Name: testTokenConnName})
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
 	// Expire the cache entry's CreatedAt
 	clientCacheMutex.Lock()
-	if cached, ok := clientCache["test-token-conn"]; ok {
+	if cached, ok := clientCache[testTokenConnName]; ok {
 		cached.CreatedAt = time.Now().Add(-2 * clientCacheTTL)
 	}
 	clientCacheMutex.Unlock()
 
 	// Should still return cached client since API tokens don't use session TTL
 	client2, err := NewProxmoxClientFromRef(context.Background(),
-		cl, &corev1.LocalObjectReference{Name: "test-token-conn"})
+		cl, &corev1.LocalObjectReference{Name: testTokenConnName})
 	if err != nil {
 		t.Fatalf("Failed to retrieve cached client: %v", err)
 	}

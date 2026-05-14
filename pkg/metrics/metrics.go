@@ -11,6 +11,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
+var nameNamespaceLabels = []string{"name", "namespace"}
+
 var (
 	// VirtualMachine
 	virtualMachineCount = prometheus.NewGauge(prometheus.GaugeOpts{
@@ -20,11 +22,11 @@ var (
 	virtualMachineCPUCores = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "kubemox_virtual_machine_cpu_cores",
 		Help: "Number of CPU cores of virtualMachine",
-	}, []string{"name", "namespace"})
+	}, nameNamespaceLabels)
 	virtualMachineMemory = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "kubemox_virtual_machine_memory",
 		Help: "Memory of virtualMachine as MB",
-	}, []string{"name", "namespace"})
+	}, nameNamespaceLabels)
 	virtualMachineRunningCount = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "kubemox_virtual_machine_running_count",
 		Help: "Number of running virtualMachines",
@@ -42,11 +44,11 @@ var (
 	containerCPUCores = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "kubemox_container_cpu_cores",
 		Help: "Number of CPU cores of container",
-	}, []string{"name", "namespace"})
+	}, nameNamespaceLabels)
 	containerMemory = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "kubemox_container_memory",
 		Help: "Memory of container as MB",
-	}, []string{"name", "namespace"})
+	}, nameNamespaceLabels)
 
 	// VirtualMachineTemplate
 	virtualMachineTemplateCount = prometheus.NewGauge(prometheus.GaugeOpts{
@@ -56,11 +58,11 @@ var (
 	virtualMachineTemplateCPUCores = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "kubemox_virtual_machine_template_cpu_cores",
 		Help: "Number of CPU cores of virtualMachineTemplate",
-	}, []string{"name", "namespace"})
+	}, nameNamespaceLabels)
 	virtualMachineTemplateMemory = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "kubemox_virtual_machine_template_memory",
 		Help: "Memory of virtualMachineTemplate as MB",
-	}, []string{"name", "namespace"})
+	}, nameNamespaceLabels)
 
 	// VirtualMachineSet
 	virtualMachineSetCount = prometheus.NewGauge(prometheus.GaugeOpts{
@@ -70,15 +72,15 @@ var (
 	virtualMachineSetCPUCores = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "kubemox_virtual_machine_set_cpu_cores",
 		Help: "Number of CPU cores of virtualMachineSet",
-	}, []string{"name", "namespace"})
+	}, nameNamespaceLabels)
 	virtualMachineSetMemory = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "kubemox_virtual_machine_set_memory",
 		Help: "Memory of virtualMachineSet as MB",
-	}, []string{"name", "namespace"})
+	}, nameNamespaceLabels)
 	virtualMachineSetReplicas = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "kubemox_virtual_machine_set_replicas",
 		Help: "Number of replicas of virtualMachineSet",
-	}, []string{"name", "namespace"})
+	}, nameNamespaceLabels)
 
 	// VirtualMachineSnapshot
 	virtualMachineSnapshotCount = prometheus.NewGauge(prometheus.GaugeOpts{
@@ -88,7 +90,7 @@ var (
 	virtualMachineSnapshotPerVirtualMachineCount = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "kubemox_virtual_machine_snapshots",
 		Help: "Number of snapshots of virtualMachine",
-	}, []string{"name", "namespace"})
+	}, nameNamespaceLabels)
 
 	// VirtualMachineSnapshotPolicy
 	virtualMachineSnapshotPolicyCount = prometheus.NewGauge(prometheus.GaugeOpts{

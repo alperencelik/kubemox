@@ -175,8 +175,8 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	logger.Info(fmt.Sprintf("VirtualMachine %s already exists", vm.Spec.Name))
 
 	// Ensure the Available condition is populated once the VM has been reconciled.
-	if result, err = r.handleStatus(ctx, vm); err != nil {
-		return result, client.IgnoreNotFound(err)
+	if err = r.handleStatus(ctx, vm); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -186,23 +186,23 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 // after a successful reconciliation. The QEMU status field is maintained by the
 // external watcher via UpdateResourceStatus, so this method only owns conditions.
 func (r *VirtualMachineReconciler) handleStatus(ctx context.Context,
-	vm *proxmoxv1alpha1.VirtualMachine) (ctrl.Result, error) {
+	vm *proxmoxv1alpha1.VirtualMachine) error {
 	logger := log.FromContext(ctx)
 	if meta.IsStatusConditionPresentAndEqual(vm.Status.Conditions, typeAvailableVirtualMachine, metav1.ConditionTrue) {
-		return ctrl.Result{}, nil
+		return nil
 	}
 	patch := client.MergeFrom(vm.DeepCopy())
 	meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
 		Type:    typeAvailableVirtualMachine,
 		Status:  metav1.ConditionTrue,
-		Reason:  "Ready",
+		Reason:  conditionReady,
 		Message: "VirtualMachine is ready",
 	})
 	if err := r.Status().Patch(ctx, vm, patch); err != nil {
 		logger.Error(err, "Failed to update VirtualMachine status")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return client.IgnoreNotFound(err)
 	}
-	return ctrl.Result{}, nil
+	return nil
 }
 
 // emitExternalDriftEventIfAny emits a Warning event on the VirtualMachine
@@ -456,7 +456,7 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(ctx context.Contex
 	meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
 		Type:    typeAvailableVirtualMachine,
 		Status:  metav1.ConditionTrue,
-		Reason:  "Available",
+		Reason:  conditionAvailable,
 		Message: "VirtualMachine status is updated",
 	})
 	vm.Status.Status = qemuStatus
@@ -562,7 +562,7 @@ func (r *VirtualMachineReconciler) handleDelete(ctx context.Context, _ ctrl.Requ
 		meta.SetStatusCondition(&vm.Status.Conditions, metav1.Condition{
 			Type:    typeDeletingVirtualMachine,
 			Status:  metav1.ConditionUnknown,
-			Reason:  "Deleting",
+			Reason:  conditionDeleting,
 			Message: "Deleting VirtualMachine",
 		})
 		if err := r.Status().Patch(ctx, vm, patch); err != nil {

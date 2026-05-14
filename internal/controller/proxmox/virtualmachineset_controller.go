@@ -309,9 +309,9 @@ func (r *VirtualMachineSetReconciler) handleDelete(ctx context.Context, vmSet *p
 	if !meta.IsStatusConditionPresentAndEqual(vmSet.Status.Conditions, typeDeletingVirtualMachineSet, metav1.ConditionUnknown) {
 		patch := client.MergeFrom(vmSet.DeepCopy())
 		meta.SetStatusCondition(&vmSet.Status.Conditions, metav1.Condition{
-			Type:    "Deleting",
+			Type:    conditionDeleting,
 			Status:  metav1.ConditionUnknown,
-			Reason:  "Deleting",
+			Reason:  conditionDeleting,
 			Message: "Deleting VirtualMachineSet",
 		})
 		if err = r.Status().Patch(ctx, vmSet, patch); err != nil {

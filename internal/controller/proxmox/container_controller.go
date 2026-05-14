@@ -145,13 +145,9 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	result, err := r.handleContainerOperations(ctx, pc, container)
-	if err != nil {
+	if err := r.handleContainerOperations(ctx, pc, container); err != nil {
 		logger.Error(err, "Failed to handle Container operations")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
-	if result != (ctrl.Result{}) {
-		return result, nil
 	}
 
 	// If EnableAutoStart is true, start the container if it's stopped
@@ -315,7 +311,7 @@ func (r *ContainerReconciler) handleDelete(ctx context.Context,
 		meta.SetStatusCondition(&container.Status.Conditions, metav1.Condition{
 			Type:    typeDeletingContainer,
 			Status:  metav1.ConditionUnknown,
-			Reason:  "Deleting",
+			Reason:  conditionDeleting,
 			Message: "Deleting Container",
 		})
 		if err = r.Status().Patch(ctx, container, patch); err != nil {
@@ -424,32 +420,30 @@ func (r *ContainerReconciler) reconcileOCIImageDrift(ctx context.Context, pc *pr
 }
 
 func (r *ContainerReconciler) handleContainerOperations(ctx context.Context,
-	pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) (ctrl.Result, error) {
+	pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) error {
 	logger := log.FromContext(ctx)
 	containerExists, err := pc.ContainerExists(container.Spec.Name, container.Spec.NodeName)
 	if err != nil {
 		logger.Error(err, "Failed to check if Container exists")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return client.IgnoreNotFound(err)
 	}
 	containerExists, err = r.reconcileOCIImageDrift(ctx, pc, container, containerExists)
 	if err != nil {
 		logger.Error(err, "Failed to reconcile OCI image drift")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return client.IgnoreNotFound(err)
 	}
 	if containerExists {
-		err := r.StartOrUpdateContainer(ctx, pc, container)
-		if err != nil {
+		if err := r.StartOrUpdateContainer(ctx, pc, container); err != nil {
 			logger.Error(err, "Failed to start or update Container")
-			return ctrl.Result{}, client.IgnoreNotFound(err)
+			return client.IgnoreNotFound(err)
 		}
 	} else {
-		err := r.handleCloneContainer(ctx, pc, container)
-		if err != nil {
+		if err := r.handleCloneContainer(ctx, pc, container); err != nil {
 			logger.Error(err, "Failed to clone Container")
-			return ctrl.Result{}, client.IgnoreNotFound(err)
+			return client.IgnoreNotFound(err)
 		}
 	}
-	return ctrl.Result{}, nil
+	return nil
 }
 
 func (r *ContainerReconciler) handleAutoStart(ctx context.Context,

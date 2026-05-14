@@ -122,13 +122,9 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 		// The object is being deleted
 		if controllerutil.ContainsFinalizer(vmTemplate, virtualMachineTemplateFinalizerName) {
 			// Update the condition for the VirtualMachineTemplate if it's not already deleting
-			res, delErr := r.handleDelete(ctx, req, pc, vmTemplate)
-			if delErr != nil {
+			if delErr := r.handleDelete(ctx, req, pc, vmTemplate); delErr != nil {
 				logger.Error(delErr, "Failed to delete VirtualMachineTemplate")
-				return res, delErr
-			}
-			if res != (ctrl.Result{}) {
-				return res, nil
+				return ctrl.Result{}, delErr
 			}
 		}
 		// Stop the reconciliation as the object is being deleted
@@ -160,12 +156,8 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	// Update the condition for the VirtualMachineTemplate if it's not already ready
-	result, err = r.handleStatus(ctx, vmTemplate)
-	if err != nil {
+	if err = r.handleStatus(ctx, vmTemplate); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
-	}
-	if result != (ctrl.Result{}) {
-		return result, nil
 	}
 
 	return ctrl.Result{}, nil
@@ -456,7 +448,7 @@ func (r *VirtualMachineTemplateReconciler) handleStorageDownloadURL(ctx context.
 		meta.SetStatusCondition(&vmTemplate.Status.Conditions, metav1.Condition{
 			Type:    typeAvailableVirtualMachineTemplate,
 			Status:  metav1.ConditionTrue,
-			Reason:  "Available",
+			Reason:  conditionAvailable,
 			Message: "VirtualMachineTemplate is available",
 		})
 		if err = r.Status().Patch(ctx, vmTemplate, patch); err != nil {
@@ -479,50 +471,50 @@ func (r *VirtualMachineTemplateReconciler) handleAdditionalConfig(ctx context.Co
 }
 
 func (r *VirtualMachineTemplateReconciler) handleStatus(ctx context.Context,
-	vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (ctrl.Result, error) {
+	vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) error {
 	logger := log.FromContext(ctx)
 	if !meta.IsStatusConditionPresentAndEqual(vmTemplate.Status.Conditions, typeAvailableVirtualMachineTemplate, metav1.ConditionTrue) {
 		patch := client.MergeFrom(vmTemplate.DeepCopy())
 		meta.SetStatusCondition(&vmTemplate.Status.Conditions, metav1.Condition{
 			Type:    typeAvailableVirtualMachineTemplate,
 			Status:  metav1.ConditionTrue,
-			Reason:  "Ready",
+			Reason:  conditionReady,
 			Message: "VirtualMachineTemplate is ready",
 		})
 		if err := r.Status().Patch(ctx, vmTemplate, patch); err != nil {
 			logger.Error(err, "Failed to update VirtualMachineTemplate status")
-			return ctrl.Result{}, client.IgnoreNotFound(err)
+			return client.IgnoreNotFound(err)
 		}
 	}
-	return ctrl.Result{}, nil
+	return nil
 }
 
 func (r *VirtualMachineTemplateReconciler) handleDelete(ctx context.Context,
-	_ ctrl.Request, pc *proxmox.ProxmoxClient, vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) (ctrl.Result, error) {
+	_ ctrl.Request, pc *proxmox.ProxmoxClient, vmTemplate *proxmoxv1alpha1.VirtualMachineTemplate) error {
 	logger := log.FromContext(ctx)
 	if !meta.IsStatusConditionPresentAndEqual(vmTemplate.Status.Conditions, typeDeletingVirtualMachineTemplate, metav1.ConditionUnknown) {
 		patch := client.MergeFrom(vmTemplate.DeepCopy())
 		meta.SetStatusCondition(&vmTemplate.Status.Conditions, metav1.Condition{
 			Type:    typeDeletingVirtualMachineTemplate,
 			Status:  metav1.ConditionUnknown,
-			Reason:  "Deleting",
+			Reason:  conditionDeleting,
 			Message: "VirtualMachineTemplate is being deleted",
 		})
 		if err := r.Status().Patch(ctx, vmTemplate, patch); err != nil {
 			logger.Error(err, "Failed to update VirtualMachineTemplate status")
-			return ctrl.Result{}, client.IgnoreNotFound(err)
+			return client.IgnoreNotFound(err)
 		}
 	}
 	// Delete the VirtualMachineTemplate
 	if err := r.deleteVirtualMachineTemplate(ctx, pc, vmTemplate); err != nil {
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return client.IgnoreNotFound(err)
 	}
 	// Remove the finalizer
 	logger.Info("Removing finalizer from VirtualMachineTemplate", "name", vmTemplate.Name)
 	controllerutil.RemoveFinalizer(vmTemplate, virtualMachineTemplateFinalizerName)
 	if err := r.Update(ctx, vmTemplate); err != nil {
 		logger.Error(err, "Failed to remove VirtualMachineTemplate finalizer")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return client.IgnoreNotFound(err)
 	}
-	return ctrl.Result{}, nil
+	return nil
 }
