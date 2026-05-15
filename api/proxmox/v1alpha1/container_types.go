@@ -99,6 +99,11 @@ type ContainerTemplateNetwork struct {
 	Model string `json:"model,omitempty"`
 	// Bridge is the name of the bridge
 	Bridge string `json:"bridge,omitempty"`
+	// VLAN is the Proxmox VLAN tag (1-4094) for net0. Omit for untagged traffic on the bridge.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=4094
+	VLAN *int32 `json:"vlan,omitempty"`
 }
 
 // ContainerStatus defines the observed state of Container
@@ -114,6 +119,10 @@ type ContainerStatus struct {
 	// AppliedImageStorage is the OCI blob storage ID used when the CT was created (template.image only).
 	// +optional
 	AppliedImageStorage string `json:"appliedImageStorage,omitempty"`
+	// AppliedNetworkFingerprint is a normalized net0 identity (bridge, VLAN tag, etc.) last applied to the CT.
+	// If spec-derived net0 changes (e.g. VLAN), the controller replaces the Proxmox container instead of hot-plugging net0.
+	// +optional
+	AppliedNetworkFingerprint string `json:"appliedNetworkFingerprint,omitempty"`
 }
 
 // +kubebuilder:object:root=true
