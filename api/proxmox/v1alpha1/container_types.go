@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"time"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -114,6 +116,16 @@ type ContainerStatus struct {
 	// AppliedImageStorage is the OCI blob storage ID used when the CT was created (template.image only).
 	// +optional
 	AppliedImageStorage string `json:"appliedImageStorage,omitempty"`
+	// LastObserved is the timestamp of the last successful observation of the
+	// Container state from Proxmox. A stale value relative to wall-clock time
+	// indicates the operator has lost the ability to verify .status.status
+	// against Proxmox.
+	// +optional
+	LastObserved *metav1.Time `json:"lastObserved,omitempty"`
+	// ObservedGeneration is the .metadata.generation that the controller last
+	// reconciled successfully.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -125,6 +137,7 @@ type ContainerStatus struct {
 // +kubebuilder:printcolumn:name="Memory",type="string",JSONPath=".spec.template.memory",description="The amount of memory in MB"
 // +kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.status.state",description="The state of the VM"
 // +kubebuilder:printcolumn:name="Uptime",type="string",JSONPath=".status.status.uptime",description="The uptime of the VM"
+// +kubebuilder:printcolumn:name="Last Observed",type="date",JSONPath=".status.lastObserved",description="The last time the Container state was observed from Proxmox"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // Container is the Schema for the containers API
@@ -153,6 +166,16 @@ func (c *Container) GetConditions() []metav1.Condition {
 // SetConditions sets the status conditions of the Container.
 func (c *Container) SetConditions(conditions []metav1.Condition) {
 	c.Status.Conditions = conditions
+}
+
+// MarkObserved stamps LastObserved with the supplied time and records the
+// generation that produced the current status. Call only after a successful
+// observation against Proxmox so consumers can distinguish fresh status from
+// status that the operator could not re-verify.
+func (s *ContainerStatus) MarkObserved(t time.Time, generation int64) {
+	now := metav1.NewTime(t)
+	s.LastObserved = &now
+	s.ObservedGeneration = generation
 }
 
 func init() { //nolint:gochecknoinits // This is required by kubebuilder

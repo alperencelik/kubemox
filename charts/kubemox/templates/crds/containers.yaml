@@ -38,6 +38,10 @@ spec:
       jsonPath: .status.status.uptime
       name: Uptime
       type: string
+    - description: The last time the Container state was observed from Proxmox
+      jsonPath: .status.lastObserved
+      name: Last Observed
+      type: date
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -254,6 +258,20 @@ spec:
                   - type
                   type: object
                 type: array
+              lastObserved:
+                description: |-
+                  LastObserved is the timestamp of the last successful observation of the
+                  Container state from Proxmox. A stale value relative to wall-clock time
+                  indicates the operator has lost the ability to verify .status.status
+                  against Proxmox.
+                format: date-time
+                type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that the controller last
+                  reconciled successfully.
+                format: int64
+                type: integer
               status:
                 properties:
                   IPAddress:

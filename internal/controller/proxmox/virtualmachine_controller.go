@@ -184,11 +184,14 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 // handleStatus ensures the VirtualMachine has an Available=True condition set
 // after a successful reconciliation. The QEMU status field is maintained by the
-// external watcher via UpdateResourceStatus, so this method only owns conditions.
+// external watcher via UpdateResourceStatus, so this method only owns conditions
+// and the ObservedGeneration bookkeeping.
 func (r *VirtualMachineReconciler) handleStatus(ctx context.Context,
 	vm *proxmoxv1alpha1.VirtualMachine) error {
 	logger := log.FromContext(ctx)
-	if meta.IsStatusConditionPresentAndEqual(vm.Status.Conditions, typeAvailableVirtualMachine, metav1.ConditionTrue) {
+	availableSet := meta.IsStatusConditionPresentAndEqual(
+		vm.Status.Conditions, typeAvailableVirtualMachine, metav1.ConditionTrue)
+	if availableSet && vm.Status.ObservedGeneration == vm.Generation {
 		return nil
 	}
 	patch := client.MergeFrom(vm.DeepCopy())
@@ -198,6 +201,7 @@ func (r *VirtualMachineReconciler) handleStatus(ctx context.Context,
 		Reason:  conditionReady,
 		Message: "VirtualMachine is ready",
 	})
+	vm.Status.ObservedGeneration = vm.Generation
 	if err := r.Status().Patch(ctx, vm, patch); err != nil {
 		logger.Error(err, "Failed to update VirtualMachine status")
 		return client.IgnoreNotFound(err)
@@ -460,6 +464,7 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachineStatus(ctx context.Contex
 		Message: "VirtualMachine status is updated",
 	})
 	vm.Status.Status = qemuStatus
+	vm.Status.MarkObserved(time.Now(), vm.Generation)
 	return r.Status().Patch(ctx, vm, patch)
 }
 
