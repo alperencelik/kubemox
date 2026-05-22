@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/alperencelik/kube-external-watcher/watcher"
 
@@ -178,6 +179,7 @@ func (f *VirtualMachineFetcher) UpdateResourceStatus(ctx context.Context, key ty
 	}
 	patch := cc.MergeFrom(vm.DeepCopy())
 	vm.Status.Status = qemuStatus
+	vm.Status.MarkObserved(time.Now(), vm.Generation)
 	return f.Client.Status().Patch(ctx, vm, patch)
 }
 
@@ -258,6 +260,7 @@ func (f *ContainerFetcher) UpdateResourceStatus(ctx context.Context, key types.N
 		Uptime: containerStatus.Uptime,
 		ID:     containerStatus.ID,
 	}
+	container.Status.MarkObserved(time.Now(), container.Generation)
 	return f.Client.Status().Patch(ctx, container, patch)
 }
 

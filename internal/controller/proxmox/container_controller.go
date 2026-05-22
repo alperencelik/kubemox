@@ -225,6 +225,7 @@ func (r *ContainerReconciler) UpdateContainerStatus(ctx context.Context, pc *pro
 	}
 	patch := client.MergeFrom(container.DeepCopy())
 	container.Status.Status = qemuStatus
+	container.Status.MarkObserved(time.Now(), container.Generation)
 	// Update Container
 	return r.Status().Patch(ctx, container, patch)
 }

@@ -38,6 +38,10 @@ spec:
       jsonPath: .status.status.OSInfo
       name: OS Info
       type: string
+    - description: The last time the VM state was observed from Proxmox
+      jsonPath: .status.lastObserved
+      name: Last Observed
+      type: date
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -445,6 +449,19 @@ spec:
                   - type
                   type: object
                 type: array
+              lastObserved:
+                description: |-
+                  LastObserved is the timestamp of the last successful observation of the VM
+                  state from Proxmox. A stale value relative to wall-clock time indicates the
+                  operator has lost the ability to verify .status.status against Proxmox.
+                format: date-time
+                type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the .metadata.generation that the controller last
+                  reconciled successfully.
+                format: int64
+                type: integer
               status:
                 description: Status is the QEMU status of the Virtual Machine (state,
                   node, uptime, id, IP address, os info)

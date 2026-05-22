@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"time"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -167,6 +169,15 @@ type VirtualMachineStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"` //nolint:lll // This is required by kubebuilder
 	// Status is the QEMU status of the Virtual Machine (state, node, uptime, id, IP address, os info)
 	Status *QEMUStatus `json:"status,omitempty"`
+	// LastObserved is the timestamp of the last successful observation of the VM
+	// state from Proxmox. A stale value relative to wall-clock time indicates the
+	// operator has lost the ability to verify .status.status against Proxmox.
+	// +optional
+	LastObserved *metav1.Time `json:"lastObserved,omitempty"`
+	// ObservedGeneration is the .metadata.generation that the controller last
+	// reconciled successfully.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -178,6 +189,7 @@ type VirtualMachineStatus struct {
 // +kubebuilder:printcolumn:name="Uptime",type="string",JSONPath=".status.status.uptime",description="The uptime of the VM"
 // +kubebuilder:printcolumn:name="IP Address",type="string",JSONPath=".status.status.IPAddress",description="The IP address of the VM"
 // +kubebuilder:printcolumn:name="OS Info",type="string",JSONPath=".status.status.OSInfo",description="The OS information of the VM"
+// +kubebuilder:printcolumn:name="Last Observed",type="date",JSONPath=".status.lastObserved",description="The last time the VM state was observed from Proxmox"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // VirtualMachine is the Schema for the virtualmachines API
@@ -206,6 +218,16 @@ func (vm *VirtualMachine) GetConditions() []metav1.Condition {
 // SetConditions sets the status conditions of the VirtualMachine.
 func (vm *VirtualMachine) SetConditions(conditions []metav1.Condition) {
 	vm.Status.Conditions = conditions
+}
+
+// MarkObserved stamps LastObserved with the supplied time and records the
+// generation that produced the current status. Call only after a successful
+// observation against Proxmox so consumers can distinguish fresh status from
+// status that the operator could not re-verify.
+func (s *VirtualMachineStatus) MarkObserved(t time.Time, generation int64) {
+	now := metav1.NewTime(t)
+	s.LastObserved = &now
+	s.ObservedGeneration = generation
 }
 
 func init() { //nolint:gochecknoinits // This is required by kubebuilder
