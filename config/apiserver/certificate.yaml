@@ -1,0 +1,37 @@
+# cert-manager Certificate that issues the serving cert mounted at
+# /var/run/serving-cert in the apiserver pod. The ca-injector watches this
+# resource and stamps APIService.spec.caBundle (see apiservice.yaml).
+#
+# Issuer: a self-signed CA local to this install. If you already run a
+# cluster-wide CA Issuer, swap issuerRef.name to point at it (and drop
+# the Issuer below).
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: kubemox-apiserver-selfsigned
+  namespace: kubemox-system
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kubemox-apiserver-serving-cert
+  namespace: kubemox-system
+spec:
+  secretName: kubemox-apiserver-serving-cert
+  duration: 8760h   # 1 year
+  renewBefore: 720h # 30 days
+  subject:
+    organizations: [kubemox]
+  commonName: kubemox-apiserver.kubemox-system.svc
+  dnsNames:
+    - kubemox-apiserver
+    - kubemox-apiserver.kubemox-system
+    - kubemox-apiserver.kubemox-system.svc
+    - kubemox-apiserver.kubemox-system.svc.cluster.local
+  usages:
+    - server auth
+  issuerRef:
+    name: kubemox-apiserver-selfsigned
+    kind: Issuer

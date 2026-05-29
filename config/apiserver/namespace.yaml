@@ -1,0 +1,9 @@
+# The namespace the apiserver runs in. config/default also creates this
+# namespace when deploying the operator — kubectl apply is idempotent so
+# applying both is safe.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubemox-system
+  labels:
+    app.kubernetes.io/part-of: kubemox

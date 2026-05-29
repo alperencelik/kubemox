@@ -1,0 +1,114 @@
+# RBAC for the aggregated apiserver service account.
+#
+# Three roles are needed:
+#   1. Read kubemox CRs (VirtualMachine, ProxmoxConnection) and Secrets so
+#      the resolver can build Proxmox clients.
+#   2. Delegate auth to the parent kube-apiserver:
+#      system:auth-delegator gives us TokenReview + SubjectAccessReview.
+#   3. Read extension-apiserver-authentication ConfigMap from kube-system,
+#      which is how the apiserver discovers the requestheader CA used by
+#      the parent for proxying client identity.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubemox-apiserver
+rules:
+  # Kubemox CRs the resolver reads.
+  - apiGroups: ["proxmox.alperen.cloud"]
+    resources: [virtualmachines, proxmoxconnections]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list, watch]
+  # Required by every aggregated apiserver built on k8s.io/apiserver:
+  # the admission + APF subsystems start informers over these resources
+  # at startup and the readiness probe blocks until they sync. Without
+  # these, the pod never goes Ready and the APIService stays in
+  # MissingEndpoints.
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [get, list, watch]
+  - apiGroups: ["flowcontrol.apiserver.k8s.io"]
+    resources: [flowschemas, prioritylevelconfigurations]
+    verbs: [get, list, watch]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources:
+      - validatingwebhookconfigurations
+      - mutatingwebhookconfigurations
+      - validatingadmissionpolicies
+      - validatingadmissionpolicybindings
+      - mutatingadmissionpolicies
+      - mutatingadmissionpolicybindings
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubemox-apiserver
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubemox-apiserver
+subjects:
+  - kind: ServiceAccount
+    name: kubemox-apiserver
+    namespace: kubemox-system
+---
+# Delegate authn/authz to the parent kube-apiserver.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubemox-apiserver-auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: kubemox-apiserver
+    namespace: kubemox-system
+---
+# Read the requestheader CA bundle so we can validate client certs presented
+# by the parent kube-apiserver during proxying.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kubemox-apiserver-extension-apiserver-authentication-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: kubemox-apiserver
+    namespace: kubemox-system
+---
+# Per-verb RBAC examples for end users. These are NOT bound by default; copy
+# into a Role/RoleBinding for the principals you want to grant. Custom verbs
+# (start/stop/reboot/shutdown/migrate) match the subresource path components.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubemox-vm-operator
+rules:
+  - apiGroups: ["ops.proxmox.alperen.cloud"]
+    resources: [virtualmachines]
+    verbs: [get, list]
+  - apiGroups: ["ops.proxmox.alperen.cloud"]
+    resources:
+      - virtualmachines/metrics
+      - virtualmachines/console
+    verbs: [get]
+  - apiGroups: ["ops.proxmox.alperen.cloud"]
+    resources:
+      - virtualmachines/start
+      - virtualmachines/stop
+      - virtualmachines/reboot
+      - virtualmachines/shutdown
+      - virtualmachines/migrate
+    verbs: [create]
+  - apiGroups: ["ops.proxmox.alperen.cloud"]
+    resources: [nodes, tasks]
+    verbs: [get, list]

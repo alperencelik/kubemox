@@ -1,6 +1,8 @@
 
 # Image URL to use all building/pushing image targets
-IMG ?= alperencelik/kubemox:latest 
+IMG ?= alperencelik/kubemox:latest
+# Image URL for the aggregated apiserver. Built from Dockerfile.apiserver.
+APISERVER_IMG ?= alperencelik/kubemox-apiserver:latest
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.27.1
 
@@ -52,6 +54,24 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
+# OPENAPI_GEN_PACKAGES is the list of input packages openapi-gen walks. Add
+# any new package whose types appear in api/ops here (transitive references
+# need to be reachable for the generator).
+OPENAPI_GEN_PACKAGES = \
+	github.com/alperencelik/kubemox/api/ops/v1alpha1 \
+	k8s.io/apimachinery/pkg/apis/meta/v1 \
+	k8s.io/apimachinery/pkg/runtime \
+	k8s.io/apimachinery/pkg/version
+
+.PHONY: generate-openapi
+generate-openapi: ## Regenerate zz_generated.openapi.go for the ops API group.
+	go run k8s.io/kube-openapi/cmd/openapi-gen \
+		--go-header-file hack/boilerplate.go.txt \
+		--output-dir api/ops/v1alpha1 \
+		--output-file zz_generated.openapi.go \
+		--output-pkg github.com/alperencelik/kubemox/api/ops/v1alpha1 \
+		$(OPENAPI_GEN_PACKAGES)
+
 .PHONY: fmt
 fmt: ## Run go fmt against code.
 	go fmt ./...
@@ -84,6 +104,22 @@ docker-build: test ## Build docker image with the manager.
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
 	$(CONTAINER_TOOL) push ${IMG}
+
+.PHONY: build-apiserver
+build-apiserver: fmt vet ## Build the aggregated apiserver binary.
+	go build -o bin/apiserver ./cmd/apiserver
+
+.PHONY: run-apiserver
+run-apiserver: fmt vet ## Run the apiserver from the host (needs KUBECONFIG + cert-manager-issued certs).
+	go run ./cmd/apiserver
+
+.PHONY: docker-build-apiserver
+docker-build-apiserver: ## Build docker image for the aggregated apiserver.
+	$(CONTAINER_TOOL) build -f Dockerfile.apiserver -t ${APISERVER_IMG} .
+
+.PHONY: docker-push-apiserver
+docker-push-apiserver: ## Push the aggregated apiserver docker image.
+	$(CONTAINER_TOOL) push ${APISERVER_IMG}
 
 # PLATFORMS defines the target platforms for  the manager image be build to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
@@ -124,6 +160,15 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 .PHONY: undeploy
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+
+.PHONY: deploy-apiserver
+deploy-apiserver: kustomize ## Deploy the aggregated apiserver. Requires cert-manager installed in the cluster.
+	cd config/apiserver && $(KUSTOMIZE) edit set image apiserver=${APISERVER_IMG}
+	$(KUSTOMIZE) build config/apiserver | $(KUBECTL) apply -f -
+
+.PHONY: undeploy-apiserver
+undeploy-apiserver: kustomize ## Undeploy the aggregated apiserver. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	$(KUSTOMIZE) build config/apiserver | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
 ##@ Build Dependencies
 

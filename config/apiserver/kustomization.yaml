@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Apply alongside the main kubemox operator (config/default) — or as a
+# standalone overlay if you don't run the controller-manager yet.
+#
+# Names and namespace are baked into each manifest. NO namePrefix is
+# applied here because:
+#   1. APIService names must match the strict "<version>.<group>" form,
+#      so prefixing breaks the APIService.
+#   2. cert-manager cross-references (Certificate.spec.issuerRef.name,
+#      cert-manager.io/inject-ca-from) are free-form strings that
+#      kustomize does NOT rewrite — they'd silently dangle.
+# If you want to deploy into a different namespace, search-and-replace
+# "kubemox-system" across this directory.
+
+resources:
+- namespace.yaml
+- certificate.yaml
+- rbac.yaml
+- apiserver.yaml
+- apiservice.yaml
+
+images:
+- name: apiserver
+  newName: alperencelik/kubemox-apiserver
+  newTag: latest

@@ -1,0 +1,26 @@
+# Build the aggregated apiserver binary. Mirrors Dockerfile but builds
+# ./cmd/apiserver instead of ./cmd. Kept as a separate file so the operator
+# image isn't bloated by the apiserver's heavier dependency tree
+# (k8s.io/apiserver, openapi, etc.).
+FROM golang:1.25 as builder
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /workspace
+COPY go.mod go.mod
+COPY go.sum go.sum
+RUN go mod download
+
+COPY cmd/apiserver/ cmd/apiserver/
+COPY api/ api/
+COPY pkg/ pkg/
+
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build -a -o apiserver ./cmd/apiserver
+
+FROM gcr.io/distroless/static:nonroot
+WORKDIR /
+COPY --from=builder /workspace/apiserver .
+USER 65532:65532
+
+ENTRYPOINT ["/apiserver"]

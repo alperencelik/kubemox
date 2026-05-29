@@ -1,0 +1,26 @@
+# Register ops.proxmox.alperen.cloud/v1alpha1 with the parent kube-apiserver.
+# The caBundle is injected by cert-manager's ca-injector via the
+# cert-manager.io/inject-ca-from annotation; the value MUST be
+# "<namespace>/<certificate-name>".
+#
+# The APIService name itself MUST be exactly "<version>.<group>" — that's
+# why no namePrefix is applied to this kustomization.
+#
+# After applying, verify with:
+#   kubectl get apiservices v1alpha1.ops.proxmox.alperen.cloud
+# The "Available" condition should go True within a few seconds.
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1alpha1.ops.proxmox.alperen.cloud
+  annotations:
+    cert-manager.io/inject-ca-from: kubemox-system/kubemox-apiserver-serving-cert
+spec:
+  group: ops.proxmox.alperen.cloud
+  version: v1alpha1
+  groupPriorityMinimum: 1000
+  versionPriority: 15
+  service:
+    name: kubemox-apiserver
+    namespace: kubemox-system
+    port: 443

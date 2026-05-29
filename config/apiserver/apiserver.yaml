@@ -1,0 +1,105 @@
+# The aggregated apiserver Deployment + Service. The Service is the target
+# of the APIService.spec.service registration (see apiservice.yaml).
+#
+# Image: this manifest uses the placeholder "apiserver:latest" — the
+# kustomization.yaml's `images` block rewrites it to the actual repo/tag.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubemox-apiserver
+  namespace: kubemox-system
+  labels:
+    app.kubernetes.io/name: kubemox-apiserver
+    app.kubernetes.io/component: apiserver
+    app.kubernetes.io/part-of: kubemox
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kubemox-apiserver
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kubemox-apiserver
+    spec:
+      serviceAccountName: kubemox-apiserver
+      containers:
+        - name: apiserver
+          image: apiserver:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - --secure-port=6443
+            # cert-dir is where the apiserver would self-sign if no cert
+            # files were provided. Point it at /tmp so a fallback never
+            # tries to write to the read-only rootfs. With both
+            # --tls-cert-file and --tls-private-key-file set,
+            # MaybeDefaultWithSelfSignedCerts is a no-op anyway.
+            - --cert-dir=/tmp/serving-cert
+            - --tls-cert-file=/var/run/serving-cert/tls.crt
+            - --tls-private-key-file=/var/run/serving-cert/tls.key
+          ports:
+            - name: https
+              containerPort: 6443
+              protocol: TCP
+          volumeMounts:
+            - name: serving-cert
+              mountPath: /var/run/serving-cert
+              readOnly: true
+            # rootfs is read-only; give the apiserver a writable scratch
+            # dir for any transient files (self-signed fallback, audit
+            # buffers if enabled later, etc.).
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: https
+              scheme: HTTPS
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: https
+              scheme: HTTPS
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: serving-cert
+          secret:
+            # Matches Certificate.spec.secretName in certificate.yaml.
+            secretName: kubemox-apiserver-serving-cert
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubemox-apiserver
+  namespace: kubemox-system
+  labels:
+    app.kubernetes.io/name: kubemox-apiserver
+spec:
+  selector:
+    app.kubernetes.io/name: kubemox-apiserver
+  ports:
+    - name: https
+      port: 443
+      targetPort: https
+      protocol: TCP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubemox-apiserver
+  namespace: kubemox-system
