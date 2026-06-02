@@ -26,10 +26,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	"github.com/alperencelik/kube-external-watcher/watcher"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -49,7 +48,7 @@ type ContainerReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder events.EventRecorder
-	EventCh  <-chan event.GenericEvent
+	Watcher  *watcher.ExternalWatcher
 }
 
 const (
@@ -173,11 +172,8 @@ func (r *ContainerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				return condition1 || !condition2
 			},
 		}).
+		WatchesRawSource(r.Watcher).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1})
-
-	if r.EventCh != nil {
-		builder = builder.WatchesRawSource(source.Channel(r.EventCh, &handler.EnqueueRequestForObject{}))
-	}
 
 	return builder.Complete(r)
 }

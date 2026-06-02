@@ -33,11 +33,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	"github.com/alperencelik/kube-external-watcher/watcher"
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
@@ -47,7 +46,7 @@ import (
 type VirtualMachineTemplateReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
-	EventCh  <-chan event.GenericEvent
+	Watcher  *watcher.ExternalWatcher
 	Recorder events.EventRecorder
 }
 
@@ -176,11 +175,8 @@ func (r *VirtualMachineTemplateReconciler) SetupWithManager(mgr ctrl.Manager) er
 				return condition1 || !condition2
 			},
 		}).
+		WatchesRawSource(r.Watcher).
 		WithOptions(controller.Options{MaxConcurrentReconciles: VMTemplateMaxConcurrentReconciles})
-
-	if r.EventCh != nil {
-		builder = builder.WatchesRawSource(source.Channel(r.EventCh, &handler.EnqueueRequestForObject{}))
-	}
 
 	return builder.Complete(r)
 }

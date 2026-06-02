@@ -34,11 +34,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/alperencelik/kube-external-watcher/watcher"
 
@@ -69,7 +67,6 @@ type VirtualMachineReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Watcher  *watcher.ExternalWatcher
-	EventCh  <-chan event.GenericEvent
 	Recorder events.EventRecorder
 }
 
@@ -248,11 +245,8 @@ func (r *VirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				return condition1 || !condition2 || condition3
 			},
 		}).
+		WatchesRawSource(r.Watcher).
 		WithOptions(controller.Options{MaxConcurrentReconciles: VMmaxConcurrentReconciles})
-
-	if r.EventCh != nil {
-		builder = builder.WatchesRawSource(source.Channel(r.EventCh, &handler.EnqueueRequestForObject{}))
-	}
 
 	return builder.Complete(r)
 }

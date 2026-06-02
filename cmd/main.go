@@ -159,9 +159,13 @@ func main() {
 		watcher.WithDefaultPollInterval(60 * time.Second),
 		watcher.WithLogger(watcherLogger),
 	}
-	// Readiness retry config for auto-registered watchers to handle transient API errors during startup
-	readinessRetry := watcher.ReadinessRetryConfig{
-		InitialInterval: 5 * time.Second,
+	// Auto-register sub-options shared by all watchers: filter on generation
+	// change and a tighter initial readiness retry for transient startup errors.
+	autoRegisterOpts := []watcher.AutoRegisterOption{
+		watcher.AutoRegisterWithFilter(generationFilter),
+		watcher.AutoRegisterWithReadinessRetry(watcher.ReadinessRetryConfig{
+			InitialInterval: 5 * time.Second,
+		}),
 	}
 
 	// Create external watchers for each resource type with auto-register
@@ -169,39 +173,29 @@ func main() {
 		append(watcherOpts,
 			watcher.WithMetrics("VirtualMachine"),
 			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.VirtualMachine{},
-				proxmox.VMConfigExtractor, readinessRetry),
-			watcher.WithAutoRegisterFilter(generationFilter),
+				proxmox.VMConfigExtractor, autoRegisterOpts...),
 		)...)
 	containerWatcher := watcher.NewExternalWatcher(&proxmox.ContainerFetcher{Client: k8sClient},
 		append(watcherOpts,
 			watcher.WithMetrics("Container"),
 			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.Container{},
-				proxmox.ContainerConfigExtractor, readinessRetry),
-			watcher.WithAutoRegisterFilter(generationFilter),
+				proxmox.ContainerConfigExtractor, autoRegisterOpts...),
 		)...)
 	vmTemplateWatcher := watcher.NewExternalWatcher(&proxmox.VirtualMachineTemplateFetcher{Client: k8sClient},
 		append(watcherOpts,
 			watcher.WithMetrics("VirtualMachineTemplate"),
 			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.VirtualMachineTemplate{},
-				proxmox.VMTemplateConfigExtractor, readinessRetry),
-			watcher.WithAutoRegisterFilter(generationFilter),
+				proxmox.VMTemplateConfigExtractor, autoRegisterOpts...),
 		)...)
 
-	// Register watchers as manager runnables
-	for _, ew := range []*watcher.ExternalWatcher{vmWatcher, containerWatcher, vmTemplateWatcher} {
-		if err = mgr.Add(ew); err != nil {
-			setupLog.Error(err, "unable to add external watcher to manager")
-			os.Exit(1)
-		}
-	}
-
 	// Controller setup
+	// Each watcher implements source.Source; reconcilers wire them in via
+	// WatchesRawSource in their SetupWithManager. No separate mgr.Add is needed.
 
 	if err = (&proxmoxcontroller.VirtualMachineReconciler{
 		Client:   k8sClient,
 		Scheme:   mgr.GetScheme(),
 		Watcher:  vmWatcher,
-		EventCh:  vmWatcher.EventChannel(),
 		Recorder: mgr.GetEventRecorder("VirtualMachine"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachine")
@@ -232,7 +226,7 @@ func main() {
 		Client:   k8sClient,
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorder("Container"),
-		EventCh:  containerWatcher.EventChannel(),
+		Watcher:  containerWatcher,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Container")
 		os.Exit(1)
@@ -254,7 +248,7 @@ func main() {
 	if err = (&proxmoxcontroller.VirtualMachineTemplateReconciler{
 		Client:   k8sClient,
 		Scheme:   mgr.GetScheme(),
-		EventCh:  vmTemplateWatcher.EventChannel(),
+		Watcher:  vmTemplateWatcher,
 		Recorder: mgr.GetEventRecorder("VirtualMachineTemplate"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineTemplate")
