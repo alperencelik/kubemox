@@ -226,6 +226,15 @@ type RetryRoundTripper struct {
 }
 
 func (rt *RetryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Only retry idempotent, safe methods. The Proxmox API uses POST for
+	// create/clone/start/stop/snapshot/delete operations — retrying those
+	// after a connection drop mid-flight can re-submit the request and
+	// spawn duplicate tasks or VMs. GET/HEAD have no side effects and are
+	// always safe to retry on transient transport errors.
+	if !isRetryableMethod(req.Method) {
+		return rt.Transport.RoundTrip(req)
+	}
+
 	var resp *http.Response
 	var err error
 
@@ -235,38 +244,41 @@ func (rt *RetryRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 			return resp, nil
 		}
 
-		// Check if the error is "server closed idle connection"
-		// This error is safe to retry for idempotent requests,
-		// and also for POSTs if we are sure it happened before the body was sent.
-		// In Go's net/http, this error specifically means the connection was closed by the peer while trying to reuse it.
-		// It is generally safe to retry this specific error.
-		if strings.Contains(err.Error(), "http: server closed idle connection") ||
-			strings.Contains(err.Error(), "EOF") || strings.Contains(err.Error(), "unexpected end of JSON input") {
-			// If we have a body, we might need to rewind it, but GetBody is handled by Request
-			if req.GetBody != nil {
-				newBody, bodyErr := req.GetBody()
-				if bodyErr != nil {
-					return resp, err
-				}
-				req.Body = newBody
-			}
+		// Retry on transient connection errors that occur before the server
+		// processes the request. These are safe to retry for idempotent
+		// methods (guarded above).
+		if isRetriableError(err) {
 			continue
 		}
 
-		// Provide a fallback for connection reset by peer which often happens with Proxmox
-		if strings.Contains(err.Error(), "connection reset by peer") {
-			if req.GetBody != nil {
-				newBody, bodyErr := req.GetBody()
-				if bodyErr != nil {
-					return resp, err
-				}
-				req.Body = newBody
-			}
-			continue
-		}
-
-		// If it's not a retriable error, return immediately
+		// Non-retriable error: return immediately
 		return resp, err
 	}
 	return resp, err
+}
+
+// isRetryableMethod reports whether the HTTP method is safe to retry on
+// transient connection errors. Only idempotent, body-less methods are
+// retried; PVE mutative endpoints (POST/PUT/DELETE/PATCH) must not be
+// retried to avoid duplicate tasks or VMs when the server may have
+// already received and processed the request.
+func isRetryableMethod(method string) bool {
+	return method == http.MethodGet || method == http.MethodHead
+}
+
+// isRetriableError reports whether the transport error is safe to retry
+// for an idempotent request. These errors indicate the connection dropped
+// before or during the request handshake, before the server could act on it.
+func isRetriableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "http: server closed idle connection") ||
+		strings.Contains(msg, "EOF") ||
+		strings.Contains(msg, "unexpected end of JSON input") ||
+		strings.Contains(msg, "connection reset by peer") {
+		return true
+	}
+	return false
 }
