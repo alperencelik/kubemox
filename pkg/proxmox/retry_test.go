@@ -24,45 +24,104 @@ func (m *MockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 func TestRetryRoundTripper(t *testing.T) {
 	tests := []struct {
 		name          string
+		method        string
 		errors        []error
 		expectSuccess bool
 		expectedCalls int
 	}{
 		{
-			name:          "Retry on server closed idle connection",
+			name:          "GET retry on server closed idle connection",
+			method:        http.MethodGet,
 			errors:        []error{errors.New("http: server closed idle connection")},
 			expectSuccess: true,
 			expectedCalls: 2,
 		},
 		{
-			name:          "Retry on EOF",
+			name:          "GET retry on EOF",
+			method:        http.MethodGet,
 			errors:        []error{errors.New("EOF")},
 			expectSuccess: true,
 			expectedCalls: 2,
 		},
 		{
-			name:          "Retry on connection reset by peer",
+			name:          "GET retry on connection reset by peer",
+			method:        http.MethodGet,
 			errors:        []error{errors.New("read: connection reset by peer")},
 			expectSuccess: true,
 			expectedCalls: 2,
 		},
 		{
-			name:          "No retry on unknown error",
+			name:          "HEAD retry on EOF (idempotent, body-less)",
+			method:        http.MethodHead,
+			errors:        []error{errors.New("EOF")},
+			expectSuccess: true,
+			expectedCalls: 2,
+		},
+		{
+			name:          "GET no retry on unknown error",
+			method:        http.MethodGet,
 			errors:        []error{errors.New("unknown error")},
 			expectSuccess: false,
 			expectedCalls: 1,
 		},
 		{
-			name:          "Success on first try",
+			name:          "GET success on first try",
+			method:        http.MethodGet,
 			errors:        []error{},
 			expectSuccess: true,
 			expectedCalls: 1,
 		},
 		{
-			name:          "Fail after max retries",
+			name:          "GET fail after max retries",
+			method:        http.MethodGet,
 			errors:        []error{errors.New("EOF"), errors.New("EOF"), errors.New("EOF"), errors.New("EOF")},
 			expectSuccess: false,
 			expectedCalls: 4, // 1 initial + 3 retries
+		},
+		// Regression guard: PVE uses POST for create/clone/start/stop/snapshot/delete.
+		// Retrying POST after a connection drop can re-submit the request and
+		// spawn duplicate tasks or VMs, so it must NOT retry.
+		{
+			name:          "POST no retry on EOF (mutative)",
+			method:        http.MethodPost,
+			errors:        []error{errors.New("EOF")},
+			expectSuccess: false,
+			expectedCalls: 1,
+		},
+		{
+			name:          "POST no retry on server closed idle connection",
+			method:        http.MethodPost,
+			errors:        []error{errors.New("http: server closed idle connection")},
+			expectSuccess: false,
+			expectedCalls: 1,
+		},
+		{
+			name:          "POST no retry on connection reset by peer",
+			method:        http.MethodPost,
+			errors:        []error{errors.New("connection reset by peer")},
+			expectSuccess: false,
+			expectedCalls: 1,
+		},
+		{
+			name:          "PUT no retry on EOF (mutative config update)",
+			method:        http.MethodPut,
+			errors:        []error{errors.New("EOF")},
+			expectSuccess: false,
+			expectedCalls: 1,
+		},
+		{
+			name:          "DELETE no retry on EOF (mutative)",
+			method:        http.MethodDelete,
+			errors:        []error{errors.New("EOF")},
+			expectSuccess: false,
+			expectedCalls: 1,
+		},
+		{
+			name:          "POST success on first try",
+			method:        http.MethodPost,
+			errors:        []error{},
+			expectSuccess: true,
+			expectedCalls: 1,
 		},
 	}
 
@@ -74,7 +133,7 @@ func TestRetryRoundTripper(t *testing.T) {
 				Retries:   3,
 			}
 
-			req, _ := http.NewRequest("GET", "http://example.com", nil)
+			req, _ := http.NewRequest(tt.method, "http://example.com", nil)
 			resp, err := retryRT.RoundTrip(req)
 
 			if tt.expectSuccess {
