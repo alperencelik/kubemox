@@ -191,32 +191,20 @@ func vmidsToStrings(ids []int) []string {
 }
 
 func (pc *ProxmoxClient) CheckVM(ref VMRef) (bool, error) {
-	// Check if VM exists
-	node, err := pc.getNode(ctx, ref.Node)
+	// Existence is resolution: if the reference names exactly one machine, it
+	// exists. This deliberately delegates rather than scanning names itself —
+	// a second scan is a second answer to "which machine is this", and the one
+	// that ran first used to win by caching its match, which hid ambiguity
+	// from every later lookup.
+	_, err := pc.getVMID(ref)
 	if err != nil {
-		return false, err
-	}
-	// Check cache first
-	pc.vmIDMutex.RLock()
-	if _, exists := pc.nodesCache[ref.Node].vms[ref.Name]; exists {
-		pc.vmIDMutex.RUnlock()
-		return true, nil
-	}
-	pc.vmIDMutex.RUnlock()
-	// If not in cache, fetch from API
-	vmList, err := node.VirtualMachines(ctx)
-	if err != nil {
-		return false, err
-	}
-	for _, vm := range vmList {
-		// if vm.Name == ref.Name {
-		if strings.EqualFold(vm.Name, ref.Name) {
-			// Cache the VM ID while we're at it
-			pc.setCachedVMID(ref.Node, vm.Name, int(vm.VMID))
-			return true, nil
+		var notFound *NotFoundError
+		if errors.As(err, &notFound) {
+			return false, nil
 		}
+		return false, err
 	}
-	return false, nil
+	return true, nil
 }
 
 func (pc *ProxmoxClient) GetVMIPv4Address(ref VMRef) string {
