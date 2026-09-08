@@ -134,8 +134,6 @@ func (pc *ProxmoxClient) CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine
 		log.Log.Error(taskErr, "Can't stop VM")
 		return taskErr
 	}
-	// Cache the new VM ID
-	pc.setCachedVMID(nodeName, vm.Name, newID)
 	return nil
 }
 
@@ -147,17 +145,16 @@ func (pc *ProxmoxClient) getVMID(ref VMRef) (int, error) {
 	}
 	// No VMID yet — a first lookup, or adopting a machine kubemox did not
 	// create. Everything below exists to make sure the name picked exactly one.
+	// Deliberately not cached. A name-to-VMID map cannot be invalidated when a
+	// machine is renamed in Proxmox, and a stale entry answers a later lookup
+	// of the old name with the machine that used to hold it — which is the
+	// cross-tenant adoption this whole change exists to remove. Caching is
+	// also no longer worth much here: with identity carried in status, a name
+	// is resolved once per resource rather than on every call.
 	node, err := pc.getNode(ctx, ref.Node)
 	if err != nil {
 		return 0, err
 	}
-	pc.vmIDMutex.RLock()
-	if vmID, exists := pc.nodesCache[ref.Node].vms[ref.Name]; exists {
-		pc.vmIDMutex.RUnlock()
-		return vmID, nil
-	}
-	pc.vmIDMutex.RUnlock()
-
 	vmList, err := node.VirtualMachines(ctx)
 	if err != nil {
 		return 0, err
@@ -174,7 +171,6 @@ func (pc *ProxmoxClient) getVMID(ref VMRef) (int, error) {
 			Message: fmt.Sprintf("virtual machine %q not found on node %s", ref.Name, ref.Node),
 		}
 	case 1:
-		pc.setCachedVMID(ref.Node, ref.Name, matches[0])
 		return matches[0], nil
 	default:
 		return 0, &AmbiguousNameError{Name: ref.Name, Matches: vmidsToStrings(matches)}
@@ -313,9 +309,8 @@ func (pc *ProxmoxClient) DeleteVM(ref VMRef) error {
 		log.Log.Error(taskErr, "Can't delete VM")
 		return taskErr
 	}
-	// Invalidate cache entry for this VM
+	// Invalidate the cached machine object
 	pc.vmIDMutex.Lock()
-	delete(pc.nodesCache[ref.Node].vms, ref.Name)
 	delete(pc.nodesCache[ref.Node].vmObjs, int(VirtualMachine.VMID))
 	pc.vmIDMutex.Unlock()
 
@@ -515,8 +510,6 @@ func (pc *ProxmoxClient) CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine)
 	if !taskCompleted {
 		return taskErr
 	}
-	// Cache the new VM ID
-	pc.setCachedVMID(nodeName, vm.Spec.Name, vmID)
 	return nil
 }
 

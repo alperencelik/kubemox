@@ -1,6 +1,7 @@
 package proxmox
 
 import (
+	"errors"
 	"sort"
 	"testing"
 
@@ -126,69 +127,54 @@ func TestGetVMID_KnownID_SkipsNameLookup(t *testing.T) {
 	}
 }
 
-// TestGetVMID_NameLookup_AdoptsAndCaches covers the other half: a machine that
-// has never been observed, or was created outside kubemox, is still found by
-// name - and found once, not on every call.
-func TestGetVMID_NameLookup_AdoptsAndCaches(t *testing.T) {
+// TestGetVMID_NameLookup_Adopts covers the other half: a machine that has
+// never been observed, or was created outside kubemox, is still found by name.
+func TestGetVMID_NameLookup_Adopts(t *testing.T) {
 	f := newFakeProxmox(t, map[string][]fakeVM{
 		"pve1": {{VMID: 100, Name: "web", Status: "running"}},
 	})
 	pc := f.client()
 
-	for i := range 2 {
-		vmID, err := pc.getVMID(NamedVMRef("web", "pve1"))
-		if err != nil {
-			t.Fatalf("getVMID call %d: %v", i+1, err)
-		}
-		if vmID != 100 {
-			t.Fatalf("getVMID call %d = %d, want 100", i+1, vmID)
-		}
-	}
-	if n := f.requests["/api2/json/nodes/pve1/qemu"]; n != 1 {
-		t.Fatalf("listed VMs %d times for two lookups of the same name, want 1", n)
-	}
-}
-
-// TestCheckVM_AmbiguousName_DoesNotPoisonTheCache is a regression test for a
-// hole the unit tests above did not cover and a live cluster did.
-//
-// CheckVM used to run its own name scan, return on the first match and cache
-// it. Because getVMID consults that cache before scanning, whichever call ran
-// first decided the answer for every later one — so two resources asking for
-// "web" both resolved to the same machine and the ambiguity check never ran.
-//
-// Both calls must refuse, in either order.
-func TestCheckVM_AmbiguousName_DoesNotPoisonTheCache(t *testing.T) {
-	pc := newFakeProxmox(t, map[string][]fakeVM{
-		"pve1": {
-			{VMID: 100, Name: "web", Status: "running"},
-			{VMID: 200, Name: "web", Status: "running"},
-		},
-	}).client()
-
-	exists, err := pc.CheckVM(NamedVMRef("web", "pve1"))
-	if err == nil {
-		t.Fatalf("CheckVM = (%v, nil) for a name matching two machines, want an error", exists)
-	}
-
-	if _, err = pc.getVMID(NamedVMRef("web", "pve1")); err == nil {
-		t.Fatal("getVMID succeeded after CheckVM ran; the first lookup cached a match it should have refused")
-	}
-}
-
-// TestCheckVM_Missing_IsNotAnError keeps the other half of CheckVM's contract:
-// a machine that is not there is a false, not a failure. The create path
-// depends on this to decide whether to create.
-func TestCheckVM_Missing_IsNotAnError(t *testing.T) {
-	pc := newFakeProxmox(t, map[string][]fakeVM{
-		"pve1": {{VMID: 100, Name: "web", Status: "running"}},
-	}).client()
-
-	exists, err := pc.CheckVM(NamedVMRef("absent", "pve1"))
+	vmID, err := pc.getVMID(NamedVMRef("web", "pve1"))
 	if err != nil {
-		t.Fatalf("CheckVM for a missing machine: %v, want (false, nil)", err)
+		t.Fatalf("getVMID: %v", err)
 	}
-	if exists {
-		t.Fatal("CheckVM = true for a machine that does not exist")
+	if vmID != 100 {
+		t.Fatalf("getVMID = %d, want 100", vmID)
+	}
+}
+
+// TestGetVMID_NameLookup_IsNotCachedAcrossRenames is a regression test for a
+// live failure, and the reason the name-to-VMID cache is gone.
+//
+// Two tenants each declared spec.name "web". The first adopted vmid 100 and
+// the lookup cached web -> 100. The machine was then renamed in Proxmox, so no
+// machine called "web" existed any more — but the second tenant's reconcile
+// read the stale entry, logged "VirtualMachine web already exists", and
+// started reconfiguring the first tenant's machine.
+//
+// A name-to-VMID map has no way to learn about a rename, so the only safe
+// cache is none. It costs one API call per resource, since a name is resolved
+// once and the VMID is carried in status from then on.
+func TestGetVMID_NameLookup_IsNotCachedAcrossRenames(t *testing.T) {
+	f := newFakeProxmox(t, map[string][]fakeVM{
+		"pve1": {{VMID: 100, Name: "web", Status: "running"}},
+	})
+	pc := f.client()
+
+	if _, err := pc.getVMID(NamedVMRef("web", "pve1")); err != nil {
+		t.Fatalf("first lookup: %v", err)
+	}
+
+	f.rename("pve1", 100, "renamed-in-proxmox")
+
+	vmID, err := pc.getVMID(NamedVMRef("web", "pve1"))
+	if err == nil {
+		t.Fatalf("second lookup of \"web\" returned vmid %d after the machine was renamed; "+
+			"want not-found, since answering with 100 hands over another tenant's machine", vmID)
+	}
+	var notFound *NotFoundError
+	if !errors.As(err, &notFound) {
+		t.Fatalf("second lookup error = %v, want NotFoundError", err)
 	}
 }

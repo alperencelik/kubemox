@@ -89,6 +89,17 @@ func (f *fakeProxmox) client() *ProxmoxClient {
 	})
 }
 
+// rename changes a machine's name the way an operator would with `qm set`,
+// behind the controller's back.
+func (f *fakeProxmox) rename(node string, vmID int, newName string) {
+	for i := range f.vmsByNode[node] {
+		if f.vmsByNode[node][i].VMID == vmID {
+			f.vmsByNode[node][i].Name = newName
+			return
+		}
+	}
+}
+
 func writeData(w http.ResponseWriter, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string]any{"data": data}); err != nil {
