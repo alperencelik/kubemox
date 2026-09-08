@@ -3,6 +3,10 @@ package proxmox
 import (
 	"sort"
 	"testing"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 )
 
 // twoNodesSharingAName is the shape that matters: two different machines, on
@@ -41,7 +45,7 @@ func TestGetVMID_NotFound_ReturnsError(t *testing.T) {
 		"pve1": {{VMID: 100, Name: "web", Status: "running"}},
 	}).client()
 
-	vmID, err := pc.getVMID("no-such-vm", "pve1")
+	vmID, err := pc.getVMID(NamedVMRef("no-such-vm", "pve1"))
 	if err == nil {
 		t.Fatalf("getVMID(no-such-vm) = (%d, nil), want an error saying it was not found", vmID)
 	}
@@ -64,5 +68,83 @@ func TestGetNodeOfVM_AmbiguousName_ReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("GetNodeOfVM(web) = (%q, nil) with two machines named web; "+
 			"want an error rather than a silent pick", node)
+	}
+}
+
+// TestVMRefFromCR_UsesSpecNameAndObservedID pins which of the two names on a
+// VirtualMachine resource is the Proxmox one.
+//
+// They are independent: spec.name is required and nothing defaults it to the
+// resource's own name. Several call sites used to pass metadata.name, so a
+// resource named "db" holding spec.name "database" had its network, disk and
+// PCI configuration read from whatever machine happened to be called "db".
+func TestVMRefFromCR_UsesSpecNameAndObservedID(t *testing.T) {
+	vm := &proxmoxv1alpha1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{Name: "db", Namespace: "team-a"},
+		Spec: proxmoxv1alpha1.VirtualMachineSpec{
+			Name:     "database",
+			NodeName: "pve1",
+		},
+	}
+
+	ref := VMRefFromCR(vm)
+	if ref.Name != "database" {
+		t.Fatalf("VMRefFromCR().Name = %q, want the Proxmox name from spec", ref.Name)
+	}
+	if ref.HasID() {
+		t.Fatalf("VMRefFromCR().ID = %d before the machine was observed, want zero", ref.ID)
+	}
+
+	vm.Status.Status = &proxmoxv1alpha1.QEMUStatus{ID: 142}
+	if ref = VMRefFromCR(vm); ref.ID != 142 {
+		t.Fatalf("VMRefFromCR().ID = %d after observation, want 142", ref.ID)
+	}
+}
+
+// TestGetVMID_KnownID_SkipsNameLookup is the whole point of the change: once a
+// machine has been observed, kubemox stops asking Proxmox what "web" means.
+//
+// The assertion is on the request count rather than the return value, because
+// returning 100 would also happen by accident if the name were resolved.
+func TestGetVMID_KnownID_SkipsNameLookup(t *testing.T) {
+	f := newFakeProxmox(t, map[string][]fakeVM{
+		"pve1": {{VMID: 100, Name: "renamed-in-proxmox", Status: "running"}},
+	})
+	pc := f.client()
+
+	// The reference still carries the name the machine had when it was created.
+	ref := VMRef{ID: 100, Name: "web", Node: "pve1"}
+	vmID, err := pc.getVMID(ref)
+	if err != nil {
+		t.Fatalf("getVMID: %v", err)
+	}
+	if vmID != 100 {
+		t.Fatalf("getVMID = %d, want 100", vmID)
+	}
+	if n := f.requests["/api2/json/nodes/pve1/qemu"]; n != 0 {
+		t.Fatalf("listed VMs %d time(s) for a reference that already had an ID", n)
+	}
+}
+
+// TestGetVMID_NameLookup_AdoptsAndCaches covers the other half: a machine that
+// has never been observed, or was created outside kubemox, is still found by
+// name - and found once, not on every call.
+func TestGetVMID_NameLookup_AdoptsAndCaches(t *testing.T) {
+	f := newFakeProxmox(t, map[string][]fakeVM{
+		"pve1": {{VMID: 100, Name: "web", Status: "running"}},
+	})
+	pc := f.client()
+
+	for i := range 2 {
+		vmID, err := pc.getVMID(NamedVMRef("web", "pve1"))
+		if err != nil {
+			t.Fatalf("getVMID call %d: %v", i+1, err)
+		}
+		if vmID != 100 {
+			t.Fatalf("getVMID call %d = %d, want 100", i+1, vmID)
+		}
+	}
+	if n := f.requests["/api2/json/nodes/pve1/qemu"]; n != 1 {
+		t.Fatalf("listed VMs %d times for two lookups of the same name, want 1", n)
 	}
 }

@@ -1,6 +1,9 @@
 package proxmox
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 func (pc *ProxmoxClient) GetNodes() ([]string, error) {
 	// Get all nodes
@@ -34,6 +37,11 @@ func (pc *ProxmoxClient) GetNodeOfVM(vmName string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// Every online node is scanned before answering, rather than returning on
+	// the first hit. A name that matches twice is not a machine this function
+	// can identify, and returning either one would hand the caller a machine
+	// chosen by iteration order.
+	var matches []string
 	for _, nodeName := range nodes {
 		node, err := pc.getNode(ctx, nodeName)
 		if err != nil {
@@ -48,9 +56,16 @@ func (pc *ProxmoxClient) GetNodeOfVM(vmName string) (string, error) {
 			if strings.EqualFold(vm.Name, vmName) {
 				// Cache the VM ID while we're here
 				pc.setCachedVMID(nodeName, vm.Name, int(vm.VMID))
-				return node.Name, nil
+				matches = append(matches, fmt.Sprintf("%s/vmid %d", node.Name, vm.VMID))
 			}
 		}
 	}
-	return "", nil
+	switch len(matches) {
+	case 0:
+		return "", &NotFoundError{Message: fmt.Sprintf("virtual machine %q not found on any online node", vmName)}
+	case 1:
+		return strings.SplitN(matches[0], "/", 2)[0], nil
+	default:
+		return "", &AmbiguousNameError{Name: vmName, Matches: matches}
+	}
 }

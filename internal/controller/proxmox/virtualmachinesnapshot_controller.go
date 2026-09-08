@@ -173,7 +173,7 @@ func (r *VirtualMachineSnapshotReconciler) handleSnapshotCreation(ctx context.Co
 	logger := log.FromContext(ctx)
 	vmName := vmSnapshot.Spec.VirtualMachineName
 	// Get all the snapshots of the VM
-	snapshots, err := pc.GetVMSnapshots(vmName)
+	snapshots, err := pc.GetVMSnapshots(proxmox.NamedVMRef(vmName, ""))
 	if err != nil {
 		logger.Error(err, "Failed to get VM snapshots")
 		return err
@@ -189,7 +189,7 @@ func (r *VirtualMachineSnapshotReconciler) handleSnapshotCreation(ctx context.Co
 		return nil
 	} else if vmSnapshot.Status.Status != snapshotCreatedStatus {
 		// Create the snapshot
-		statusCode, err := pc.CreateVMSnapshot(vmName, snapshotName)
+		statusCode, err := pc.CreateVMSnapshot(proxmox.NamedVMRef(vmName, ""), snapshotName)
 		if err != nil {
 			logger.Error(err, "Failed to create VM snapshot")
 			return client.IgnoreNotFound(err)
