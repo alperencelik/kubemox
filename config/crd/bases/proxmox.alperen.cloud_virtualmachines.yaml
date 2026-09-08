@@ -14,7 +14,7 @@ spec:
     shortNames:
     - vm
     singular: virtualmachine
-  scope: Cluster
+  scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - description: The node name
