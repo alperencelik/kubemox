@@ -49,9 +49,53 @@ spec:
               password:
                 description: Password to authenticate with the Proxmox cluster
                 type: string
+              passwordFrom:
+                description: |-
+                  PasswordFrom reads the password from a key of a Secret, instead of
+                  storing it in Password.
+                properties:
+                  key:
+                    description: Key within the Secret's data.
+                    minLength: 1
+                    type: string
+                  name:
+                    description: Name of the Secret.
+                    minLength: 1
+                    type: string
+                  namespace:
+                    description: Namespace of the Secret.
+                    minLength: 1
+                    type: string
+                required:
+                - key
+                - name
+                - namespace
+                type: object
               secret:
                 description: Secret to authenticate with the Proxmox cluster
                 type: string
+              secretFrom:
+                description: |-
+                  SecretFrom reads the API token secret from a key of a Secret, instead of
+                  storing it in Secret.
+                properties:
+                  key:
+                    description: Key within the Secret's data.
+                    minLength: 1
+                    type: string
+                  name:
+                    description: Name of the Secret.
+                    minLength: 1
+                    type: string
+                  namespace:
+                    description: Namespace of the Secret.
+                    minLength: 1
+                    type: string
+                required:
+                - key
+                - name
+                - namespace
+                type: object
               tokenID:
                 description: TokenID to authenticate with the Proxmox cluster
                 type: string
@@ -62,10 +106,12 @@ spec:
             - endpoint
             type: object
             x-kubernetes-validations:
-            - message: Specify either username/password or tokenID/secret for authentication
-              rule: (has(self.username) && has(self.password) && !has(self.tokenID)
-                && !has(self.secret)) || (!has(self.username) && !has(self.password)
-                && has(self.tokenID) && has(self.secret))
+            - message: Specify either username with one of password or passwordFrom,
+                or tokenID with one of secret or secretFrom
+              rule: (has(self.username) && (has(self.password) != has(self.passwordFrom))
+                && !has(self.tokenID) && !has(self.secret) && !has(self.secretFrom))
+                || (!has(self.username) && !has(self.password) && !has(self.passwordFrom)
+                && has(self.tokenID) && (has(self.secret) != has(self.secretFrom)))
           status:
             description: ProxmoxConnectionStatus defines the observed state of ProxmoxConnection.
             properties:

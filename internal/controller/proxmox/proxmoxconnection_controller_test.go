@@ -86,3 +86,58 @@ var _ = Describe("ProxmoxConnection Controller", func() {
 		})
 	})
 })
+
+var _ = Describe("ProxmoxConnection credential validation", func() {
+	ctx := context.Background()
+	secretRef := func(key string) *proxmoxv1alpha1.SecretKeyReference {
+		return &proxmoxv1alpha1.SecretKeyReference{
+			Name: "proxmox-credentials", Namespace: "kubemox-system", Key: key,
+		}
+	}
+
+	// These run against the CRD envtest loads from config/crd/bases, so they
+	// exercise the real CEL rule in a real API server - not a copy of it.
+	DescribeTable("the CRD admits exactly one source for each credential",
+		func(name string, spec proxmoxv1alpha1.ProxmoxConnectionSpec, admitted bool) {
+			spec.Endpoint = "https://proxmox.example.com:8006"
+			conn := &proxmoxv1alpha1.ProxmoxConnection{
+				ObjectMeta: metav1.ObjectMeta{Name: name},
+				Spec:       spec,
+			}
+			err := k8sClient.Create(ctx, conn)
+			if admitted {
+				Expect(err).NotTo(HaveOccurred())
+				Expect(k8sClient.Delete(ctx, conn)).To(Succeed())
+				return
+			}
+			Expect(err).To(HaveOccurred())
+			Expect(errors.IsInvalid(err)).To(BeTrue(), "expected a validation error, got: %v", err)
+		},
+		Entry("username with password", "v-user-password",
+			proxmoxv1alpha1.ProxmoxConnectionSpec{Username: "root@pam", Password: "p"}, true),
+		Entry("username with passwordFrom", "v-user-passwordfrom",
+			proxmoxv1alpha1.ProxmoxConnectionSpec{Username: "root@pam", PasswordFrom: secretRef("password")}, true),
+		Entry("tokenID with secret", "v-token-secret",
+			proxmoxv1alpha1.ProxmoxConnectionSpec{TokenID: "root@pam!t", Secret: "s"}, true),
+		Entry("tokenID with secretFrom", "v-token-secretfrom",
+			proxmoxv1alpha1.ProxmoxConnectionSpec{TokenID: "root@pam!t", SecretFrom: secretRef("token")}, true),
+
+		Entry("password and passwordFrom together", "x-password-and-passwordfrom",
+			proxmoxv1alpha1.ProxmoxConnectionSpec{
+				Username: "root@pam", Password: "p", PasswordFrom: secretRef("password"),
+			}, false),
+		Entry("secret and secretFrom together", "x-secret-and-secretfrom",
+			proxmoxv1alpha1.ProxmoxConnectionSpec{
+				TokenID: "root@pam!t", Secret: "s", SecretFrom: secretRef("token"),
+			}, false),
+		Entry("tokenID with neither secret nor secretFrom", "x-token-only",
+			proxmoxv1alpha1.ProxmoxConnectionSpec{TokenID: "root@pam!t"}, false),
+		Entry("passwordFrom without a username", "x-passwordfrom-no-user",
+			proxmoxv1alpha1.ProxmoxConnectionSpec{PasswordFrom: secretRef("password")}, false),
+		Entry("both authentication methods at once", "x-both-methods",
+			proxmoxv1alpha1.ProxmoxConnectionSpec{
+				Username: "root@pam", PasswordFrom: secretRef("password"),
+				TokenID: "root@pam!t", SecretFrom: secretRef("token"),
+			}, false),
+	)
+})

@@ -43,6 +43,7 @@ type ProxmoxConnectionReconciler struct {
 // +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=proxmoxconnections,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=proxmoxconnections/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=proxmoxconnections/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -75,8 +76,27 @@ func (r *ProxmoxConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	logger.Info("Reconciling ProxmoxConnection", "name", proxmoxConnection.Name)
 
+	// Resolve credentials, which may be read from Secrets
+	creds, err := proxmox.ResolveCredentials(ctx, r.Client, &proxmoxConnection.Spec)
+	if err != nil {
+		logger.Error(err, "unable to resolve credentials")
+		patch := client.MergeFrom(proxmoxConnection.DeepCopy())
+		meta.SetStatusCondition(&proxmoxConnection.Status.Conditions, metav1.Condition{
+			LastTransitionTime: metav1.Now(),
+			Type:               conditionReady,
+			Status:             metav1.ConditionFalse,
+			Reason:             "CredentialsUnavailable",
+			Message:            err.Error(),
+		})
+		if patchErr := r.Status().Patch(ctx, proxmoxConnection, patch); patchErr != nil {
+			logger.Error(patchErr, "unable to update ProxmoxConnection status")
+			return ctrl.Result{}, patchErr
+		}
+		return ctrl.Result{}, err
+	}
+
 	// Create Proxmox client
-	proxmoxClient := proxmox.NewProxmoxClient(proxmoxConnection)
+	proxmoxClient := proxmox.NewProxmoxClientWithCredentials(proxmoxConnection, creds)
 
 	// Return the version
 	version, err := proxmoxClient.GetVersion()

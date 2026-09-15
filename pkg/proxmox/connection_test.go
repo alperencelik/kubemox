@@ -152,3 +152,68 @@ func TestNewProxmoxClientFromRef_APITokenNoTTL(t *testing.T) {
 		t.Errorf("Expected cached client for API token auth (no TTL), but got new instance")
 	}
 }
+
+// TestNewProxmoxClientFromRef_SecretRefRefreshes pins that a client built from
+// Secret-backed credentials is not reused forever. After secretRefCacheTTL the
+// Secret is read again, so a rotated token is picked up without touching the
+// ProxmoxConnection - and a Secret that has gone away surfaces as an error
+// rather than as a stale client that keeps working until it doesn't.
+func TestNewProxmoxClientFromRef_SecretRefRefreshes(t *testing.T) {
+	const name = "test-secretref-conn"
+	ctx := context.Background()
+	conn := &proxmoxv1alpha1.ProxmoxConnection{
+		ObjectMeta: metav1.ObjectMeta{Name: name, ResourceVersion: "1"},
+		Spec: proxmoxv1alpha1.ProxmoxConnectionSpec{
+			Endpoint: "https://localhost:8006", TokenID: "root@pam!kubemox", SecretFrom: secretKeyRef("token"),
+		},
+	}
+	cl := credentialsClient(t, conn, credentialsSecret(map[string]string{"token": "first-token"}))
+	ref := &corev1.LocalObjectReference{Name: name}
+	age := func() {
+		clientCacheMutex.Lock()
+		defer clientCacheMutex.Unlock()
+		if cached, ok := clientCache[name]; ok {
+			cached.CreatedAt = time.Now().Add(-2 * secretRefCacheTTL)
+		}
+	}
+
+	c1, err := NewProxmoxClientFromRef(ctx, cl, ref)
+	if err != nil {
+		t.Fatalf("first client: %v", err)
+	}
+	c2, err := NewProxmoxClientFromRef(ctx, cl, ref)
+	if err != nil {
+		t.Fatalf("second client: %v", err)
+	}
+	if c1 != c2 {
+		t.Fatal("within the refresh interval the cached client must be reused")
+	}
+
+	// Rotate the token and age the cache entry past the interval.
+	live := &corev1.Secret{}
+	if err := cl.Get(ctx, client.ObjectKey{Namespace: credNamespace, Name: credSecretName}, live); err != nil {
+		t.Fatalf("get secret: %v", err)
+	}
+	live.Data["token"] = []byte("rotated-token")
+	if err := cl.Update(ctx, live); err != nil {
+		t.Fatalf("rotate secret: %v", err)
+	}
+	age()
+
+	c3, err := NewProxmoxClientFromRef(ctx, cl, ref)
+	if err != nil {
+		t.Fatalf("client after rotation: %v", err)
+	}
+	if c3 == c2 {
+		t.Fatal("after the refresh interval a client built from a Secret must be rebuilt")
+	}
+
+	// Remove the Secret; once the entry is stale again the next call must fail.
+	if err := cl.Delete(ctx, live); err != nil {
+		t.Fatalf("delete secret: %v", err)
+	}
+	age()
+	if _, err := NewProxmoxClientFromRef(ctx, cl, ref); err == nil {
+		t.Fatal("expected an error once the referenced Secret is gone")
+	}
+}
