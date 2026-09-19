@@ -14,7 +14,7 @@ spec:
     shortNames:
     - lxc
     singular: container
-  scope: Cluster
+  scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - description: The name of the target node of Proxmox

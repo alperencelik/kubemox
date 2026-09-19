@@ -38,7 +38,6 @@ type CachedClient struct {
 
 type NodeCache struct {
 	node          *proxmox.Node
-	vms           map[string]int                  // vmName -> vmID
 	vmObjs        map[int]*proxmox.VirtualMachine // vmID -> VirtualMachine object
 	containers    map[string]int                  // containerName -> containerID
 	containerObjs map[int]*proxmox.Container      // containerID -> Container object
@@ -135,7 +134,6 @@ func (pc *ProxmoxClient) getNode(ctx context.Context, nodeName string) (*proxmox
 	pc.nodesMutex.Lock()
 	pc.nodesCache[nodeName] = NodeCache{
 		node:       node,
-		vms:        make(map[string]int),
 		containers: make(map[string]int),
 	}
 	pc.nodesMutex.Unlock()
@@ -179,20 +177,11 @@ func NewProxmoxClientFromRef(ctx context.Context, c cc.Client,
 	return client, nil
 }
 
-func (pc *ProxmoxClient) setCachedVMID(nodeName, vmName string, vmID int) {
-	pc.vmIDMutex.Lock()
-	defer pc.vmIDMutex.Unlock()
-	if _, exists := pc.nodesCache[nodeName]; !exists {
-		pc.nodesCache[nodeName] = NodeCache{vms: make(map[string]int), vmObjs: make(map[int]*proxmox.VirtualMachine)}
-	}
-	pc.nodesCache[nodeName].vms[vmName] = vmID
-}
-
 func (pc *ProxmoxClient) setCachedVM(nodeName string, vmID int, vm *proxmox.VirtualMachine) {
 	pc.vmIDMutex.Lock()
 	defer pc.vmIDMutex.Unlock()
 	if _, exists := pc.nodesCache[nodeName]; !exists {
-		pc.nodesCache[nodeName] = NodeCache{vms: make(map[string]int), vmObjs: make(map[int]*proxmox.VirtualMachine)}
+		pc.nodesCache[nodeName] = NodeCache{vmObjs: make(map[int]*proxmox.VirtualMachine)}
 	} else if pc.nodesCache[nodeName].vmObjs == nil {
 		// Initialize mapping if nil (for existing cache entries before upgrade)
 		entry := pc.nodesCache[nodeName]
