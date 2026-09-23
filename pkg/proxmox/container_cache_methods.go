@@ -7,7 +7,6 @@ func (pc *ProxmoxClient) setCachedContainerID(nodeName, containerName string, co
 	defer pc.vmIDMutex.Unlock()
 	if _, exists := pc.nodesCache[nodeName]; !exists {
 		pc.nodesCache[nodeName] = NodeCache{
-			vms:        make(map[string]int),
 			vmObjs:     make(map[int]*proxmox.VirtualMachine),
 			containers: make(map[string]int),
 		}
@@ -27,7 +26,6 @@ func (pc *ProxmoxClient) setCachedContainer(nodeName string, containerID int, co
 	defer pc.vmIDMutex.Unlock()
 	if _, exists := pc.nodesCache[nodeName]; !exists {
 		pc.nodesCache[nodeName] = NodeCache{
-			vms:           make(map[string]int),
 			vmObjs:        make(map[int]*proxmox.VirtualMachine),
 			containers:    make(map[string]int),
 			containerObjs: make(map[int]*proxmox.Container),
