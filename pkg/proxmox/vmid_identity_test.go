@@ -10,11 +10,11 @@ import (
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 )
 
-// Вузол, який віддає тестовий сервер: goconst інакше рахує його десяток
-// входжень як дубльований літерал.
+// The node the test server answers for: goconst otherwise counts its dozen
+// occurrences as a duplicated literal.
 const (
 	testNodePVE1 = "pve1"
-	// Імʼя VM у фікстурах: шість входжень, які goconst рахує дублікатом.
+	// The VM name in the fixtures: six occurrences, which goconst flags.
 	testVMNameWeb = "web"
 )
 
