@@ -58,9 +58,44 @@ type VirtualMachineSpec struct {
 	// AdditionalConfig is the additional configuration of the VM
 	// +kubebuilder:validation:Optional
 	AdditionalConfig map[string]string `json:"additionalConfig,omitempty"`
+	// CloneMode selects how the template's disks are cloned. Full copies them,
+	// which costs the size of the template per VM. Linked keeps a reference to
+	// the template's base snapshot, which costs almost nothing at creation but
+	// pins the template: it cannot be removed or rotated while a linked clone
+	// still references it. Proxmox places a linked clone on the template's own
+	// storage, so it cannot be moved elsewhere at creation time.
+	// +kubebuilder:validation:Enum=Full;Linked
+	// +kubebuilder:default:=Full
+	CloneMode CloneMode `json:"cloneMode,omitempty"`
 
 	// +kubebuilder:validation:Required
 	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
+}
+
+// CloneMode selects between a full copy of the template's disks and a linked
+// clone that references the template's base snapshot.
+type CloneMode string
+
+const (
+	// CloneModeFull copies the template's disks.
+	CloneModeFull CloneMode = "Full"
+	// CloneModeLinked references the template's base snapshot.
+	CloneModeLinked CloneMode = "Linked"
+)
+
+// IsFullClone reports whether the disks should be copied. An empty value means
+// Full: that was the only behaviour before this field existed, so an object
+// written against the older API keeps it.
+func (c CloneMode) IsFullClone() bool {
+	return c != CloneModeLinked
+}
+
+// CloneFlag returns what the Proxmox API expects for the clone "full" option.
+func (c CloneMode) CloneFlag() uint8 {
+	if c.IsFullClone() {
+		return 1
+	}
+	return 0
 }
 
 // type connRef struct {
