@@ -20,7 +20,7 @@ const testNodePVE1 = "pve1"
 func twoNodesSharingAName() map[string][]fakeVM {
 	return map[string][]fakeVM{
 		testNodePVE1: {{VMID: 100, Name: "web", Status: "running"}},
-		"pve2": {{VMID: 200, Name: "web", Status: "running"}},
+		"pve2":       {{VMID: 200, Name: "web", Status: "running"}},
 	}
 }
 
