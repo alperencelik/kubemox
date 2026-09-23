@@ -12,15 +12,19 @@ import (
 
 // Вузол, який віддає тестовий сервер: goconst інакше рахує його десяток
 // входжень як дубльований літерал.
-const testNodePVE1 = "pve1"
+const (
+	testNodePVE1 = "pve1"
+	// Імʼя VM у фікстурах: шість входжень, які goconst рахує дублікатом.
+	testVMNameWeb = "web"
+)
 
 // twoNodesSharingAName is the shape that matters: two different machines, on
 // two different nodes, that a human gave the same name. Proxmox allows it -
 // identity there is the VMID, not the name - so kubemox has to survive it.
 func twoNodesSharingAName() map[string][]fakeVM {
 	return map[string][]fakeVM{
-		testNodePVE1: {{VMID: 100, Name: "web", Status: VirtualMachineRunningState}},
-		"pve2":       {{VMID: 200, Name: "web", Status: VirtualMachineRunningState}},
+		testNodePVE1: {{VMID: 100, Name: testVMNameWeb, Status: VirtualMachineRunningState}},
+		"pve2":       {{VMID: 200, Name: testVMNameWeb, Status: VirtualMachineRunningState}},
 	}
 }
 
@@ -47,7 +51,7 @@ func TestFakeProxmox_ServesInventory(t *testing.T) {
 // proceeds with a zero VMID.
 func TestGetVMID_NotFound_ReturnsError(t *testing.T) {
 	pc := newFakeProxmox(t, map[string][]fakeVM{
-		testNodePVE1: {{VMID: 100, Name: "web", Status: VirtualMachineRunningState}},
+		testNodePVE1: {{VMID: 100, Name: testVMNameWeb, Status: VirtualMachineRunningState}},
 	}).client()
 
 	vmID, err := pc.getVMID(NamedVMRef("no-such-vm", testNodePVE1))
@@ -59,17 +63,17 @@ func TestGetVMID_NotFound_ReturnsError(t *testing.T) {
 // TestGetNodeOfVM_AmbiguousName_ReturnsError pins the collision itself.
 //
 // GetNodeOfVM scans every online node and returns the first case-insensitive
-// name match. With two machines called "web" the answer depends on map
+// name match. With two machines called testVMNameWeb the answer depends on map
 // iteration order, and the caller is then given one of two different machines
 // with no indication that a choice was made.
 //
 // This is what makes namespacing the CRDs unsafe on its own: two tenants each
-// asking for spec.name "web" would land here, and the second reconcile would
+// asking for spec.name testVMNameWeb would land here, and the second reconcile would
 // start managing the first tenant's machine.
 func TestGetNodeOfVM_AmbiguousName_ReturnsError(t *testing.T) {
 	pc := newFakeProxmox(t, twoNodesSharingAName()).client()
 
-	node, err := pc.GetNodeOfVM("web")
+	node, err := pc.GetNodeOfVM(testVMNameWeb)
 	if err == nil {
 		t.Fatalf("GetNodeOfVM(web) = (%q, nil) with two machines named web; "+
 			"want an error rather than a silent pick", node)
@@ -107,7 +111,7 @@ func TestVMRefFromCR_UsesSpecNameAndObservedID(t *testing.T) {
 }
 
 // TestGetVMID_KnownID_SkipsNameLookup is the whole point of the change: once a
-// machine has been observed, kubemox stops asking Proxmox what "web" means.
+// machine has been observed, kubemox stops asking Proxmox what testVMNameWeb means.
 //
 // The assertion is on the request count rather than the return value, because
 // returning 100 would also happen by accident if the name were resolved.
@@ -118,7 +122,7 @@ func TestGetVMID_KnownID_SkipsNameLookup(t *testing.T) {
 	pc := f.client()
 
 	// The reference still carries the name the machine had when it was created.
-	ref := VMRef{ID: 100, Name: "web", Node: testNodePVE1}
+	ref := VMRef{ID: 100, Name: testVMNameWeb, Node: testNodePVE1}
 	vmID, err := pc.getVMID(ref)
 	if err != nil {
 		t.Fatalf("getVMID: %v", err)
@@ -135,11 +139,11 @@ func TestGetVMID_KnownID_SkipsNameLookup(t *testing.T) {
 // never been observed, or was created outside kubemox, is still found by name.
 func TestGetVMID_NameLookup_Adopts(t *testing.T) {
 	f := newFakeProxmox(t, map[string][]fakeVM{
-		testNodePVE1: {{VMID: 100, Name: "web", Status: VirtualMachineRunningState}},
+		testNodePVE1: {{VMID: 100, Name: testVMNameWeb, Status: VirtualMachineRunningState}},
 	})
 	pc := f.client()
 
-	vmID, err := pc.getVMID(NamedVMRef("web", testNodePVE1))
+	vmID, err := pc.getVMID(NamedVMRef(testVMNameWeb, testNodePVE1))
 	if err != nil {
 		t.Fatalf("getVMID: %v", err)
 	}
@@ -151,9 +155,9 @@ func TestGetVMID_NameLookup_Adopts(t *testing.T) {
 // TestGetVMID_NameLookup_IsNotCachedAcrossRenames is a regression test for a
 // live failure, and the reason the name-to-VMID cache is gone.
 //
-// Two tenants each declared spec.name "web". The first adopted vmid 100 and
+// Two tenants each declared spec.name testVMNameWeb. The first adopted vmid 100 and
 // the lookup cached web -> 100. The machine was then renamed in Proxmox, so no
-// machine called "web" existed any more — but the second tenant's reconcile
+// machine called testVMNameWeb existed any more — but the second tenant's reconcile
 // read the stale entry, logged "VirtualMachine web already exists", and
 // started reconfiguring the first tenant's machine.
 //
@@ -162,17 +166,17 @@ func TestGetVMID_NameLookup_Adopts(t *testing.T) {
 // once and the VMID is carried in status from then on.
 func TestGetVMID_NameLookup_IsNotCachedAcrossRenames(t *testing.T) {
 	f := newFakeProxmox(t, map[string][]fakeVM{
-		testNodePVE1: {{VMID: 100, Name: "web", Status: VirtualMachineRunningState}},
+		testNodePVE1: {{VMID: 100, Name: testVMNameWeb, Status: VirtualMachineRunningState}},
 	})
 	pc := f.client()
 
-	if _, err := pc.getVMID(NamedVMRef("web", testNodePVE1)); err != nil {
+	if _, err := pc.getVMID(NamedVMRef(testVMNameWeb, testNodePVE1)); err != nil {
 		t.Fatalf("first lookup: %v", err)
 	}
 
 	f.rename(testNodePVE1, 100, "renamed-in-proxmox")
 
-	vmID, err := pc.getVMID(NamedVMRef("web", testNodePVE1))
+	vmID, err := pc.getVMID(NamedVMRef(testVMNameWeb, testNodePVE1))
 	if err == nil {
 		t.Fatalf("second lookup of \"web\" returned vmid %d after the machine was renamed; "+
 			"want not-found, since answering with 100 hands over another tenant's machine", vmID)
