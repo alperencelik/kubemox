@@ -16,9 +16,9 @@ import (
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 )
 
-// Ці рядки повторюються в тестах пакета достатньо, щоб goconst рахував їх
-// дубльованими літералами. Імена з префіксом test — пакет спільний із
-// тестами інших гілок форку.
+// These strings repeat often enough across the package's tests for goconst to
+// call them duplicated literals. The test prefix keeps them from colliding with
+// fixtures other test files in this package declare.
 const (
 	testTokenID  = "root@pam!kubemox"
 	testUser     = "root@pam"

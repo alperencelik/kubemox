@@ -30,8 +30,8 @@ import (
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 )
 
-// goconst рахує однакові літерали в межах пакета; ці три повторюються
-// в кожному сценарії з обліковими даними.
+// goconst counts identical literals per package; these three appear in every
+// case that carries credentials.
 const (
 	testConnUser   = "root@pam"
 	testConnToken  = "root@pam!t"
