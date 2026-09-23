@@ -32,9 +32,9 @@ func TestNewProxmoxClientFromRef(t *testing.T) {
 			ResourceVersion: "1",
 		},
 		Spec: proxmoxv1alpha1.ProxmoxConnectionSpec{
-			Endpoint: "https://localhost:8006",
+			Endpoint: testLocalURL,
 			Username: "root",
-			Password: "password",
+			Password: testPassword,
 		},
 	}
 
@@ -119,7 +119,7 @@ func TestNewProxmoxClientFromRef_APITokenNoTTL(t *testing.T) {
 			ResourceVersion: "1",
 		},
 		Spec: proxmoxv1alpha1.ProxmoxConnectionSpec{
-			Endpoint: "https://localhost:8006",
+			Endpoint: testLocalURL,
 			TokenID:  "root@pam!mytoken",
 			Secret:   "some-secret-value",
 		},
@@ -164,7 +164,7 @@ func TestNewProxmoxClientFromRef_SecretRefRefreshes(t *testing.T) {
 	conn := &proxmoxv1alpha1.ProxmoxConnection{
 		ObjectMeta: metav1.ObjectMeta{Name: name, ResourceVersion: "1"},
 		Spec: proxmoxv1alpha1.ProxmoxConnectionSpec{
-			Endpoint: "https://localhost:8006", TokenID: "root@pam!kubemox", SecretFrom: secretKeyRef("token"),
+			Endpoint: testLocalURL, TokenID: testTokenID, SecretFrom: secretKeyRef("token"),
 		},
 	}
 	cl := credentialsClient(t, conn, credentialsSecret(map[string]string{"token": "first-token"}))

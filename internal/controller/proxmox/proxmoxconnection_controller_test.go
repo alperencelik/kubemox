@@ -30,6 +30,14 @@ import (
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 )
 
+// goconst рахує однакові літерали в межах пакета; ці три повторюються
+// в кожному сценарії з обліковими даними.
+const (
+	testConnUser   = "root@pam"
+	testConnToken  = "root@pam!t"
+	testConnSecret = "password"
+)
+
 var _ = Describe("ProxmoxConnection Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
@@ -114,30 +122,30 @@ var _ = Describe("ProxmoxConnection credential validation", func() {
 			Expect(errors.IsInvalid(err)).To(BeTrue(), "expected a validation error, got: %v", err)
 		},
 		Entry("username with password", "v-user-password",
-			proxmoxv1alpha1.ProxmoxConnectionSpec{Username: "root@pam", Password: "p"}, true),
+			proxmoxv1alpha1.ProxmoxConnectionSpec{Username: testConnUser, Password: "p"}, true),
 		Entry("username with passwordFrom", "v-user-passwordfrom",
-			proxmoxv1alpha1.ProxmoxConnectionSpec{Username: "root@pam", PasswordFrom: secretRef("password")}, true),
+			proxmoxv1alpha1.ProxmoxConnectionSpec{Username: testConnUser, PasswordFrom: secretRef(testConnSecret)}, true),
 		Entry("tokenID with secret", "v-token-secret",
-			proxmoxv1alpha1.ProxmoxConnectionSpec{TokenID: "root@pam!t", Secret: "s"}, true),
+			proxmoxv1alpha1.ProxmoxConnectionSpec{TokenID: testConnToken, Secret: "s"}, true),
 		Entry("tokenID with secretFrom", "v-token-secretfrom",
-			proxmoxv1alpha1.ProxmoxConnectionSpec{TokenID: "root@pam!t", SecretFrom: secretRef("token")}, true),
+			proxmoxv1alpha1.ProxmoxConnectionSpec{TokenID: testConnToken, SecretFrom: secretRef("token")}, true),
 
 		Entry("password and passwordFrom together", "x-password-and-passwordfrom",
 			proxmoxv1alpha1.ProxmoxConnectionSpec{
-				Username: "root@pam", Password: "p", PasswordFrom: secretRef("password"),
+				Username: testConnUser, Password: "p", PasswordFrom: secretRef(testConnSecret),
 			}, false),
 		Entry("secret and secretFrom together", "x-secret-and-secretfrom",
 			proxmoxv1alpha1.ProxmoxConnectionSpec{
-				TokenID: "root@pam!t", Secret: "s", SecretFrom: secretRef("token"),
+				TokenID: testConnToken, Secret: "s", SecretFrom: secretRef("token"),
 			}, false),
 		Entry("tokenID with neither secret nor secretFrom", "x-token-only",
-			proxmoxv1alpha1.ProxmoxConnectionSpec{TokenID: "root@pam!t"}, false),
+			proxmoxv1alpha1.ProxmoxConnectionSpec{TokenID: testConnToken}, false),
 		Entry("passwordFrom without a username", "x-passwordfrom-no-user",
-			proxmoxv1alpha1.ProxmoxConnectionSpec{PasswordFrom: secretRef("password")}, false),
+			proxmoxv1alpha1.ProxmoxConnectionSpec{PasswordFrom: secretRef(testConnSecret)}, false),
 		Entry("both authentication methods at once", "x-both-methods",
 			proxmoxv1alpha1.ProxmoxConnectionSpec{
-				Username: "root@pam", PasswordFrom: secretRef("password"),
-				TokenID: "root@pam!t", SecretFrom: secretRef("token"),
+				Username: testConnUser, PasswordFrom: secretRef(testConnSecret),
+				TokenID: testConnToken, SecretFrom: secretRef("token"),
 			}, false),
 	)
 })

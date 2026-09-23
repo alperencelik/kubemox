@@ -16,6 +16,17 @@ import (
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 )
 
+// Ці рядки повторюються в тестах пакета достатньо, щоб goconst рахував їх
+// дубльованими літералами. Імена з префіксом test — пакет спільний із
+// тестами інших гілок форку.
+const (
+	testTokenID  = "root@pam!kubemox"
+	testUser     = "root@pam"
+	testPassword = "password"
+	testPVEURL   = "https://pve:8006"
+	testLocalURL = "https://localhost:8006"
+)
+
 const (
 	credNamespace  = "kubemox-system"
 	credSecretName = "proxmox-credentials"
@@ -57,9 +68,9 @@ func assertNoLeak(t *testing.T, err error) {
 // TestResolveCredentials_PasswordFromSecret is the point of passwordFrom: the
 // password stored in the Secret must reach the credentials.
 func TestResolveCredentials_PasswordFromSecret(t *testing.T) {
-	cl := credentialsClient(t, credentialsSecret(map[string]string{"password": credSecretValue}))
+	cl := credentialsClient(t, credentialsSecret(map[string]string{testPassword: credSecretValue}))
 	spec := &proxmoxv1alpha1.ProxmoxConnectionSpec{
-		Endpoint: "https://pve:8006", Username: "root@pam", PasswordFrom: secretKeyRef("password"),
+		Endpoint: testPVEURL, Username: testUser, PasswordFrom: secretKeyRef(testPassword),
 	}
 
 	got, err := ResolveCredentials(context.Background(), cl, spec)
@@ -75,7 +86,7 @@ func TestResolveCredentials_PasswordFromSecret(t *testing.T) {
 func TestResolveCredentials_TokenSecretFromSecret(t *testing.T) {
 	cl := credentialsClient(t, credentialsSecret(map[string]string{"token": credSecretValue}))
 	spec := &proxmoxv1alpha1.ProxmoxConnectionSpec{
-		Endpoint: "https://pve:8006", TokenID: "root@pam!kubemox", SecretFrom: secretKeyRef("token"),
+		Endpoint: testPVEURL, TokenID: testTokenID, SecretFrom: secretKeyRef("token"),
 	}
 
 	got, err := ResolveCredentials(context.Background(), cl, spec)
@@ -92,7 +103,7 @@ func TestResolveCredentials_TokenSecretFromSecret(t *testing.T) {
 func TestResolveCredentials_InlineOnly(t *testing.T) {
 	cl := credentialsClient(t)
 	spec := &proxmoxv1alpha1.ProxmoxConnectionSpec{
-		Endpoint: "https://pve:8006", TokenID: "root@pam!kubemox", Secret: "inline-token",
+		Endpoint: testPVEURL, TokenID: testTokenID, Secret: "inline-token",
 	}
 
 	got, err := ResolveCredentials(context.Background(), cl, spec)
@@ -110,7 +121,7 @@ func TestResolveCredentials_InlineOnly(t *testing.T) {
 func TestResolveCredentials_MissingSecret(t *testing.T) {
 	cl := credentialsClient(t)
 	spec := &proxmoxv1alpha1.ProxmoxConnectionSpec{
-		Endpoint: "https://pve:8006", TokenID: "root@pam!kubemox", SecretFrom: secretKeyRef("token"),
+		Endpoint: testPVEURL, TokenID: testTokenID, SecretFrom: secretKeyRef("token"),
 	}
 
 	_, err := ResolveCredentials(context.Background(), cl, spec)
@@ -127,7 +138,7 @@ func TestResolveCredentials_MissingSecret(t *testing.T) {
 func TestResolveCredentials_MissingKey(t *testing.T) {
 	cl := credentialsClient(t, credentialsSecret(map[string]string{"other": credSecretValue}))
 	spec := &proxmoxv1alpha1.ProxmoxConnectionSpec{
-		Endpoint: "https://pve:8006", TokenID: "root@pam!kubemox", SecretFrom: secretKeyRef("token"),
+		Endpoint: testPVEURL, TokenID: testTokenID, SecretFrom: secretKeyRef("token"),
 	}
 
 	_, err := ResolveCredentials(context.Background(), cl, spec)
@@ -143,9 +154,9 @@ func TestResolveCredentials_MissingKey(t *testing.T) {
 // TestResolveCredentials_EmptyValue treats an empty value as missing: an empty
 // password is never a working credential.
 func TestResolveCredentials_EmptyValue(t *testing.T) {
-	cl := credentialsClient(t, credentialsSecret(map[string]string{"password": ""}))
+	cl := credentialsClient(t, credentialsSecret(map[string]string{testPassword: ""}))
 	spec := &proxmoxv1alpha1.ProxmoxConnectionSpec{
-		Endpoint: "https://pve:8006", Username: "root@pam", PasswordFrom: secretKeyRef("password"),
+		Endpoint: testPVEURL, Username: testUser, PasswordFrom: secretKeyRef(testPassword),
 	}
 
 	_, err := ResolveCredentials(context.Background(), cl, spec)
@@ -161,10 +172,10 @@ func TestResolveCredentials_EmptyValue(t *testing.T) {
 // rule too; this is the same guarantee for objects that reach the resolver
 // some other way, such as a CRD installed from an older chart.
 func TestResolveCredentials_InlineAndReferenceBoth(t *testing.T) {
-	cl := credentialsClient(t, credentialsSecret(map[string]string{"password": credSecretValue}))
+	cl := credentialsClient(t, credentialsSecret(map[string]string{testPassword: credSecretValue}))
 	spec := &proxmoxv1alpha1.ProxmoxConnectionSpec{
-		Endpoint: "https://pve:8006", Username: "root@pam",
-		Password: "inline", PasswordFrom: secretKeyRef("password"),
+		Endpoint: testPVEURL, Username: testUser,
+		Password: "inline", PasswordFrom: secretKeyRef(testPassword),
 	}
 
 	_, err := ResolveCredentials(context.Background(), cl, spec)
