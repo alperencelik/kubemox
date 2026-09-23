@@ -19,8 +19,8 @@ const testNodePVE1 = "pve1"
 // identity there is the VMID, not the name - so kubemox has to survive it.
 func twoNodesSharingAName() map[string][]fakeVM {
 	return map[string][]fakeVM{
-		testNodePVE1: {{VMID: 100, Name: "web", Status: "running"}},
-		"pve2":       {{VMID: 200, Name: "web", Status: "running"}},
+		testNodePVE1: {{VMID: 100, Name: "web", Status: VirtualMachineRunningState}},
+		"pve2":       {{VMID: 200, Name: "web", Status: VirtualMachineRunningState}},
 	}
 }
 
@@ -47,7 +47,7 @@ func TestFakeProxmox_ServesInventory(t *testing.T) {
 // proceeds with a zero VMID.
 func TestGetVMID_NotFound_ReturnsError(t *testing.T) {
 	pc := newFakeProxmox(t, map[string][]fakeVM{
-		testNodePVE1: {{VMID: 100, Name: "web", Status: "running"}},
+		testNodePVE1: {{VMID: 100, Name: "web", Status: VirtualMachineRunningState}},
 	}).client()
 
 	vmID, err := pc.getVMID(NamedVMRef("no-such-vm", testNodePVE1))
@@ -113,7 +113,7 @@ func TestVMRefFromCR_UsesSpecNameAndObservedID(t *testing.T) {
 // returning 100 would also happen by accident if the name were resolved.
 func TestGetVMID_KnownID_SkipsNameLookup(t *testing.T) {
 	f := newFakeProxmox(t, map[string][]fakeVM{
-		testNodePVE1: {{VMID: 100, Name: "renamed-in-proxmox", Status: "running"}},
+		testNodePVE1: {{VMID: 100, Name: "renamed-in-proxmox", Status: VirtualMachineRunningState}},
 	})
 	pc := f.client()
 
@@ -135,7 +135,7 @@ func TestGetVMID_KnownID_SkipsNameLookup(t *testing.T) {
 // never been observed, or was created outside kubemox, is still found by name.
 func TestGetVMID_NameLookup_Adopts(t *testing.T) {
 	f := newFakeProxmox(t, map[string][]fakeVM{
-		testNodePVE1: {{VMID: 100, Name: "web", Status: "running"}},
+		testNodePVE1: {{VMID: 100, Name: "web", Status: VirtualMachineRunningState}},
 	})
 	pc := f.client()
 
@@ -162,7 +162,7 @@ func TestGetVMID_NameLookup_Adopts(t *testing.T) {
 // once and the VMID is carried in status from then on.
 func TestGetVMID_NameLookup_IsNotCachedAcrossRenames(t *testing.T) {
 	f := newFakeProxmox(t, map[string][]fakeVM{
-		testNodePVE1: {{VMID: 100, Name: "web", Status: "running"}},
+		testNodePVE1: {{VMID: 100, Name: "web", Status: VirtualMachineRunningState}},
 	})
 	pc := f.client()
 
