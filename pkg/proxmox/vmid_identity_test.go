@@ -10,12 +10,16 @@ import (
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 )
 
+// Вузол, який віддає тестовий сервер: goconst інакше рахує його десяток
+// входжень як дубльований літерал.
+const testNodePVE1 = "pve1"
+
 // twoNodesSharingAName is the shape that matters: two different machines, on
 // two different nodes, that a human gave the same name. Proxmox allows it -
 // identity there is the VMID, not the name - so kubemox has to survive it.
 func twoNodesSharingAName() map[string][]fakeVM {
 	return map[string][]fakeVM{
-		"pve1": {{VMID: 100, Name: "web", Status: "running"}},
+		testNodePVE1: {{VMID: 100, Name: "web", Status: "running"}},
 		"pve2": {{VMID: 200, Name: "web", Status: "running"}},
 	}
 }
@@ -30,7 +34,7 @@ func TestFakeProxmox_ServesInventory(t *testing.T) {
 		t.Fatalf("GetNodes: %v", err)
 	}
 	sort.Strings(nodes)
-	if len(nodes) != 2 || nodes[0] != "pve1" || nodes[1] != "pve2" {
+	if len(nodes) != 2 || nodes[0] != testNodePVE1 || nodes[1] != "pve2" {
 		t.Fatalf("GetNodes = %v, want [pve1 pve2]", nodes)
 	}
 }
@@ -43,10 +47,10 @@ func TestFakeProxmox_ServesInventory(t *testing.T) {
 // proceeds with a zero VMID.
 func TestGetVMID_NotFound_ReturnsError(t *testing.T) {
 	pc := newFakeProxmox(t, map[string][]fakeVM{
-		"pve1": {{VMID: 100, Name: "web", Status: "running"}},
+		testNodePVE1: {{VMID: 100, Name: "web", Status: "running"}},
 	}).client()
 
-	vmID, err := pc.getVMID(NamedVMRef("no-such-vm", "pve1"))
+	vmID, err := pc.getVMID(NamedVMRef("no-such-vm", testNodePVE1))
 	if err == nil {
 		t.Fatalf("getVMID(no-such-vm) = (%d, nil), want an error saying it was not found", vmID)
 	}
@@ -84,7 +88,7 @@ func TestVMRefFromCR_UsesSpecNameAndObservedID(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "db", Namespace: "team-a"},
 		Spec: proxmoxv1alpha1.VirtualMachineSpec{
 			Name:     "database",
-			NodeName: "pve1",
+			NodeName: testNodePVE1,
 		},
 	}
 
@@ -109,12 +113,12 @@ func TestVMRefFromCR_UsesSpecNameAndObservedID(t *testing.T) {
 // returning 100 would also happen by accident if the name were resolved.
 func TestGetVMID_KnownID_SkipsNameLookup(t *testing.T) {
 	f := newFakeProxmox(t, map[string][]fakeVM{
-		"pve1": {{VMID: 100, Name: "renamed-in-proxmox", Status: "running"}},
+		testNodePVE1: {{VMID: 100, Name: "renamed-in-proxmox", Status: "running"}},
 	})
 	pc := f.client()
 
 	// The reference still carries the name the machine had when it was created.
-	ref := VMRef{ID: 100, Name: "web", Node: "pve1"}
+	ref := VMRef{ID: 100, Name: "web", Node: testNodePVE1}
 	vmID, err := pc.getVMID(ref)
 	if err != nil {
 		t.Fatalf("getVMID: %v", err)
@@ -131,11 +135,11 @@ func TestGetVMID_KnownID_SkipsNameLookup(t *testing.T) {
 // never been observed, or was created outside kubemox, is still found by name.
 func TestGetVMID_NameLookup_Adopts(t *testing.T) {
 	f := newFakeProxmox(t, map[string][]fakeVM{
-		"pve1": {{VMID: 100, Name: "web", Status: "running"}},
+		testNodePVE1: {{VMID: 100, Name: "web", Status: "running"}},
 	})
 	pc := f.client()
 
-	vmID, err := pc.getVMID(NamedVMRef("web", "pve1"))
+	vmID, err := pc.getVMID(NamedVMRef("web", testNodePVE1))
 	if err != nil {
 		t.Fatalf("getVMID: %v", err)
 	}
@@ -158,17 +162,17 @@ func TestGetVMID_NameLookup_Adopts(t *testing.T) {
 // once and the VMID is carried in status from then on.
 func TestGetVMID_NameLookup_IsNotCachedAcrossRenames(t *testing.T) {
 	f := newFakeProxmox(t, map[string][]fakeVM{
-		"pve1": {{VMID: 100, Name: "web", Status: "running"}},
+		testNodePVE1: {{VMID: 100, Name: "web", Status: "running"}},
 	})
 	pc := f.client()
 
-	if _, err := pc.getVMID(NamedVMRef("web", "pve1")); err != nil {
+	if _, err := pc.getVMID(NamedVMRef("web", testNodePVE1)); err != nil {
 		t.Fatalf("first lookup: %v", err)
 	}
 
-	f.rename("pve1", 100, "renamed-in-proxmox")
+	f.rename(testNodePVE1, 100, "renamed-in-proxmox")
 
-	vmID, err := pc.getVMID(NamedVMRef("web", "pve1"))
+	vmID, err := pc.getVMID(NamedVMRef("web", testNodePVE1))
 	if err == nil {
 		t.Fatalf("second lookup of \"web\" returned vmid %d after the machine was renamed; "+
 			"want not-found, since answering with 100 hands over another tenant's machine", vmID)
