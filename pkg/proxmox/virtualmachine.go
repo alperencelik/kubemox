@@ -99,7 +99,9 @@ func (pc *ProxmoxClient) CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine
 		return &NotFoundError{Message: modifiedErr}
 	}
 	var CloneOptions proxmox.VirtualMachineCloneOptions
-	CloneOptions.Full = 1
+	// A linked clone lives on the template's storage by definition, so no
+	// storage is passed here in either mode.
+	CloneOptions.Full = vm.Spec.CloneMode.CloneFlag()
 	CloneOptions.Name = vm.Name
 	CloneOptions.Target = nodeName
 	log.Log.Info(fmt.Sprintf("Creating VM from template: %s", templateVMName))

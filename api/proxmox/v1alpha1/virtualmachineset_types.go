@@ -62,6 +62,12 @@ type VirtualMachineSetSpec struct {
 	// AdditionalConfig is the additional configuration of the VM
 	// +kubebuilder:validation:Optional
 	AdditionalConfig map[string]string `json:"additionalConfig,omitempty"`
+	// CloneMode is passed to every VirtualMachine this set owns. Linked clones
+	// of one template share its base snapshot, so a set of them costs about as
+	// much disk as a single full clone.
+	// +kubebuilder:validation:Enum=Full;Linked
+	// +kubebuilder:default:=Full
+	CloneMode CloneMode `json:"cloneMode,omitempty"`
 	// +kubebuilder:validation:Required
 	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 	// PCIDevices is the PCI devices configuration

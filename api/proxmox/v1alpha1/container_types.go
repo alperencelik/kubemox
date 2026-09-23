@@ -53,6 +53,12 @@ type ContainerSpec struct {
 	// If not set, it defaults to true.
 	// +kubebuilder:default:=true
 	EnableAutoStart bool `json:"enableAutoStart,omitempty"`
+	// CloneMode selects how the template container is cloned: Full copies it,
+	// Linked references the template's base snapshot and pins the template for
+	// as long as the clone exists.
+	// +kubebuilder:validation:Enum=Full;Linked
+	// +kubebuilder:default:=Full
+	CloneMode CloneMode `json:"cloneMode,omitempty"`
 	// +kubebuilder:validation:Required
 	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 }
