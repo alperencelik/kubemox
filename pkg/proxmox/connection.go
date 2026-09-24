@@ -34,7 +34,6 @@ type CachedClient struct {
 	ResourceVersion string
 	CreatedAt       time.Time
 	UsesSession     bool // true when username/password auth is used (session tickets expire)
-	UsesSecretRef   bool // true when a credential is read from a Secret (it may be rotated)
 }
 
 type NodeCache struct {
@@ -177,9 +176,12 @@ func NewProxmoxClientFromRef(ctx context.Context, c cc.Client,
 		return cached.Client, nil
 	}
 
-	// Create new client if not cached, ResourceVersion changed, or a TTL expired.
-	// Secrets are only read here, when a client is (re)built - a cache hit costs
-	// no API call.
+	// Create new client if not cached, the ResourceVersion changed, or the
+	// session TTL expired. Credentials read from a Secret ride on the
+	// ResourceVersion: the controller records the Secret version it read in
+	// status.observedSecrets, and that write changes the object. Secrets are
+	// only read here, when a client is (re)built - a cache hit costs no API
+	// call.
 	creds, err := ResolveCredentials(ctx, c, &conn.Spec)
 	if err != nil {
 		return nil, fmt.Errorf("resolving credentials for ProxmoxConnection %q: %w", ref.Name, err)
@@ -192,26 +194,19 @@ func NewProxmoxClientFromRef(ctx context.Context, c cc.Client,
 		CreatedAt:       time.Now(),
 		// Username auth uses session tickets, whether the password is inline or
 		// comes from a Secret.
-		UsesSession:   conn.Spec.Username != "",
-		UsesSecretRef: usesSecretRef(&conn.Spec),
+		UsesSession: conn.Spec.Username != "",
 	}
 
 	return client, nil
 }
 
 // cachedClientFresh reports whether a cached client may still be used. Session
-// tickets from username/password auth expire, and credentials read from a
-// Secret may have been rotated, so both are rebuilt periodically; inline API
-// tokens are not.
+// tickets from username/password auth expire, so those clients are rebuilt
+// periodically; API tokens are not. Rotation of a Secret-backed credential is
+// not a matter of time here - it reaches this cache as a changed
+// ResourceVersion of the ProxmoxConnection.
 func cachedClientFresh(cached *CachedClient) bool {
-	age := time.Since(cached.CreatedAt)
-	if cached.UsesSession && age >= clientCacheTTL {
-		return false
-	}
-	if cached.UsesSecretRef && age >= secretRefCacheTTL {
-		return false
-	}
-	return true
+	return !cached.UsesSession || time.Since(cached.CreatedAt) < clientCacheTTL
 }
 
 func (pc *ProxmoxClient) setCachedVMID(nodeName, vmName string, vmID int) {

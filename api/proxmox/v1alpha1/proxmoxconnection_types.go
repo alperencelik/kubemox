@@ -38,6 +38,17 @@ type SecretKeyReference struct {
 	Key string `json:"key"`
 }
 
+// ObservedSecret is a Secret a connection reads a credential from, together
+// with the resourceVersion it had when that credential was last read.
+type ObservedSecret struct {
+	// Name of the Secret.
+	Name string `json:"name"`
+	// Namespace of the Secret.
+	Namespace string `json:"namespace"`
+	// ResourceVersion the Secret had when its credential was read.
+	ResourceVersion string `json:"resourceVersion"`
+}
+
 // ProxmoxConnectionSpec defines the desired state of ProxmoxConnection.
 // +kubebuilder:validation:XValidation:rule="(has(self.username) && (has(self.password) != has(self.passwordFrom)) && !has(self.tokenID) && !has(self.secret) && !has(self.secretFrom)) || (!has(self.username) && !has(self.password) && !has(self.passwordFrom) && has(self.tokenID) && (has(self.secret) != has(self.secretFrom)))",message="Specify either username with one of password or passwordFrom, or tokenID with one of secret or secretFrom"
 //
@@ -73,6 +84,15 @@ type ProxmoxConnectionStatus struct {
 	Conditions       []metav1.Condition `json:"conditions,omitempty"`
 	ConnectionStatus string             `json:"connectionStatus,omitempty"`
 	Version          string             `json:"version,omitempty"`
+	// ObservedSecrets are the Secrets this connection reads credentials from,
+	// each with the resourceVersion the controller last read them at. A value
+	// that differs from the Secret's current resourceVersion means the
+	// credential was rotated and has not been picked up yet.
+	// +listType=map
+	// +listMapKey=namespace
+	// +listMapKey=name
+	// +optional
+	ObservedSecrets []ObservedSecret `json:"observedSecrets,omitempty"`
 }
 
 // +kubebuilder:object:root=true

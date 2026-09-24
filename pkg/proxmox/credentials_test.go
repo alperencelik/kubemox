@@ -2,6 +2,7 @@ package proxmox
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -40,7 +41,11 @@ func credentialsClient(t *testing.T, objs ...client.Object) client.Client {
 	scheme := runtime.NewScheme()
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(proxmoxv1alpha1.AddToScheme(scheme))
-	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
+	// The real API serves status as a subresource; without this the fake client
+	// rejects the status writes the controller makes.
+	return fake.NewClientBuilder().WithScheme(scheme).
+		WithStatusSubresource(&proxmoxv1alpha1.ProxmoxConnection{}).
+		WithObjects(objs...).Build()
 }
 
 func credentialsSecret(data map[string]string) *corev1.Secret {
@@ -186,4 +191,72 @@ func TestResolveCredentials_InlineAndReferenceBoth(t *testing.T) {
 		t.Fatalf("error %q does not name the conflicting fields", err)
 	}
 	assertNoLeak(t, err)
+}
+
+// TestResolveCredentials_ObservedSecrets pins what the controller publishes in
+// the status: the resourceVersion of every Secret that was read, named by
+// namespace and name. Comparing that value is what replaced the refresh
+// interval, so it has to come from the same read as the credential itself.
+func TestResolveCredentials_ObservedSecrets(t *testing.T) {
+	ctx := context.Background()
+	cl := credentialsClient(t, credentialsSecret(map[string]string{"token": credSecretValue}))
+
+	live := &corev1.Secret{}
+	if err := cl.Get(ctx, client.ObjectKey{Namespace: credNamespace, Name: credSecretName}, live); err != nil {
+		t.Fatalf("read the fixture Secret: %v", err)
+	}
+
+	creds, err := ResolveCredentials(ctx, cl, &proxmoxv1alpha1.ProxmoxConnectionSpec{
+		Endpoint: testPVEURL, TokenID: testTokenID, SecretFrom: secretKeyRef("token"),
+	})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	want := []proxmoxv1alpha1.ObservedSecret{{
+		Name: credSecretName, Namespace: credNamespace, ResourceVersion: live.ResourceVersion,
+	}}
+	if !reflect.DeepEqual(creds.ObservedSecrets, want) {
+		t.Fatalf("observed secrets: got %v, want %v", creds.ObservedSecrets, want)
+	}
+}
+
+// TestResolveCredentials_ObservedSecretsInlineOnly keeps the field empty for
+// connections that carry their credentials inline. A value there would claim a
+// Secret was read, and rotation of a Secret that does not exist.
+func TestResolveCredentials_ObservedSecretsInlineOnly(t *testing.T) {
+	cl := credentialsClient(t)
+	creds, err := ResolveCredentials(context.Background(), cl, &proxmoxv1alpha1.ProxmoxConnectionSpec{
+		Endpoint: testPVEURL, TokenID: testTokenID, Secret: credSecretValue,
+	})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if len(creds.ObservedSecrets) != 0 {
+		t.Fatalf("inline credentials must observe no Secret, got %v", creds.ObservedSecrets)
+	}
+}
+
+// TestResolveCredentials_ObservedSecretsDeduplicated covers a spec whose two
+// references name the same Secret: the status lists it once, so the list stays
+// a set keyed by namespace and name.
+func TestResolveCredentials_ObservedSecretsDeduplicated(t *testing.T) {
+	ctx := context.Background()
+	cl := credentialsClient(t, credentialsSecret(map[string]string{
+		"password": credSecretValue, "token": credSecretValue,
+	}))
+
+	creds, err := ResolveCredentials(ctx, cl, &proxmoxv1alpha1.ProxmoxConnectionSpec{
+		Endpoint:     testPVEURL,
+		Username:     testUser,
+		PasswordFrom: secretKeyRef("password"),
+		TokenID:      testTokenID,
+		SecretFrom:   secretKeyRef("token"),
+	})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if len(creds.ObservedSecrets) != 1 {
+		t.Fatalf("one Secret read twice must be listed once, got %v", creds.ObservedSecrets)
+	}
 }

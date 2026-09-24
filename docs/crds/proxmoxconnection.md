@@ -55,7 +55,17 @@ For username authentication use `username` with `passwordFrom` in the same way. 
 
 **Permissions.** kubemox reads these Secrets with `get` only. The Helm chart creates a Role granting that in each namespace listed in `rbac.secretNamespaces`, and in the release namespace when the list is empty - so keep the Secrets there, or list their namespace. The kustomize manifests in `config/rbac` grant `get` on secrets cluster-wide, since a generated role cannot name namespaces chosen at install time.
 
-**Rotation.** A client built from a Secret is rebuilt at most five minutes after the Secret changes, without touching the `ProxmoxConnection`. The connection's `Ready` condition is re-evaluated when its spec changes, so after rotating a Secret it may show the previous result until then.
+**Rotation.** The connection is reconciled once a minute, and each pass re-reads the referenced Secrets and records the version it read:
+
+```yaml
+status:
+  observedSecrets:
+    - name: proxmox-credentials
+      namespace: kubemox-system
+      resourceVersion: "184623"
+```
+
+Compare that with the Secret's own `metadata.resourceVersion` to see whether a rotation has been picked up. A rotated credential reaches Proxmox clients within that minute: recording the new version changes the `ProxmoxConnection`, and every client built from it is rebuilt. The `Ready` condition is re-evaluated on the same pass, so a credential that no longer works surfaces there and not only in the logs.
 
 ## Referencing your ProxmoxConnection
 

@@ -18,6 +18,9 @@ package proxmox
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -25,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
@@ -148,4 +152,128 @@ var _ = Describe("ProxmoxConnection credential validation", func() {
 				TokenID: testConnToken, SecretFrom: secretRef("token"),
 			}, false),
 	)
+})
+
+var _ = Describe("ProxmoxConnection Secret rotation", func() {
+	ctx := context.Background()
+
+	const (
+		connName   = "rotation-conn"
+		secretName = "rotation-credentials"
+		secretNS   = "default"
+		secretKey  = "token"
+	)
+	connKey := types.NamespacedName{Name: connName}
+	secretKeyName := types.NamespacedName{Name: secretName, Namespace: secretNS}
+
+	var (
+		server     *httptest.Server
+		reconciler *ProxmoxConnectionReconciler
+	)
+
+	// A Proxmox that answers /version is enough: the controller only asks for
+	// the version, and the point of these cases is what it writes afterwards.
+	BeforeEach(func() {
+		server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":{"version":"8.4.1","release":"8.4","repoid":"test"}}`))
+		}))
+
+		Expect(k8sClient.Create(ctx, &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: secretNS},
+			Data:       map[string][]byte{secretKey: []byte("first-token")},
+		})).To(Succeed())
+
+		Expect(k8sClient.Create(ctx, &proxmoxv1alpha1.ProxmoxConnection{
+			ObjectMeta: metav1.ObjectMeta{Name: connName},
+			Spec: proxmoxv1alpha1.ProxmoxConnectionSpec{
+				Endpoint: server.URL + "/api2/json",
+				TokenID:  testConnToken,
+				SecretFrom: &proxmoxv1alpha1.SecretKeyReference{
+					Name: secretName, Namespace: secretNS, Key: secretKey,
+				},
+			},
+		})).To(Succeed())
+
+		reconciler = &ProxmoxConnectionReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+	})
+
+	AfterEach(func() {
+		server.Close()
+		conn := &proxmoxv1alpha1.ProxmoxConnection{}
+		Expect(k8sClient.Get(ctx, connKey, conn)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, conn)).To(Succeed())
+		secret := &corev1.Secret{}
+		Expect(k8sClient.Get(ctx, secretKeyName, secret)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+	})
+
+	reconcileOnce := func() reconcile.Result {
+		GinkgoHelper()
+		res, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: connKey})
+		Expect(err).NotTo(HaveOccurred())
+		return res
+	}
+
+	observedSecrets := func() []proxmoxv1alpha1.ObservedSecret {
+		GinkgoHelper()
+		conn := &proxmoxv1alpha1.ProxmoxConnection{}
+		Expect(k8sClient.Get(ctx, connKey, conn)).To(Succeed())
+		return conn.Status.ObservedSecrets
+	}
+
+	secretResourceVersion := func() string {
+		GinkgoHelper()
+		secret := &corev1.Secret{}
+		Expect(k8sClient.Get(ctx, secretKeyName, secret)).To(Succeed())
+		return secret.ResourceVersion
+	}
+
+	It("publishes the resourceVersion of the Secret it read, and asks to be woken again", func() {
+		res := reconcileOnce()
+
+		// Nothing else wakes this controller: its event filter passes only spec
+		// changes, so without the requeue a rotated Secret is never noticed. The
+		// interval is written out here rather than taken from the constant - a
+		// comparison against the constant would hold whatever it is changed to.
+		Expect(res.RequeueAfter).To(Equal(time.Minute))
+		Expect(observedSecrets()).To(Equal([]proxmoxv1alpha1.ObservedSecret{{
+			Name: secretName, Namespace: secretNS, ResourceVersion: secretResourceVersion(),
+		}}))
+
+		conn := &proxmoxv1alpha1.ProxmoxConnection{}
+		Expect(k8sClient.Get(ctx, connKey, conn)).To(Succeed())
+		Expect(conn.Status.Version).To(Equal("8.4.1"))
+	})
+
+	It("moves the published version when the Secret is rotated", func() {
+		reconcileOnce()
+		before := observedSecrets()
+
+		secret := &corev1.Secret{}
+		Expect(k8sClient.Get(ctx, secretKeyName, secret)).To(Succeed())
+		secret.Data[secretKey] = []byte("rotated-token")
+		Expect(k8sClient.Update(ctx, secret)).To(Succeed())
+
+		reconcileOnce()
+		after := observedSecrets()
+		Expect(after).To(HaveLen(1))
+		Expect(after[0].ResourceVersion).To(Equal(secretResourceVersion()))
+		Expect(after[0].ResourceVersion).NotTo(Equal(before[0].ResourceVersion))
+	})
+
+	It("writes nothing when neither the Secret nor the connection changed", func() {
+		reconcileOnce()
+		conn := &proxmoxv1alpha1.ProxmoxConnection{}
+		Expect(k8sClient.Get(ctx, connKey, conn)).To(Succeed())
+		settled := conn.ResourceVersion
+
+		// A minute apart forever, so a status write on every pass would be a
+		// write to etcd every minute per connection - and would rebuild every
+		// cached Proxmox client with it.
+		reconcileOnce()
+		reconcileOnce()
+		Expect(k8sClient.Get(ctx, connKey, conn)).To(Succeed())
+		Expect(conn.ResourceVersion).To(Equal(settled))
+	})
 })
