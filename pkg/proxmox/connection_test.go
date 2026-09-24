@@ -166,10 +166,10 @@ func TestNewProxmoxClientFromRef_SecretRefFollowsConnection(t *testing.T) {
 	conn := &proxmoxv1alpha1.ProxmoxConnection{
 		ObjectMeta: metav1.ObjectMeta{Name: name, ResourceVersion: "1"},
 		Spec: proxmoxv1alpha1.ProxmoxConnectionSpec{
-			Endpoint: testLocalURL, TokenID: testTokenID, SecretFrom: secretKeyRef("token"),
+			Endpoint: testLocalURL, TokenID: testTokenID, SecretFrom: secretKeyRef(credTokenKey),
 		},
 	}
-	cl := credentialsClient(t, conn, credentialsSecret(map[string]string{"token": "first-token"}))
+	cl := credentialsClient(t, conn, credentialsSecret(map[string]string{credTokenKey: "first-token"}))
 	ref := &corev1.LocalObjectReference{Name: name}
 
 	// observe is what the controller does once it has read the Secret: it
@@ -214,7 +214,7 @@ func TestNewProxmoxClientFromRef_SecretRefFollowsConnection(t *testing.T) {
 	if err := cl.Get(ctx, client.ObjectKey{Namespace: credNamespace, Name: credSecretName}, live); err != nil {
 		t.Fatalf("get secret: %v", err)
 	}
-	live.Data["token"] = []byte("rotated-token")
+	live.Data[credTokenKey] = []byte("rotated-token")
 	if err := cl.Update(ctx, live); err != nil {
 		t.Fatalf("rotate secret: %v", err)
 	}

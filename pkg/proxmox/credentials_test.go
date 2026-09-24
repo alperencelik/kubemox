@@ -34,6 +34,8 @@ const (
 	// credSecretValue is a fixture, and doubles as a canary: no error message
 	// may ever contain it.
 	credSecretValue = "do-not-leak-this-value" //nolint:gosec // test fixture, not a credential
+	// credTokenKey is the key these tests store the API token secret under.
+	credTokenKey = "token"
 )
 
 func credentialsClient(t *testing.T, objs ...client.Object) client.Client {
@@ -89,9 +91,9 @@ func TestResolveCredentials_PasswordFromSecret(t *testing.T) {
 
 // TestResolveCredentials_TokenSecretFromSecret does the same for API tokens.
 func TestResolveCredentials_TokenSecretFromSecret(t *testing.T) {
-	cl := credentialsClient(t, credentialsSecret(map[string]string{"token": credSecretValue}))
+	cl := credentialsClient(t, credentialsSecret(map[string]string{credTokenKey: credSecretValue}))
 	spec := &proxmoxv1alpha1.ProxmoxConnectionSpec{
-		Endpoint: testPVEURL, TokenID: testTokenID, SecretFrom: secretKeyRef("token"),
+		Endpoint: testPVEURL, TokenID: testTokenID, SecretFrom: secretKeyRef(credTokenKey),
 	}
 
 	got, err := ResolveCredentials(context.Background(), cl, spec)
@@ -126,7 +128,7 @@ func TestResolveCredentials_InlineOnly(t *testing.T) {
 func TestResolveCredentials_MissingSecret(t *testing.T) {
 	cl := credentialsClient(t)
 	spec := &proxmoxv1alpha1.ProxmoxConnectionSpec{
-		Endpoint: testPVEURL, TokenID: testTokenID, SecretFrom: secretKeyRef("token"),
+		Endpoint: testPVEURL, TokenID: testTokenID, SecretFrom: secretKeyRef(credTokenKey),
 	}
 
 	_, err := ResolveCredentials(context.Background(), cl, spec)
@@ -143,7 +145,7 @@ func TestResolveCredentials_MissingSecret(t *testing.T) {
 func TestResolveCredentials_MissingKey(t *testing.T) {
 	cl := credentialsClient(t, credentialsSecret(map[string]string{"other": credSecretValue}))
 	spec := &proxmoxv1alpha1.ProxmoxConnectionSpec{
-		Endpoint: testPVEURL, TokenID: testTokenID, SecretFrom: secretKeyRef("token"),
+		Endpoint: testPVEURL, TokenID: testTokenID, SecretFrom: secretKeyRef(credTokenKey),
 	}
 
 	_, err := ResolveCredentials(context.Background(), cl, spec)
@@ -199,7 +201,7 @@ func TestResolveCredentials_InlineAndReferenceBoth(t *testing.T) {
 // interval, so it has to come from the same read as the credential itself.
 func TestResolveCredentials_ObservedSecrets(t *testing.T) {
 	ctx := context.Background()
-	cl := credentialsClient(t, credentialsSecret(map[string]string{"token": credSecretValue}))
+	cl := credentialsClient(t, credentialsSecret(map[string]string{credTokenKey: credSecretValue}))
 
 	live := &corev1.Secret{}
 	if err := cl.Get(ctx, client.ObjectKey{Namespace: credNamespace, Name: credSecretName}, live); err != nil {
@@ -207,7 +209,7 @@ func TestResolveCredentials_ObservedSecrets(t *testing.T) {
 	}
 
 	creds, err := ResolveCredentials(ctx, cl, &proxmoxv1alpha1.ProxmoxConnectionSpec{
-		Endpoint: testPVEURL, TokenID: testTokenID, SecretFrom: secretKeyRef("token"),
+		Endpoint: testPVEURL, TokenID: testTokenID, SecretFrom: secretKeyRef(credTokenKey),
 	})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
@@ -243,7 +245,7 @@ func TestResolveCredentials_ObservedSecretsInlineOnly(t *testing.T) {
 func TestResolveCredentials_ObservedSecretsDeduplicated(t *testing.T) {
 	ctx := context.Background()
 	cl := credentialsClient(t, credentialsSecret(map[string]string{
-		"password": credSecretValue, "token": credSecretValue,
+		"password": credSecretValue, credTokenKey: credSecretValue,
 	}))
 
 	creds, err := ResolveCredentials(ctx, cl, &proxmoxv1alpha1.ProxmoxConnectionSpec{
@@ -251,7 +253,7 @@ func TestResolveCredentials_ObservedSecretsDeduplicated(t *testing.T) {
 		Username:     testUser,
 		PasswordFrom: secretKeyRef("password"),
 		TokenID:      testTokenID,
-		SecretFrom:   secretKeyRef("token"),
+		SecretFrom:   secretKeyRef(credTokenKey),
 	})
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
