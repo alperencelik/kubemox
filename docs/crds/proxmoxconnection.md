@@ -22,6 +22,51 @@ EOF
 
 In the above example, replace `PROXMOX_ENDPOINT`, `PROXMOX_USERNAME`, and `PROXMOX_PASSWORD` with your Proxmox server's endpoint, username, and password. The `insecureSkipVerify` field is optional and can be set to `true` if you want to skip SSL verification. For more information about the fields, you can check the examples/ directory.
 
+## Reading credentials from a Secret
+
+Instead of writing the password or the API token secret into the `ProxmoxConnection`, you can reference a key of a Secret with `passwordFrom` or `secretFrom`. `ProxmoxConnection` is cluster-scoped, so the reference always names the Secret's namespace.
+
+```yaml
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Secret
+metadata:
+  name: proxmox-credentials
+  namespace: kubemox
+stringData:
+  token: "PROXMOX_TOKEN_SECRET"
+---
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: ProxmoxConnection
+metadata:
+  name: proxmox-connection-sample
+spec:
+  endpoint: "PROXMOX_ENDPOINT"
+  tokenID: "root@pam!kubemox"
+  secretFrom:
+    name: proxmox-credentials
+    namespace: kubemox
+    key: token
+  insecureSkipVerify: true
+EOF
+```
+
+For username authentication use `username` with `passwordFrom` in the same way. Each credential takes exactly one source: setting both `password` and `passwordFrom`, or `secret` and `secretFrom`, is rejected when the object is created.
+
+**Permissions.** kubemox reads these Secrets with `get` only. The Helm chart creates a Role granting that in each namespace listed in `rbac.secretNamespaces`, and in the release namespace when the list is empty - so keep the Secrets there, or list their namespace. The kustomize manifests in `config/rbac` grant `get` on secrets cluster-wide, since a generated role cannot name namespaces chosen at install time.
+
+**Rotation.** The connection is reconciled once a minute, and each pass re-reads the referenced Secrets and records the version it read:
+
+```yaml
+status:
+  observedSecrets:
+    - name: proxmox-credentials
+      namespace: kubemox-system
+      resourceVersion: "184623"
+```
+
+Compare that with the Secret's own `metadata.resourceVersion` to see whether a rotation has been picked up. A rotated credential reaches Proxmox clients within that minute: recording the new version changes the `ProxmoxConnection`, and every client built from it is rebuilt. The `Ready` condition is re-evaluated on the same pass, so a credential that no longer works surfaces there and not only in the logs.
+
 ## Referencing your ProxmoxConnection
 
 `ProxmoxConnection` resource itself does not create any Proxmox resources. It is used to create other Proxmox resources such as `VirtualMachine`, `Container`, and `Storage`. You can reference the `ProxmoxConnection` resource in the spec of these resources. It's a metadata object to be referenced in other resources. For example, you can reference the `ProxmoxConnection` resource in the `VirtualMachine` resource as follows:

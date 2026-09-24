@@ -44,14 +44,26 @@ type NodeCache struct {
 	containerObjs map[int]*proxmox.Container      // containerID -> Container object
 }
 
+// NewProxmoxClient builds a client from the credentials written inline in the
+// connection. A connection that references Secrets needs
+// NewProxmoxClientWithCredentials, with credentials from ResolveCredentials.
 func NewProxmoxClient(proxmoxConnection *proxmoxv1alpha1.ProxmoxConnection) *ProxmoxClient {
-	// Create a new client
+	return NewProxmoxClientWithCredentials(proxmoxConnection, Credentials{
+		Password: proxmoxConnection.Spec.Password,
+		Secret:   proxmoxConnection.Spec.Secret,
+	})
+}
+
+// NewProxmoxClientWithCredentials builds a client for the connection from
+// already-resolved credentials, wherever they came from.
+func NewProxmoxClientWithCredentials(proxmoxConnection *proxmoxv1alpha1.ProxmoxConnection,
+	creds Credentials) *ProxmoxClient {
 	proxmoxConfig := proxmoxv1alpha1.ProxmoxConnectionSpec{
 		Endpoint:           getProxmoxAPIEndpoint(proxmoxConnection.Spec.Endpoint),
 		Username:           proxmoxConnection.Spec.Username,
-		Password:           proxmoxConnection.Spec.Password,
+		Password:           creds.Password,
 		TokenID:            proxmoxConnection.Spec.TokenID,
-		Secret:             proxmoxConnection.Spec.Secret,
+		Secret:             creds.Secret,
 		InsecureSkipVerify: proxmoxConnection.Spec.InsecureSkipVerify,
 	}
 	var tlsConfig *tls.Config
@@ -159,24 +171,42 @@ func NewProxmoxClientFromRef(ctx context.Context, c cc.Client,
 	defer clientCacheMutex.Unlock()
 
 	// Check the cache under the lock
-	if cached, exists := clientCache[ref.Name]; exists && cached.ResourceVersion == conn.ResourceVersion {
-		if !cached.UsesSession || time.Since(cached.CreatedAt) < clientCacheTTL {
-			return cached.Client, nil
-		}
+	if cached, exists := clientCache[ref.Name]; exists && cached.ResourceVersion == conn.ResourceVersion &&
+		cachedClientFresh(cached) {
+		return cached.Client, nil
 	}
 
-	// Create new client if not cached, ResourceVersion changed, or session TTL expired
-	usesSession := conn.Spec.Username != "" && conn.Spec.Password != ""
-	client := NewProxmoxClient(conn)
+	// Create new client if not cached, the ResourceVersion changed, or the
+	// session TTL expired. Credentials read from a Secret ride on the
+	// ResourceVersion: the controller records the Secret version it read in
+	// status.observedSecrets, and that write changes the object. Secrets are
+	// only read here, when a client is (re)built - a cache hit costs no API
+	// call.
+	creds, err := ResolveCredentials(ctx, c, &conn.Spec)
+	if err != nil {
+		return nil, fmt.Errorf("resolving credentials for ProxmoxConnection %q: %w", ref.Name, err)
+	}
+	client := NewProxmoxClientWithCredentials(conn, creds)
 
 	clientCache[ref.Name] = &CachedClient{
 		Client:          client,
 		ResourceVersion: conn.ResourceVersion,
 		CreatedAt:       time.Now(),
-		UsesSession:     usesSession,
+		// Username auth uses session tickets, whether the password is inline or
+		// comes from a Secret.
+		UsesSession: conn.Spec.Username != "",
 	}
 
 	return client, nil
+}
+
+// cachedClientFresh reports whether a cached client may still be used. Session
+// tickets from username/password auth expire, so those clients are rebuilt
+// periodically; API tokens are not. Rotation of a Secret-backed credential is
+// not a matter of time here - it reaches this cache as a changed
+// ResourceVersion of the ProxmoxConnection.
+func cachedClientFresh(cached *CachedClient) bool {
+	return !cached.UsesSession || time.Since(cached.CreatedAt) < clientCacheTTL
 }
 
 func (pc *ProxmoxClient) setCachedVMID(nodeName, vmName string, vmID int) {

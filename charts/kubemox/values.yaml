@@ -84,6 +84,14 @@ serviceAccount:
   # -- If not set and create is true, a name is generated using the fullname template
   name: ""
 
+rbac:
+  # -- Namespaces in which kubemox may read Secrets - those referenced by a
+  # ProxmoxConnection's passwordFrom or secretFrom, and the ones cloud-init
+  # passwordFrom and CustomCertificate read from the operator namespace.
+  # A Role granting only `get` on secrets is created in each namespace.
+  # Empty means the release namespace.
+  secretNamespaces: []
+
 podAnnotations: {}
 
 podSecurityContext: {}

@@ -19,6 +19,7 @@ package proxmox
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,9 +41,18 @@ type ProxmoxConnectionReconciler struct {
 	Scheme *runtime.Scheme
 }
 
+// ProxmoxConnectionReconcilationPeriod is how often, in seconds, a connection
+// is reconciled again. Credentials may live in Secrets, and nothing else wakes
+// this controller for them: the operator reads Secrets with get only, so there
+// is no watch to react to, and the event filter below passes only spec changes.
+// Each pass re-reads the Secret, records its resourceVersion in the status and
+// re-evaluates the connection.
+const ProxmoxConnectionReconcilationPeriod = 60
+
 // +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=proxmoxconnections,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=proxmoxconnections/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=proxmoxconnections/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -75,15 +85,37 @@ func (r *ProxmoxConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	logger.Info("Reconciling ProxmoxConnection", "name", proxmoxConnection.Name)
 
+	// Resolve credentials, which may be read from Secrets
+	creds, err := proxmox.ResolveCredentials(ctx, r.Client, &proxmoxConnection.Spec)
+	if err != nil {
+		logger.Error(err, "unable to resolve credentials")
+		patch := client.MergeFrom(proxmoxConnection.DeepCopy())
+		meta.SetStatusCondition(&proxmoxConnection.Status.Conditions, metav1.Condition{
+			LastTransitionTime: metav1.Now(),
+			Type:               conditionReady,
+			Status:             metav1.ConditionFalse,
+			Reason:             "CredentialsUnavailable",
+			Message:            err.Error(),
+		})
+		if patchErr := r.Status().Patch(ctx, proxmoxConnection, patch); patchErr != nil {
+			logger.Error(patchErr, "unable to update ProxmoxConnection status")
+			return ctrl.Result{}, patchErr
+		}
+		return ctrl.Result{}, err
+	}
+
 	// Create Proxmox client
-	proxmoxClient := proxmox.NewProxmoxClient(proxmoxConnection)
+	proxmoxClient := proxmox.NewProxmoxClientWithCredentials(proxmoxConnection, creds)
 
 	// Return the version
 	version, err := proxmoxClient.GetVersion()
 	if err != nil {
 		logger.Error(err, "unable to get version")
-		// Update the status with the connection error
+		// Update the status with the connection error. The Secret versions are
+		// recorded here too: they say what the controller read, not whether
+		// Proxmox accepted it.
 		patch := client.MergeFrom(proxmoxConnection.DeepCopy())
+		proxmoxConnection.Status.ObservedSecrets = creds.ObservedSecrets
 		meta.SetStatusCondition(&proxmoxConnection.Status.Conditions, metav1.Condition{
 			LastTransitionTime: metav1.Now(),
 			Type:               conditionReady,
@@ -102,6 +134,7 @@ func (r *ProxmoxConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Update the status with the version
 	patch := client.MergeFrom(proxmoxConnection.DeepCopy())
 	proxmoxConnection.Status.Version = *version
+	proxmoxConnection.Status.ObservedSecrets = creds.ObservedSecrets
 	// Update the status with the connection status
 	meta.SetStatusCondition(&proxmoxConnection.Status.Conditions, metav1.Condition{
 		LastTransitionTime: metav1.Now(),
@@ -115,7 +148,10 @@ func (r *ProxmoxConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
+	// Come back, so a rotated Secret is noticed. A pass that finds nothing
+	// changed writes nothing: the patch above is then empty and the object
+	// keeps its resourceVersion.
+	return ctrl.Result{RequeueAfter: ProxmoxConnectionReconcilationPeriod * time.Second}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
