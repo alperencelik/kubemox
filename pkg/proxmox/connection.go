@@ -62,6 +62,7 @@ func NewProxmoxClient(proxmoxConnection *proxmoxv1alpha1.ProxmoxConnection) *Pro
 	}
 	// Configure HTTP client with performance tuning
 	transport := &http.Transport{
+		Proxy:               http.ProxyFromEnvironment, // HTTPS_PROXY/NO_PROXY, e.g. a tunnel into the Proxmox network
 		MaxIdleConns:        100,
 		DisableKeepAlives:   false,
 		MaxIdleConnsPerHost: 20,
