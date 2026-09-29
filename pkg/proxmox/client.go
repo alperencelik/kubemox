@@ -42,6 +42,7 @@ func CreateProxmoxClient() *proxmox.Client {
 	if ProxmoxConfig.InsecureSkipTLSVerify {
 		httpClient = &http.Client{
 			Transport: &http.Transport{
+				Proxy: http.ProxyFromEnvironment,
 				TLSClientConfig: &tls.Config{
 					InsecureSkipVerify: true, //nolint:gosec // Skipping linting for InsecureSkipVerify due to user choice
 				},
