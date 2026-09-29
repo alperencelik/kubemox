@@ -158,7 +158,7 @@ type VirtualMachineTemplateStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope="Cluster",shortName="vmt"
+// +kubebuilder:resource:shortName="vmt"
 // +kubebuilder:printcolumn:name="Node",type="string",JSONPath=".spec.node",description="The node name"
 // +kubebuilder:printcolumn:name="Cores",type="string",JSONPath=".spec.virtualMachineConfig.cores",description="The number of cores"
 // +kubebuilder:printcolumn:name="Memory",type="string",JSONPath=".spec.virtualMachineConfig.memory",description="The amount of memory"

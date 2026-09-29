@@ -71,7 +71,7 @@ type CustomCertificateStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope="Cluster",shortName="cc"
+// +kubebuilder:resource:shortName="cc"
 
 // CustomCertificate is the Schema for the customcertificates API
 type CustomCertificate struct {

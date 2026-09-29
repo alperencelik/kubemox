@@ -223,7 +223,7 @@ func (r *VirtualMachineTemplateReconciler) handleVMCreation(ctx context.Context,
 	nodeName := vmTemplate.Spec.NodeName
 
 	// Check if the VM template is already exists
-	vmExists, err := pc.CheckVM(templateVMName, nodeName)
+	vmExists, err := pc.CheckVM(proxmox.NamedVMRef(templateVMName, nodeName))
 	if err != nil {
 		logger.Error(err, "Failed to check VM template")
 		return err
@@ -315,7 +315,7 @@ func (r *VirtualMachineTemplateReconciler) deleteVirtualMachineTemplate(ctx cont
 		logger.Info("Deletion protection is enabled, skipping the deletion of VM")
 		return nil
 	} else {
-		err := pc.DeleteVM(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName)
+		err := pc.DeleteVM(proxmox.NamedVMRef(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName))
 		if err != nil {
 			var taskErr *proxmox.TaskError
 			if errors.As(err, &taskErr) {
@@ -379,7 +379,7 @@ func (r *VirtualMachineTemplateReconciler) handleCloudInitOperations(ctx context
 	}
 	// Continue with the VM template operations
 	// 1. Import Disk
-	err = pc.ImportDiskToVM(templateVMName, nodeName, storageDownloadURL.Spec.Filename, *vmTemplate.Spec.VirtualMachineConfig.Storage)
+	err = pc.ImportDiskToVM(proxmox.NamedVMRef(templateVMName, nodeName), storageDownloadURL.Spec.Filename, *vmTemplate.Spec.VirtualMachineConfig.Storage)
 	if err != nil {
 		var taskErr *proxmox.TaskError
 		if errors.As(err, &taskErr) {
@@ -390,7 +390,7 @@ func (r *VirtualMachineTemplateReconciler) handleCloudInitOperations(ctx context
 		return err
 	}
 	// 2. Add cloud Init CD-ROM drive
-	err = pc.AddCloudInitDrive(templateVMName, nodeName)
+	err = pc.AddCloudInitDrive(proxmox.NamedVMRef(templateVMName, nodeName))
 	if err != nil {
 		var taskErr *proxmox.TaskError
 		if errors.As(err, &taskErr) {
@@ -401,19 +401,19 @@ func (r *VirtualMachineTemplateReconciler) handleCloudInitOperations(ctx context
 		return err
 	}
 	// 3. Set cloud-init configuration
-	err = pc.SetCloudInitConfig(templateVMName, nodeName, vmTemplate.Spec.CloudInitConfig)
+	err = pc.SetCloudInitConfig(proxmox.NamedVMRef(templateVMName, nodeName), vmTemplate.Spec.CloudInitConfig)
 	if err != nil {
 		logger.Error(err, "Failed to set cloud-init configuration")
 		return err
 	}
 	// 4. Set boot order to boot from imported disk
-	err = pc.SetBootOrder(templateVMName, nodeName)
+	err = pc.SetBootOrder(proxmox.NamedVMRef(templateVMName, nodeName))
 	if err != nil {
 		logger.Error(err, "Failed to set boot order")
 		return err
 	}
 	// 5. Convert VM to template
-	err = pc.ConvertVMToTemplate(templateVMName, nodeName)
+	err = pc.ConvertVMToTemplate(proxmox.NamedVMRef(templateVMName, nodeName))
 	if err != nil {
 		logger.Error(err, "Failed to convert VM to template")
 		return err
