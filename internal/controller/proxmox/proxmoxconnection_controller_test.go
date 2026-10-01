@@ -20,7 +20,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -208,11 +207,10 @@ var _ = Describe("ProxmoxConnection Secret rotation", func() {
 		Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
 	})
 
-	reconcileOnce := func() reconcile.Result {
+	reconcileOnce := func() {
 		GinkgoHelper()
-		res, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: connKey})
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: connKey})
 		Expect(err).NotTo(HaveOccurred())
-		return res
 	}
 
 	observedSecrets := func() []proxmoxv1alpha1.ObservedSecret {
@@ -229,14 +227,8 @@ var _ = Describe("ProxmoxConnection Secret rotation", func() {
 		return secret.ResourceVersion
 	}
 
-	It("publishes the resourceVersion of the Secret it read, and asks to be woken again", func() {
-		res := reconcileOnce()
-
-		// Nothing else wakes this controller: its event filter passes only spec
-		// changes, so without the requeue a rotated Secret is never noticed. The
-		// interval is written out here rather than taken from the constant - a
-		// comparison against the constant would hold whatever it is changed to.
-		Expect(res.RequeueAfter).To(Equal(time.Minute))
+	It("publishes the resourceVersion of the Secret it read", func() {
+		reconcileOnce()
 		Expect(observedSecrets()).To(Equal([]proxmoxv1alpha1.ObservedSecret{{
 			Name: secretName, Namespace: secretNS, ResourceVersion: secretResourceVersion(),
 		}}))
@@ -262,15 +254,23 @@ var _ = Describe("ProxmoxConnection Secret rotation", func() {
 		Expect(after[0].ResourceVersion).NotTo(Equal(before[0].ResourceVersion))
 	})
 
+	It("maps a Secret to the connections that reference it", func() {
+		secret := &corev1.Secret{}
+		Expect(k8sClient.Get(ctx, secretKeyName, secret)).To(Succeed())
+		Expect(reconciler.connectionsForSecret(ctx, secret)).To(ConsistOf(reconcile.Request{NamespacedName: connKey}))
+
+		other := secret.DeepCopy()
+		other.Name = "unrelated"
+		Expect(reconciler.connectionsForSecret(ctx, other)).To(BeEmpty())
+	})
+
 	It("writes nothing when neither the Secret nor the connection changed", func() {
 		reconcileOnce()
 		conn := &proxmoxv1alpha1.ProxmoxConnection{}
 		Expect(k8sClient.Get(ctx, connKey, conn)).To(Succeed())
 		settled := conn.ResourceVersion
 
-		// A minute apart forever, so a status write on every pass would be a
-		// write to etcd every minute per connection - and would rebuild every
-		// cached Proxmox client with it.
+		// A status write on every pass would rebuild every cached Proxmox client.
 		reconcileOnce()
 		reconcileOnce()
 		Expect(k8sClient.Get(ctx, connKey, conn)).To(Succeed())

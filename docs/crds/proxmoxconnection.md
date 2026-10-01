@@ -53,9 +53,9 @@ EOF
 
 For username authentication use `username` with `passwordFrom` in the same way. Each credential takes exactly one source: setting both `password` and `passwordFrom`, or `secret` and `secretFrom`, is rejected when the object is created.
 
-**Permissions.** kubemox reads these Secrets with `get` only. The Helm chart creates a Role granting that in each namespace listed in `rbac.secretNamespaces`, and in the release namespace when the list is empty - so keep the Secrets there, or list their namespace. The kustomize manifests in `config/rbac` grant `get` on secrets cluster-wide, since a generated role cannot name namespaces chosen at install time.
+**Permissions.** kubemox reads these Secrets by name with `get`, and watches Secret metadata cluster-wide (`list`, `watch`) to notice rotations. Secret data is never cached.
 
-**Rotation.** The connection is reconciled once a minute, and each pass re-reads the referenced Secrets and records the version it read:
+**Rotation.** kubemox watches the referenced Secrets. When one changes, the connection is reconciled, re-reads it and records the version it read:
 
 ```yaml
 status:
@@ -65,7 +65,7 @@ status:
       resourceVersion: "184623"
 ```
 
-Compare that with the Secret's own `metadata.resourceVersion` to see whether a rotation has been picked up. A rotated credential reaches Proxmox clients within that minute: recording the new version changes the `ProxmoxConnection`, and every client built from it is rebuilt. The `Ready` condition is re-evaluated on the same pass, so a credential that no longer works surfaces there and not only in the logs.
+Compare that with the Secret's own `metadata.resourceVersion` to see whether a rotation has been picked up. A rotated credential reaches Proxmox clients right away: recording the new version changes the `ProxmoxConnection`, and every client built from it is rebuilt. The `Ready` condition is re-evaluated on the same pass, so a credential that no longer works surfaces there and not only in the logs.
 
 ## Referencing your ProxmoxConnection
 

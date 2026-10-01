@@ -19,16 +19,18 @@ package proxmox
 import (
 	"context"
 	"fmt"
-	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
@@ -41,18 +43,10 @@ type ProxmoxConnectionReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// ProxmoxConnectionReconcilationPeriod is how often, in seconds, a connection
-// is reconciled again. Credentials may live in Secrets, and nothing else wakes
-// this controller for them: the operator reads Secrets with get only, so there
-// is no watch to react to, and the event filter below passes only spec changes.
-// Each pass re-reads the Secret, records its resourceVersion in the status and
-// re-evaluates the connection.
-const ProxmoxConnectionReconcilationPeriod = 60
-
 // +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=proxmoxconnections,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=proxmoxconnections/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=proxmoxconnections/finalizers,verbs=update
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -148,22 +142,38 @@ func (r *ProxmoxConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
-	// Come back, so a rotated Secret is noticed. A pass that finds nothing
-	// changed writes nothing: the patch above is then empty and the object
-	// keeps its resourceVersion.
-	return ctrl.Result{RequeueAfter: ProxmoxConnectionReconcilationPeriod * time.Second}, nil
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ProxmoxConnectionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&proxmoxv1alpha1.ProxmoxConnection{}).
-		WithEventFilter(predicate.Funcs{
-			UpdateFunc: func(e event.UpdateEvent) bool {
-				// Only trigger reconciliation if the spec has changed
-				return e.ObjectNew.GetGeneration() != e.ObjectOld.GetGeneration()
-			},
-		}).
+		// Only spec changes; status writes would otherwise loop.
+		For(&proxmoxv1alpha1.ProxmoxConnection{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		// Metadata only, so Secret data is never cached; a rotated Secret
+		// reconciles the connections using it, which records the new
+		// resourceVersion in status.observedSecrets and rebuilds their clients.
+		WatchesMetadata(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.connectionsForSecret)).
 		Named("proxmox-proxmoxconnection").
 		Complete(r)
+}
+
+// connectionsForSecret maps a Secret to the ProxmoxConnections that read a credential from it.
+func (r *ProxmoxConnectionReconciler) connectionsForSecret(ctx context.Context, secret client.Object) []reconcile.Request {
+	conns := &proxmoxv1alpha1.ProxmoxConnectionList{}
+	if err := r.List(ctx, conns); err != nil {
+		log.FromContext(ctx).Error(err, "unable to list ProxmoxConnections for Secret",
+			"secret", client.ObjectKeyFromObject(secret))
+		return nil
+	}
+	var reqs []reconcile.Request
+	for _, c := range conns.Items {
+		for _, ref := range []*proxmoxv1alpha1.SecretKeyReference{c.Spec.PasswordFrom, c.Spec.SecretFrom} {
+			if ref != nil && ref.Namespace == secret.GetNamespace() && ref.Name == secret.GetName() {
+				reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKey{Name: c.Name}})
+				break
+			}
+		}
+	}
+	return reqs
 }
