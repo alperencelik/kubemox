@@ -49,9 +49,53 @@ spec:
               password:
                 description: Password to authenticate with the Proxmox cluster
                 type: string
+              passwordFrom:
+                description: |-
+                  PasswordFrom reads the password from a key of a Secret, instead of
+                  storing it in Password.
+                properties:
+                  key:
+                    description: Key within the Secret's data.
+                    minLength: 1
+                    type: string
+                  name:
+                    description: Name of the Secret.
+                    minLength: 1
+                    type: string
+                  namespace:
+                    description: Namespace of the Secret.
+                    minLength: 1
+                    type: string
+                required:
+                - key
+                - name
+                - namespace
+                type: object
               secret:
                 description: Secret to authenticate with the Proxmox cluster
                 type: string
+              secretFrom:
+                description: |-
+                  SecretFrom reads the API token secret from a key of a Secret, instead of
+                  storing it in Secret.
+                properties:
+                  key:
+                    description: Key within the Secret's data.
+                    minLength: 1
+                    type: string
+                  name:
+                    description: Name of the Secret.
+                    minLength: 1
+                    type: string
+                  namespace:
+                    description: Namespace of the Secret.
+                    minLength: 1
+                    type: string
+                required:
+                - key
+                - name
+                - namespace
+                type: object
               tokenID:
                 description: TokenID to authenticate with the Proxmox cluster
                 type: string
@@ -62,10 +106,12 @@ spec:
             - endpoint
             type: object
             x-kubernetes-validations:
-            - message: Specify either username/password or tokenID/secret for authentication
-              rule: (has(self.username) && has(self.password) && !has(self.tokenID)
-                && !has(self.secret)) || (!has(self.username) && !has(self.password)
-                && has(self.tokenID) && has(self.secret))
+            - message: Specify either username with one of password or passwordFrom,
+                or tokenID with one of secret or secretFrom
+              rule: (has(self.username) && (has(self.password) != has(self.passwordFrom))
+                && !has(self.tokenID) && !has(self.secret) && !has(self.secretFrom))
+                || (!has(self.username) && !has(self.password) && !has(self.passwordFrom)
+                && has(self.tokenID) && (has(self.secret) != has(self.secretFrom)))
           status:
             description: ProxmoxConnectionStatus defines the observed state of ProxmoxConnection.
             properties:
@@ -130,6 +176,37 @@ spec:
                 type: array
               connectionStatus:
                 type: string
+              observedSecrets:
+                description: |-
+                  ObservedSecrets are the Secrets this connection reads credentials from,
+                  each with the resourceVersion the controller last read them at. A value
+                  that differs from the Secret's current resourceVersion means the
+                  credential was rotated and has not been picked up yet.
+                items:
+                  description: |-
+                    ObservedSecret is a Secret a connection reads a credential from, together
+                    with the resourceVersion it had when that credential was last read.
+                  properties:
+                    name:
+                      description: Name of the Secret.
+                      type: string
+                    namespace:
+                      description: Namespace of the Secret.
+                      type: string
+                    resourceVersion:
+                      description: ResourceVersion the Secret had when its credential
+                        was read.
+                      type: string
+                  required:
+                  - name
+                  - namespace
+                  - resourceVersion
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - namespace
+                - name
+                x-kubernetes-list-type: map
               version:
                 type: string
             type: object

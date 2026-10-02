@@ -1,6 +1,6 @@
 
 # Image URL to use all building/pushing image targets
-IMG ?= alperencelik/kubemox:latest 
+IMG ?= alperencelik/kubemox:latest
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.27.1
 
@@ -225,7 +225,7 @@ dev-proxmox: ## Start containerized Proxmox VE on the Kind Docker network
 	fi
 	@echo "Waiting for Proxmox API to be ready..."
 	@for i in $$(seq 1 60); do \
-		if curl -sk https://localhost:8006/api2/json/version >/dev/null 2>&1; then \
+		if curl -sk --max-time 10 https://localhost:8006/api2/json/version >/dev/null 2>&1; then \
 			echo "Proxmox API is ready at https://localhost:8006"; \
 			break; \
 		fi; \
