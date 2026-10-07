@@ -26,6 +26,7 @@ nav:
 - Upgrading:
   - Overview: upgrading/index.md
   - v0.3.0: upgrading/v0.3.0.md
+  - Namespaced CRDs: upgrading/namespaced-crds.md
 - Releases ⧉: https://github.com/alperencelik/kubemox/releases
 
 repo_url: https://github.com/alperencelik/kubemox 
