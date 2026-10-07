@@ -73,6 +73,16 @@ spec:
           spec:
             description: ContainerSpec defines the desired state of Container
             properties:
+              cloneMode:
+                default: Full
+                description: |-
+                  CloneMode selects how the template container is cloned: Full copies it,
+                  Linked references the template's base snapshot and pins the template for
+                  as long as the clone exists.
+                enum:
+                - Full
+                - Linked
+                type: string
               connectionRef:
                 description: |-
                   LocalObjectReference contains enough information to let you locate the

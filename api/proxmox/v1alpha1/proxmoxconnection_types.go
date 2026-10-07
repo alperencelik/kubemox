@@ -22,8 +22,35 @@ import (
 
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// SecretKeyReference selects a key of a Secret in an explicit namespace.
+//
+// ProxmoxConnection is cluster-scoped, so the namespace cannot be implied from
+// the object holding the reference; it has to be written down.
+type SecretKeyReference struct {
+	// Name of the Secret.
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+	// Namespace of the Secret.
+	// +kubebuilder:validation:MinLength=1
+	Namespace string `json:"namespace"`
+	// Key within the Secret's data.
+	// +kubebuilder:validation:MinLength=1
+	Key string `json:"key"`
+}
+
+// ObservedSecret is a Secret a connection reads a credential from, together
+// with the resourceVersion it had when that credential was last read.
+type ObservedSecret struct {
+	// Name of the Secret.
+	Name string `json:"name"`
+	// Namespace of the Secret.
+	Namespace string `json:"namespace"`
+	// ResourceVersion the Secret had when its credential was read.
+	ResourceVersion string `json:"resourceVersion"`
+}
+
 // ProxmoxConnectionSpec defines the desired state of ProxmoxConnection.
-// +kubebuilder:validation:XValidation:rule="(has(self.username) && has(self.password) && !has(self.tokenID) && !has(self.secret)) || (!has(self.username) && !has(self.password) && has(self.tokenID) && has(self.secret))",message="Specify either username/password or tokenID/secret for authentication"
+// +kubebuilder:validation:XValidation:rule="(has(self.username) && (has(self.password) != has(self.passwordFrom)) && !has(self.tokenID) && !has(self.secret) && !has(self.secretFrom)) || (!has(self.username) && !has(self.password) && !has(self.passwordFrom) && has(self.tokenID) && (has(self.secret) != has(self.secretFrom)))",message="Specify either username with one of password or passwordFrom, or tokenID with one of secret or secretFrom"
 //
 //nolint:lll // CEL validation rule is too long
 type ProxmoxConnectionSpec struct {
@@ -37,6 +64,14 @@ type ProxmoxConnectionSpec struct {
 	TokenID string `json:"tokenID,omitempty"`
 	// Secret to authenticate with the Proxmox cluster
 	Secret string `json:"secret,omitempty"`
+	// PasswordFrom reads the password from a key of a Secret, instead of
+	// storing it in Password.
+	// +optional
+	PasswordFrom *SecretKeyReference `json:"passwordFrom,omitempty"`
+	// SecretFrom reads the API token secret from a key of a Secret, instead of
+	// storing it in Secret.
+	// +optional
+	SecretFrom *SecretKeyReference `json:"secretFrom,omitempty"`
 	// InsecureSkipVerify skips the verification of the server's certificate chain and host name
 	// +kubebuilder:default:=false
 	InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
@@ -49,6 +84,15 @@ type ProxmoxConnectionStatus struct {
 	Conditions       []metav1.Condition `json:"conditions,omitempty"`
 	ConnectionStatus string             `json:"connectionStatus,omitempty"`
 	Version          string             `json:"version,omitempty"`
+	// ObservedSecrets are the Secrets this connection reads credentials from,
+	// each with the resourceVersion the controller last read them at. A value
+	// that differs from the Secret's current resourceVersion means the
+	// credential was rotated and has not been picked up yet.
+	// +listType=map
+	// +listMapKey=namespace
+	// +listMapKey=name
+	// +optional
+	ObservedSecrets []ObservedSecret `json:"observedSecrets,omitempty"`
 }
 
 // +kubebuilder:object:root=true

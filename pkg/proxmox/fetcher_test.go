@@ -41,7 +41,7 @@ func TestVirtualMachineFetcher_UpdateResourceStatus_FailureLeavesStatusUntouched
 			ConnectionRef: &corev1.LocalObjectReference{Name: "missing-conn"},
 		},
 		Status: proxmoxv1alpha1.VirtualMachineStatus{
-			Status:             &proxmoxv1alpha1.QEMUStatus{State: "running"},
+			Status:             &proxmoxv1alpha1.QEMUStatus{State: VirtualMachineRunningState},
 			LastObserved:       &earlier,
 			ObservedGeneration: 3,
 		},
@@ -62,7 +62,7 @@ func TestVirtualMachineFetcher_UpdateResourceStatus_FailureLeavesStatusUntouched
 	if err := cl.Get(context.Background(), types.NamespacedName{Name: vm.Name}, got); err != nil {
 		t.Fatalf("re-getting VM: %v", err)
 	}
-	if got.Status.Status == nil || got.Status.Status.State != "running" {
+	if got.Status.Status == nil || got.Status.Status.State != VirtualMachineRunningState {
 		t.Errorf("Status.Status.State changed unexpectedly on failure: got %+v", got.Status.Status)
 	}
 	if got.Status.LastObserved == nil || !got.Status.LastObserved.Time.Equal(earlier.Time) {
@@ -92,7 +92,7 @@ func TestContainerFetcher_UpdateResourceStatus_FailureLeavesStatusUntouched(t *t
 			ConnectionRef: &corev1.LocalObjectReference{Name: "missing-conn"},
 		},
 		Status: proxmoxv1alpha1.ContainerStatus{
-			Status:             proxmoxv1alpha1.QEMUStatus{State: "running"},
+			Status:             proxmoxv1alpha1.QEMUStatus{State: VirtualMachineRunningState},
 			LastObserved:       &earlier,
 			ObservedGeneration: 8,
 		},
@@ -113,7 +113,7 @@ func TestContainerFetcher_UpdateResourceStatus_FailureLeavesStatusUntouched(t *t
 	if err := cl.Get(context.Background(), types.NamespacedName{Name: ct.Name}, got); err != nil {
 		t.Fatalf("re-getting Container: %v", err)
 	}
-	if got.Status.Status.State != "running" {
+	if got.Status.Status.State != VirtualMachineRunningState {
 		t.Errorf("Status.Status.State changed unexpectedly on failure: got %+v", got.Status.Status)
 	}
 	if got.Status.LastObserved == nil || !got.Status.LastObserved.Time.Equal(earlier.Time) {

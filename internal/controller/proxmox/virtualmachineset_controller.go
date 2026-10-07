@@ -204,6 +204,7 @@ func (r *VirtualMachineSetReconciler) createOrUpdateVirtualMachineCRs(ctx contex
 				DeletionProtection: vmSet.Spec.DeletionProtection,
 				EnableAutoStart:    vmSet.Spec.EnableAutoStart,
 				AdditionalConfig:   vmSet.Spec.AdditionalConfig,
+				CloneMode:          vmSet.Spec.CloneMode,
 				ConnectionRef:      vmSet.Spec.ConnectionRef,
 			}
 			return nil

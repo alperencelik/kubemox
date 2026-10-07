@@ -42,6 +42,11 @@ rules:
 - apiGroups: ["events.k8s.io"]
   resources: ["events"]
   verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+# Secrets: credentials read by name; list/watch is for the metadata-only
+# watch that picks up rotated ProxmoxConnection credentials.
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch"]
 ## Leader election
 - apiGroups:
   - ""

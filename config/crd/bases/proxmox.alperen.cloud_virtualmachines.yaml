@@ -78,6 +78,19 @@ spec:
                 description: AdditionalConfig is the additional configuration of the
                   VM
                 type: object
+              cloneMode:
+                default: Full
+                description: |-
+                  CloneMode selects how the template's disks are cloned. Full copies them,
+                  which costs the size of the template per VM. Linked keeps a reference to
+                  the template's base snapshot, which costs almost nothing at creation but
+                  pins the template: it cannot be removed or rotated while a linked clone
+                  still references it. Proxmox places a linked clone on the template's own
+                  storage, so it cannot be moved elsewhere at creation time.
+                enum:
+                - Full
+                - Linked
+                type: string
               connectionRef:
                 description: |-
                   LocalObjectReference contains enough information to let you locate the

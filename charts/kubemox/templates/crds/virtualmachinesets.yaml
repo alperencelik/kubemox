@@ -68,6 +68,16 @@ spec:
                 description: AdditionalConfig is the additional configuration of the
                   VM
                 type: object
+              cloneMode:
+                default: Full
+                description: |-
+                  CloneMode is passed to every VirtualMachine this set owns. Linked clones
+                  of one template share its base snapshot, so a set of them costs about as
+                  much disk as a single full clone.
+                enum:
+                - Full
+                - Linked
+                type: string
               connectionRef:
                 description: |-
                   LocalObjectReference contains enough information to let you locate the

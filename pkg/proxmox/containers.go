@@ -95,7 +95,7 @@ func (pc *ProxmoxClient) CloneContainer(container *proxmoxv1alpha1.Container) er
 	}
 
 	var CloneOptions proxmox.ContainerCloneOptions
-	CloneOptions.Full = 1
+	CloneOptions.Full = container.Spec.CloneMode.CloneFlag()
 	CloneOptions.Hostname = containerName
 	CloneOptions.Target = nodeName
 	log.Log.Info(fmt.Sprintf("Cloning container %s from template %s", containerName, templateContainerName))
