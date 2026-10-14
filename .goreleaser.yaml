@@ -41,7 +41,8 @@ kos:
       - -s
       - -w
     tags:
-      - latest
+      # Pre-releases must not move `latest`; the duplicate tag keeps the list non-empty.
+      - '{{ if .Prerelease }}{{ .Tag }}{{ else }}latest{{ end }}'
       - '{{ .Tag }}'
     env:
       - CGO_ENABLED=0
@@ -80,6 +81,9 @@ archives:
         format: zip
     files:
       - README.md
+
+release:
+  prerelease: auto
 
 checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_checksums.txt'
