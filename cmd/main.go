@@ -37,11 +37,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	"github.com/alperencelik/kube-external-watcher/watcher"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	proxmoxcontroller "github.com/alperencelik/kubemox/internal/controller/proxmox"
+	"github.com/alperencelik/kubemox/internal/webhook/certs"
+	proxmoxwebhook "github.com/alperencelik/kubemox/internal/webhook/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/metrics"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 	"github.com/alperencelik/kubemox/pkg/tracing"
@@ -101,8 +104,26 @@ func main() {
 		TLSOpts:       tlsOpts,
 	}
 
+	// Setup webhook certs
+	var webhookOpts ctrlwebhook.Options
+	if secretName := os.Getenv("WEBHOOK_CERT_SECRET"); secretName != "" && os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		directClient, err := client.New(ctrl.GetConfigOrDie(), client.Options{Scheme: scheme})
+		if err != nil {
+			setupLog.Error(err, "unable to create client for webhook certificates")
+			os.Exit(1)
+		}
+		certOpt, err := certs.SelfSigned(context.Background(), directClient, utils.EnsurePodNamespaceEnv(),
+			secretName, os.Getenv("WEBHOOK_SERVICE_NAME"), os.Getenv("WEBHOOK_CONFIG_NAME"))
+		if err != nil {
+			setupLog.Error(err, "unable to set up webhook certificates")
+			os.Exit(1)
+		}
+		webhookOpts.TLSOpts = []func(*tls.Config){certOpt}
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme: scheme,
+		Scheme:        scheme,
+		WebhookServer: ctrlwebhook.NewServer(webhookOpts),
 		// Secrets are read one at a time, by name, when a ProxmoxConnection
 		// references one. Reading them through the cache would start an informer
 		// over every Secret in the cluster and need list and watch on all of them.
@@ -269,6 +290,12 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ProxmoxConnection")
 		os.Exit(1)
+	}
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err = proxmoxwebhook.SetupVirtualMachineWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "VirtualMachine")
+			os.Exit(1)
+		}
 	}
 	// +kubebuilder:scaffold:builder
 

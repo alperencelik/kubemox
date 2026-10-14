@@ -199,6 +199,26 @@ func (pc *ProxmoxClient) CheckVM(vmName, nodeName string) (bool, error) {
 	return false, nil
 }
 
+// VMIDsByName returns the VMIDs of every non-template VM on nodeName named
+// vmName, compared case-insensitively.
+func (pc *ProxmoxClient) VMIDsByName(ctx context.Context, vmName, nodeName string) ([]uint64, error) {
+	node, err := pc.getNode(ctx, nodeName)
+	if err != nil {
+		return nil, err
+	}
+	vmList, err := node.VirtualMachines(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var ids []uint64
+	for _, vm := range vmList {
+		if !bool(vm.Template) && strings.EqualFold(vm.Name, vmName) {
+			ids = append(ids, uint64(vm.VMID))
+		}
+	}
+	return ids, nil
+}
+
 func (pc *ProxmoxClient) GetVMIPv4Address(vmName, nodeName string) string {
 	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {

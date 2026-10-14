@@ -36,7 +36,8 @@ var _ = Describe("VirtualMachine", func() {
 		It("should create a VirtualMachineTemplate and auto-create StorageDownloadURL", func() {
 			vmTemplate = &proxmoxv1alpha1.VirtualMachineTemplate{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: templateName,
+					Name:      templateName,
+					Namespace: e2eNamespace,
 				},
 				Spec: proxmoxv1alpha1.VirtualMachineTemplateSpec{
 					Name:     templateName,
@@ -65,7 +66,7 @@ var _ = Describe("VirtualMachine", func() {
 			By("Verifying StorageDownloadURL child resource is created")
 			sdu := &proxmoxv1alpha1.StorageDownloadURL{}
 			Eventually(func(g Gomega) {
-				err := fw.KubeClient.Get(ctx, client.ObjectKey{Name: templateName + "-image"}, sdu)
+				err := fw.KubeClient.Get(ctx, client.ObjectKey{Namespace: e2eNamespace, Name: templateName + "-image"}, sdu)
 				g.Expect(err).NotTo(HaveOccurred())
 			}).WithTimeout(fw.Config.Timeouts.ResourceReady).WithPolling(pollInterval).Should(Succeed())
 		})
@@ -82,7 +83,8 @@ var _ = Describe("VirtualMachine", func() {
 		It("should create a VirtualMachine from the template and populate status", func() {
 			vm = &proxmoxv1alpha1.VirtualMachine{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "e2e-test-vm-from-template",
+					Name:      "e2e-test-vm-from-template",
+					Namespace: e2eNamespace,
 				},
 				Spec: proxmoxv1alpha1.VirtualMachineSpec{
 					Name:     "e2e-test-vm-from-template",

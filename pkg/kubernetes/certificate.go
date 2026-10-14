@@ -3,7 +3,6 @@ package kubernetes
 import (
 	"context"
 	"fmt"
-	"os"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/utils"
@@ -165,7 +164,7 @@ func GetCertificateSecretKeys(certificate *certmanagerv1.Certificate) (tlscrt, t
 	// Get certificate secret
 	secretName := certificate.Spec.SecretName
 	//  Get Kubernetes secret
-	secret, err := Clientset().CoreV1().Secrets(os.Getenv("POD_NAMESPACE")).
+	secret, err := Clientset().CoreV1().Secrets(certificate.Namespace).
 		Get(context.Background(), secretName, metav1.GetOptions{})
 	if err != nil {
 		return nil, nil, err

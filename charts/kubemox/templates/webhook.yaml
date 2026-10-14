@@ -1,0 +1,130 @@
+{{- if .Values.webhook.enabled }}
+{{- $fullname := include "kubemox.fullname" . }}
+{{- $certManager := include "kubemox.webhookCertManager" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-webhook
+  labels:
+    {{- include "kubemox.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 443
+      targetPort: webhook
+      protocol: TCP
+      name: webhook
+  selector:
+    {{- include "kubemox.selectorLabels" . | nindent 4 }}
+{{- if $certManager }}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $fullname }}-selfsigned
+  labels:
+    {{- include "kubemox.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $fullname }}-webhook
+  labels:
+    {{- include "kubemox.labels" . | nindent 4 }}
+spec:
+  dnsNames:
+    - {{ $fullname }}-webhook.{{ .Release.Namespace }}.svc
+    - {{ $fullname }}-webhook.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: {{ $fullname }}-selfsigned
+  secretName: {{ $fullname }}-webhook-cert
+{{- else }}
+# No cert-manager: the operator issues its own certificate, keeps it in a
+# Secret and writes the CA into the webhook's caBundle.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fullname }}-webhook-cert
+  labels:
+    {{- include "kubemox.labels" . | nindent 4 }}
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["create"]
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["{{ $fullname }}-webhook-cert"]
+  verbs: ["update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fullname }}-webhook-cert
+  labels:
+    {{- include "kubemox.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $fullname }}-webhook-cert
+subjects:
+- kind: ServiceAccount
+  name: {{ include "kubemox.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $fullname }}-webhook-cabundle
+  labels:
+    {{- include "kubemox.labels" . | nindent 4 }}
+rules:
+- apiGroups: ["admissionregistration.k8s.io"]
+  resources: ["validatingwebhookconfigurations"]
+  resourceNames: ["{{ $fullname }}-validating-webhook"]
+  verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $fullname }}-webhook-cabundle
+  labels:
+    {{- include "kubemox.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $fullname }}-webhook-cabundle
+subjects:
+- kind: ServiceAccount
+  name: {{ include "kubemox.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+{{- end }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ $fullname }}-validating-webhook
+  labels:
+    {{- include "kubemox.labels" . | nindent 4 }}
+  {{- if $certManager }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ $fullname }}-webhook
+  {{- end }}
+webhooks:
+  - name: vvirtualmachine-v1alpha1.kb.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Fail
+    clientConfig:
+      service:
+        name: {{ $fullname }}-webhook
+        namespace: {{ .Release.Namespace }}
+        path: /validate-proxmox-alperen-cloud-v1alpha1-virtualmachine
+    rules:
+      - apiGroups: ["proxmox.alperen.cloud"]
+        apiVersions: ["v1alpha1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["virtualmachines"]
+{{- end }}

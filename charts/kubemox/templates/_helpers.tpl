@@ -60,3 +60,14 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Non-empty when cert-manager issues the webhook certificate: forced with
+webhook.certManager true/false, otherwise detected from the cluster's APIs.
+*/}}
+{{- define "kubemox.webhookCertManager" -}}
+{{- $mode := toString .Values.webhook.certManager -}}
+{{- if or (eq $mode "true") (and (eq $mode "auto") (.Capabilities.APIVersions.Has "cert-manager.io/v1")) -}}
+true
+{{- end -}}
+{{- end }}

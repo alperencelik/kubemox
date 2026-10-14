@@ -37,6 +37,11 @@ spec:
             - name: http
               containerPort: {{ .Values.service.port }}
               protocol: TCP
+            {{- if .Values.webhook.enabled }}
+            - name: webhook
+              containerPort: 9443
+              protocol: TCP
+            {{- end }}
           # livenessProbe:
           #   httpGet:
           #     path: /
@@ -57,6 +62,23 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: metadata.namespace
+          - name: ENABLE_WEBHOOKS
+            value: {{ .Values.webhook.enabled | quote }}
+          {{- $certManager := include "kubemox.webhookCertManager" . }}
+          {{- if and .Values.webhook.enabled (not $certManager) }}
+          - name: WEBHOOK_CERT_SECRET
+            value: {{ include "kubemox.fullname" . }}-webhook-cert
+          - name: WEBHOOK_SERVICE_NAME
+            value: {{ include "kubemox.fullname" . }}-webhook
+          - name: WEBHOOK_CONFIG_NAME
+            value: {{ include "kubemox.fullname" . }}-validating-webhook
+          {{- end }}
+          {{- if and .Values.webhook.enabled $certManager }}
+          volumeMounts:
+            - name: webhook-cert
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
+          {{- end }}
           {{/* Deprecated: Use ProxmoxConnection resource instead
           {{- if .Values.proxmox.existingSecret }}
           {{- with .Values.proxmox }}
@@ -90,6 +112,12 @@ spec:
                 optional: true
           {{- end }}
         */}}
+      {{- if and .Values.webhook.enabled (include "kubemox.webhookCertManager" .) }}
+      volumes:
+        - name: webhook-cert
+          secret:
+            secretName: {{ include "kubemox.fullname" . }}-webhook-cert
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

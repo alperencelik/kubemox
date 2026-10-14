@@ -155,8 +155,7 @@ func (r *VirtualMachineSnapshotReconciler) getVMreference(ctx context.Context,
 	vmName := vmSnapshot.Spec.VirtualMachineName
 
 	vm := &proxmoxv1alpha1.VirtualMachine{}
-	// VirtualMachine is now Cluster scoped
-	err := r.Get(ctx, client.ObjectKey{Name: vmName}, vm)
+	err := r.Get(ctx, client.ObjectKey{Namespace: vmSnapshot.Namespace, Name: vmName}, vm)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Error(err, "VirtualMachine not found. Ignoring since object must be deleted")
