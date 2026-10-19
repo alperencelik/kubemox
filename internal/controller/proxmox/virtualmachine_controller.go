@@ -58,6 +58,9 @@ const (
 	typeCreatingVirtualMachine  = "Creating"
 	typeDeletingVirtualMachine  = "Deleting"
 	typeErrorVirtualMachine     = "Error"
+	// nameConflictRequeue is how often a VirtualMachine that lost the claim to
+	// a machine name looks again; nothing watches the other object going away.
+	nameConflictRequeue = time.Minute
 )
 
 var dontRequeue = ctrl.Result{}
@@ -107,6 +110,14 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, nil
 	case kubernetes.ReconcileModeEnsureExists:
 		logger.Info(fmt.Sprintf("Reconciliation is ensure exists for VirtualMachine %s", vm.Name))
+		var conflict bool
+		conflict, err = r.checkNameConflict(ctx, vm)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if conflict {
+			return ctrl.Result{RequeueAfter: nameConflictRequeue}, nil
+		}
 		var vmExists bool
 		vmExists, err = pc.CheckVM(vm.Spec.Name, vm.Spec.NodeName)
 		if err != nil {
@@ -256,6 +267,17 @@ func (r *VirtualMachineReconciler) handleVirtualMachineOperations(ctx context.Co
 	vmName := vm.Spec.Name
 	nodeName := vm.Spec.NodeName
 	logger := log.FromContext(ctx)
+	// A second object naming the same machine would adopt it on CheckVM and
+	// the two would then reconcile one machine in turn. Only the oldest
+	// claimant gets past this point; the others wait with a condition set.
+	conflict, err := r.checkNameConflict(ctx, vm)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if conflict {
+		logger.Info("Another VirtualMachine already claims this machine, skipping", "name", vmName, "node", nodeName)
+		return ctrl.Result{RequeueAfter: nameConflictRequeue}, nil
+	}
 	vmExists, err := pc.CheckVM(vmName, nodeName)
 	if err != nil {
 		var taskErr *proxmox.TaskError
