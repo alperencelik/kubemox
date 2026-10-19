@@ -473,8 +473,8 @@ func (pc *ProxmoxClient) CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine)
 	if virtualMachineSpec.Network != nil {
 		for i, network := range *virtualMachineSpec.Network {
 			VMOptions = append(VMOptions, proxmox.VirtualMachineOption{
-				Name:  "net" + strconv.Itoa(i),
-				Value: network.Model + ",bridge=" + network.Bridge,
+				Name:  netStr + strconv.Itoa(i),
+				Value: renderPort(network, nil),
 			})
 		}
 	}
@@ -760,21 +760,26 @@ func (pc *ProxmoxClient) GetNetworkConfiguration(vm *proxmoxv1alpha1.VirtualMach
 }
 
 func parseNetworkConfiguration(networks map[string]string) ([]proxmoxv1alpha1.VirtualMachineNetwork, error) {
-	networkConfiguration := []proxmoxv1alpha1.VirtualMachineNetwork{}
-
-	// Parse networks to use as VirtualMachineSpecTemplateNetwork
-	for _, network := range networks {
-		networkSplit := strings.Split(network, ",")
-		if len(networkSplit) < 2 {
-			return nil, fmt.Errorf("invalid format for network configuration: %s", network)
+	// Ordered by port index, so that net0 compares with the first network of
+	// the spec and not with whichever one the map handed out first.
+	keys := make([]string, 0, len(networks))
+	for key := range networks {
+		if portIndex(key) < 0 {
+			return nil, fmt.Errorf("invalid network key: %s", key)
 		}
-		// Get the network model name
-		networkModel := strings.Split(networkSplit[0], "=")[0] // The key of first value
-		// Get the network bridge name
-		networkBridge := strings.Split(networkSplit[1], "=")[1] // The value of second value
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool { return portIndex(keys[i]) < portIndex(keys[j]) })
+	networkConfiguration := make([]proxmoxv1alpha1.VirtualMachineNetwork, 0, len(keys))
+	for _, key := range keys {
+		port := parsePort(networks[key])
+		if port.Bridge == "" {
+			return nil, fmt.Errorf("invalid format for network configuration: %s", networks[key])
+		}
 		networkConfiguration = append(networkConfiguration, proxmoxv1alpha1.VirtualMachineNetwork{
-			Model:  networkModel,
-			Bridge: networkBridge,
+			Model:  port.Model,
+			Bridge: port.Bridge,
+			VLAN:   port.VLAN,
 		})
 	}
 	return networkConfiguration, nil
@@ -814,30 +819,30 @@ func (pc *ProxmoxClient) deleteVirtualMachineOption(vm *proxmoxv1alpha1.VirtualM
 
 func (pc *ProxmoxClient) updateNetworkConfig(ctx context.Context,
 	vm *proxmoxv1alpha1.VirtualMachine, i int, networks []proxmoxv1alpha1.VirtualMachineNetwork) error {
-	// Get the network model&bridge name
-	networkModel := networks[i].Model
-	networkBridge := networks[i].Bridge
-	// Update the network configuration
 	virtualMachine, err := pc.getVirtualMachine(vm.Name, vm.Spec.NodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for updating network configuration")
+		return err
+	}
+	key := netStr + strconv.Itoa(i)
+	// Keep the MAC and the extra keys of the port that is already there: a
+	// bridge or tag change must not hand the guest a new network card.
+	var current *parsedPort
+	if value := virtualMachine.VirtualMachineConfig.MergeNets()[key]; value != "" {
+		p := parsePort(value)
+		current = &p
 	}
 	task, err := virtualMachine.Config(ctx, proxmox.VirtualMachineOption{
-		Name:  netStr + strconv.Itoa(i),
-		Value: networkModel + "," + "bridge=" + networkBridge,
+		Name:  key,
+		Value: renderPort(networks[i], current),
 	})
 	if err != nil {
 		return err
 	}
-	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 3)
-	if !taskStatus {
-		// Return the task.ExitStatus as error
-		return &TaskError{ExitStatus: task.ExitStatus}
+	if err = waitNetworkTask(ctx, task, networkConfigTimeout); err != nil {
+		return err
 	}
-	if !taskCompleted {
-		log.Log.Error(taskErr, "Error updating network configuration")
-		return taskErr
-	}
+	pc.dropCachedVM(vm.Spec.NodeName, vm.Spec.Name)
 	return nil
 }
 
@@ -921,8 +926,9 @@ func (pc *ProxmoxClient) configureVirtualMachineNetwork(vm *proxmoxv1alpha1.Virt
 	if err != nil {
 		return err
 	}
-	// Check if network configuration is different
-	if !cmp.Equal(networks, virtualMachineNetworksParsed) {
+	// Check if network configuration is different. Only model, bridge and
+	// VLAN count: the MAC is Proxmox's and the claim ref is the controller's.
+	if !cmp.Equal(networkShapes(networks), networkShapes(virtualMachineNetworksParsed)) {
 		// The desired network configuration is different than the actual one
 		log.Log.Info(fmt.Sprintf("Updating network configuration for VirtualMachine %s", vm.Name))
 		// Update the network configuration
@@ -953,7 +959,7 @@ func (pc *ProxmoxClient) configureVirtualMachineNetwork(vm *proxmoxv1alpha1.Virt
 		}
 		for i := 0; i < len(virtualMachineNetworksParsed); i++ {
 			// Check if the network configuration is different
-			if len(networks) != 0 && !cmp.Equal(networks[i], virtualMachineNetworksParsed[i]) {
+			if len(networks) != 0 && shapeOfSpec(networks[i]) != shapeOfSpec(virtualMachineNetworksParsed[i]) {
 				// Update the network configuration
 				log.Log.Info(fmt.Sprintf("Updating the network configuration for net%d of VM %s", i, vm.Spec.Name))
 				// Get the network model&bridge name
@@ -1201,7 +1207,7 @@ func (pc *ProxmoxClient) CheckVirtualMachineDelta(vm *proxmoxv1alpha1.VirtualMac
 		Cores:    GetCores(vm),
 		Sockets:  getSockets(vm),
 		Memory:   GetMemory(vm),
-		Networks: getNetworks(vm),
+		Networks: networkShapes(getNetworks(vm)),
 		Disks:    sortDisks(getDisks(vm)),
 	}
 	// Compare the actual VM with the desired VM
