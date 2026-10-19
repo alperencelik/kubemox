@@ -11,7 +11,7 @@ spec:
     shortNames:
     - vmt
     singular: virtualmachinetemplate
-  scope: Cluster
+  scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - description: The node name
