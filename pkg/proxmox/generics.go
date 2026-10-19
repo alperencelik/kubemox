@@ -88,3 +88,13 @@ func applyChanges[I any](
 	}
 	return nil
 }
+
+// derefInt reads an optional integer the way the previous go-proxmox API
+// exposed it: an absent field is 0, not Proxmox's own default. Callers compare
+// it with the desired spec and were written against that convention.
+func derefInt(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
+}

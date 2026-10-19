@@ -131,7 +131,7 @@ func (f *VirtualMachineFetcher) TransformExternalState(raw any) (any, error) {
 	}
 	cfg := vm.VirtualMachineConfig
 
-	networks, err := parseNetworkConfiguration(cfg.MergeNets())
+	networks, err := parseNetworkConfiguration(cfg.Nets)
 	if err != nil {
 		return nil, err
 	}
@@ -148,8 +148,8 @@ func (f *VirtualMachineFetcher) TransformExternalState(raw any) (any, error) {
 	}
 
 	return VirtualMachineComparison{
-		Cores:    cfg.Cores,
-		Sockets:  cfg.Sockets,
+		Cores:    derefInt(cfg.Cores),
+		Sockets:  derefInt(cfg.Sockets),
 		Memory:   int(cfg.Memory),
 		Networks: networks,
 		Disks:    sortDisks(parsedDisks),
@@ -310,8 +310,8 @@ func (f *VirtualMachineTemplateFetcher) TransformExternalState(raw any) (any, er
 	}
 	cfg := vm.VirtualMachineConfig
 	return VMTemplateDesiredState{
-		Cores:   cfg.Cores,
-		Sockets: cfg.Sockets,
+		Cores:   derefInt(cfg.Cores),
+		Sockets: derefInt(cfg.Sockets),
 		Memory:  int(cfg.Memory),
 	}, nil
 }
