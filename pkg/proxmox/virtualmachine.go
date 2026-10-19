@@ -462,8 +462,10 @@ func (pc *ProxmoxClient) CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine)
 	}
 	// handle the disks and networks
 	// for each disk and network, add the disk and network to the VMOptions
-	if len(virtualMachineSpec.Disk) != 0 {
-		for _, disk := range virtualMachineSpec.Disk {
+	// Drives that attach a VirtualMachineVolume are reassigned onto the VM
+	// after it exists; only the disks the VM owns are created with it.
+	if ownDisks := OwnDisks(virtualMachineSpec.Disk); len(ownDisks) != 0 {
+		for _, disk := range ownDisks {
 			VMOptions = append(VMOptions, proxmox.VirtualMachineOption{
 				Name:  disk.Device,
 				Value: disk.Storage + ":" + strconv.Itoa(disk.Size),
@@ -780,12 +782,16 @@ func parseNetworkConfiguration(networks map[string]string) ([]proxmoxv1alpha1.Vi
 	return networkConfiguration, nil
 }
 
-func (pc *ProxmoxClient) ConfigureVirtualMachine(vm *proxmoxv1alpha1.VirtualMachine) error {
+// ConfigureVirtualMachine brings disks, networks and PCI devices in line with
+// the spec. reservedDevices are drive slots the own-disk code must leave
+// alone: the slots of VirtualMachineVolumes attached to this VM, which the
+// VirtualMachine controller moves on and off itself.
+func (pc *ProxmoxClient) ConfigureVirtualMachine(vm *proxmoxv1alpha1.VirtualMachine, reservedDevices ...string) error {
 	err := pc.configureVirtualMachineNetwork(vm)
 	if err != nil {
 		return err
 	}
-	err = pc.configureVirtualMachineDisk(vm)
+	err = pc.configureVirtualMachineDisk(vm, reservedDevices)
 	if err != nil {
 		return err
 	}
@@ -983,7 +989,8 @@ func (pc *ProxmoxClient) GetDiskConfiguration(vm *proxmoxv1alpha1.VirtualMachine
 	return disks, nil
 }
 
-func (pc *ProxmoxClient) configureVirtualMachineDisk(vm *proxmoxv1alpha1.VirtualMachine) error {
+func (pc *ProxmoxClient) configureVirtualMachineDisk(vm *proxmoxv1alpha1.VirtualMachine,
+	reservedDevices []string) error {
 	// Get VM disk spec and actual disk configuration
 	disks := getDisks(vm)
 	virtualMachineDisks, err := pc.GetDiskConfiguration(vm)
@@ -994,6 +1001,7 @@ func (pc *ProxmoxClient) configureVirtualMachineDisk(vm *proxmoxv1alpha1.Virtual
 	if err != nil {
 		return err
 	}
+	virtualMachineDisksParsed = withoutVolumeDevices(virtualMachineDisksParsed, allDisks(vm), reservedDevices...)
 
 	// Classify disk configurations
 	disksToAdd, disksToUpdate, disksToDelete := classifyDisks(disks, virtualMachineDisksParsed)
@@ -1187,6 +1195,7 @@ func (pc *ProxmoxClient) CheckVirtualMachineDelta(vm *proxmoxv1alpha1.VirtualMac
 	if err != nil {
 		return false, err
 	}
+	VirtualMachineDisksParsed = withoutVolumeDevices(VirtualMachineDisksParsed, allDisks(vm))
 
 	VirtualMachineConfig := VirtualMachine.VirtualMachineConfig
 	actualVM := VirtualMachineComparison{
@@ -1614,11 +1623,23 @@ func getSockets(vm *proxmoxv1alpha1.VirtualMachine) int {
 	return vm.Spec.VMSpec.Socket
 }
 
-func getDisks(vm *proxmoxv1alpha1.VirtualMachine) []proxmoxv1alpha1.VirtualMachineDisk {
+// allDisks returns every drive in the spec, owned or attached by volumeRef.
+func allDisks(vm *proxmoxv1alpha1.VirtualMachine) []proxmoxv1alpha1.VirtualMachineDisk {
 	if CheckVMType(vm) == VirtualMachineTemplateType {
 		return vm.Spec.Template.Disk
 	}
 	return vm.Spec.VMSpec.Disk
+}
+
+// getDisks returns the drives the VM owns. Volumes attached by volumeRef are
+// reconciled separately and must not look like disks to create or resize.
+func getDisks(vm *proxmoxv1alpha1.VirtualMachine) []proxmoxv1alpha1.VirtualMachineDisk {
+	return OwnDisks(allDisks(vm))
+}
+
+// VolumeRefs returns the drives of the spec that attach a VirtualMachineVolume.
+func VolumeRefs(vm *proxmoxv1alpha1.VirtualMachine) []proxmoxv1alpha1.VirtualMachineDisk {
+	return VolumeDisks(allDisks(vm))
 }
 
 func getNetworks(vm *proxmoxv1alpha1.VirtualMachine) []proxmoxv1alpha1.VirtualMachineNetwork {

@@ -40,6 +40,21 @@ spec:
 
 Copying from a file needs a storage with the `import` content type (`pvesm set local --content backup,iso,vztmpl,import` on Proxmox VE 8.4 or later); copying from a template disk or another volume does not.
 
+## Attaching to a VirtualMachine
+
+A `VirtualMachine` attaches the volume with a `volumeRef` drive instead of a `storage` and `size`:
+
+```yaml
+spec:
+  vmSpec:
+    disk:
+      - device: scsi1
+        volumeRef:
+          name: web-system
+```
+
+The volume moves from its holder onto the VM before the VM starts, and back when the ref is removed or the VM is deleted. See [VirtualMachine](virtualmachine.md#attaching-a-virtualmachinevolume).
+
 ## Status
 
 ```shell
