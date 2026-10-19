@@ -119,7 +119,7 @@ spec:
                 description: |-
                   EnableAutoStart is a flag that indicates whether the VM should automatically start when it's powered off.
                   If true, the VM will start automatically when it's powered off.
-                  If not set, it defaults to true.
+                  If not set, it defaults to true. PowerState, when set, takes precedence.
                 type: boolean
               name:
                 description: Name is the name of the VM
@@ -127,6 +127,29 @@ spec:
               nodeName:
                 description: NodeName is the name of the target node of Proxmox
                 type: string
+              pool:
+                description: |-
+                  Pool is the Proxmox resource pool the machine is created in. It is
+                  applied at creation; a change afterwards is not applied.
+                type: string
+              powerState:
+                description: |-
+                  PowerState is what the operator does about the machine's power.
+                  Running starts it whenever it is found stopped, Stopped stops it whenever
+                  it is found running, Manual leaves the power alone and only keeps the
+                  configuration. Unset keeps the EnableAutoStart behaviour.
+                enum:
+                - Running
+                - Stopped
+                - Manual
+                type: string
+              tags:
+                description: |-
+                  Tags are Proxmox tags kept on the machine next to the operator's own
+                  tag. Tags present on the machine but not listed here are left alone.
+                items:
+                  type: string
+                type: array
               template:
                 description: TemplateSpec of the source VM
                 properties:
@@ -329,6 +352,81 @@ spec:
                       - storage
                       type: object
                     type: array
+                  firmware:
+                    description: Firmware selects BIOS or UEFI, the EFI vars disk,
+                      a TPM and the machine type.
+                    properties:
+                      bios:
+                        description: Bios is seabios (the Proxmox default) or ovmf
+                          for UEFI.
+                        enum:
+                        - seabios
+                        - ovmf
+                        type: string
+                      efiDisk:
+                        description: |-
+                          EFIDisk is the EFI vars disk ovmf needs. It is created with the machine
+                          and left alone afterwards.
+                        properties:
+                          preEnrolledKeys:
+                            default: false
+                            description: |-
+                              PreEnrolledKeys enrolls the Microsoft Secure Boot keys, which is what a
+                              Secure Boot guest expects. Off leaves Secure Boot disabled.
+                            type: boolean
+                          storage:
+                            description: Storage the EFI vars disk is allocated on.
+                            minLength: 1
+                            type: string
+                        required:
+                        - storage
+                        type: object
+                      machine:
+                        description: Machine is the QEMU machine type, such as q35.
+                          Empty keeps the Proxmox default (i440fx).
+                        type: string
+                      scsiController:
+                        description: |-
+                          SCSIController is the SCSI controller model (scsihw): virtio-scsi-single,
+                          virtio-scsi-pci, lsi, lsi53c810, megasas or pvscsi. Empty keeps the
+                          Proxmox default (lsi), which a cloud image built for virtio-scsi, such
+                          as Ubuntu's, cannot boot from.
+                        enum:
+                        - virtio-scsi-single
+                        - virtio-scsi-pci
+                        - lsi
+                        - lsi53c810
+                        - megasas
+                        - pvscsi
+                        type: string
+                      tpm:
+                        description: TPM is a TPM state disk. It is created with the
+                          machine and left alone afterwards.
+                        properties:
+                          storage:
+                            description: Storage the TPM state disk is allocated on.
+                            minLength: 1
+                            type: string
+                          version:
+                            default: v2.0
+                            description: 'Version is the TPM version: v2.0 (default)
+                              or v1.2.'
+                            enum:
+                            - v1.2
+                            - v2.0
+                            type: string
+                        required:
+                        - storage
+                        type: object
+                    type: object
+                  guestAgent:
+                    default: false
+                    description: |-
+                      GuestAgent enables the QEMU guest agent channel (agent=1). Without it
+                      Proxmox cannot ask the guest for its addresses or run commands in it,
+                      and the operator's status shows no IP. A clone inherits the template's
+                      setting; a machine built from scratch has it off unless set here.
+                    type: boolean
                   memory:
                     description: Memory is the amount of memory in MB
                     minimum: 16
@@ -387,6 +485,12 @@ spec:
                       - message: pcie cannot be true when device type is mapped
                         rule: self.type != 'mapped' || self.pcie == false
                     type: array
+                  smbiosUUID:
+                    description: |-
+                      SMBIOSUUID sets the UUID in smbios1. Cloud-init takes it as the
+                      instance identity, so a new value makes it run again on the next boot.
+                    pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                    type: string
                   socket:
                     default: 1
                     description: Socket is the number of CPU sockets

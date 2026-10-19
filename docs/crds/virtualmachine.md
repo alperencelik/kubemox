@@ -172,3 +172,29 @@ spec:
       userData: "ubuntu-cloud-config-workers.yaml" # That should be inside snippets folder in Proxmox node
 EOF
 ```
+
+## Power, pool, tags and firmware
+
+```yaml
+spec:
+  powerState: Running        # Running | Stopped | Manual; unset keeps enableAutoStart
+  pool: tenant-a             # Proxmox resource pool, applied at creation
+  tags: [web, tenant-a]      # kept on the machine next to the operator's own tag
+  vmSpec:
+    guestAgent: true          # agent=1; a scratch machine has no agent channel otherwise
+    smbiosUUID: 0d9c1e2a-1111-4222-8333-444455556666
+    firmware:
+      bios: ovmf             # seabios (default) | ovmf
+      machine: q35
+      scsiController: virtio-scsi-single   # Proxmox defaults to lsi, which virtio-only cloud images cannot boot from
+      efiDisk:
+        storage: local-zfs
+        preEnrolledKeys: true
+      tpm:
+        storage: local-zfs
+        version: v2.0
+```
+
+- `powerState` says what the operator does about the machine's power: `Running` starts it whenever it is found stopped, `Stopped` stops it whenever it is found running, `Manual` never touches the power and only keeps the configuration. It takes precedence over `enableAutoStart`, and unlike that boolean an explicit value does not get lost on an update.
+- `pool` and the firmware disks (`efiDisk`, `tpm`) are applied when the machine is created and left alone afterwards. `bios`, `machine`, `scsiController`, `smbiosUUID` and `tags` are kept in line on every reconcile; a changed BIOS or UUID applies on the next boot, nothing restarts the machine for it. Tags present on the machine but not listed are left alone.
+- A new `smbiosUUID` is what cloud-init takes as a new instance, so it runs again on the next boot.
