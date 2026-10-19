@@ -102,6 +102,9 @@ func (c CloneMode) CloneFlag() uint8 {
 // *corev1.TypedLocalObjectReference `json:"connectionRef,omitempty"`
 // }
 
+// +kubebuilder:validation:XValidation:rule="!(has(self.cloudInit) && has(self.cloudInitConfig))",message="cloudInit (a NoCloud ISO from a Secret) and cloudInitConfig (Proxmox's own cloud-init drive) are two datasources; set one"
+//
+//nolint:lll // CEL validation rule is too long
 type NewVMSpec struct {
 	// Cores is the number of CPU cores
 	// +kubebuilder:validation:Minimum=1
@@ -123,6 +126,43 @@ type NewVMSpec struct {
 	PciDevices []PciDevice `json:"pciDevices,omitempty"`
 	// Cloud Init Config
 	CloudInitConfig *CloudInitConfig `json:"cloudInitConfig,omitempty"`
+	// CloudInit feeds the guest a NoCloud datasource built from a Secret:
+	// an ISO with the Secret's user-data, meta-data, network-config and
+	// vendor-data, uploaded through the Proxmox API and attached at Device.
+	// Unlike cloudInitConfig it carries arbitrary user-data without a
+	// snippet file on the node. A change to the Secret rebuilds the ISO with
+	// a new instance id; the guest applies it on its next boot.
+	// +optional
+	CloudInit *CloudInitSource `json:"cloudInit,omitempty"`
+}
+
+// CloudInitSource is where a NoCloud datasource comes from.
+type CloudInitSource struct {
+	// SecretRef names a Secret in this namespace. Keys: user-data (required),
+	// and optionally meta-data, network-config and vendor-data. A missing
+	// meta-data is generated with an instance id derived from the content
+	// and the machine's name as hostname; a missing network-config is
+	// generated from the ports that got an address through an
+	// IPAddressClaim, matched by MAC, when there are any.
+	SecretRef corev1.LocalObjectReference `json:"secretRef"`
+	// Device the ISO is attached at.
+	// +kubebuilder:default:="ide2"
+	// +optional
+	Device string `json:"device,omitempty"`
+	// Nameservers written into the generated network-config. Ignored when
+	// the Secret carries its own network-config.
+	// +optional
+	Nameservers []string `json:"nameservers,omitempty"`
+}
+
+// VirtualMachineCloudInitStatus records the datasource the machine has.
+type VirtualMachineCloudInitStatus struct {
+	// Hash of the content the attached ISO was built from.
+	Hash string `json:"hash,omitempty"`
+	// InstanceID in the meta-data of the attached ISO.
+	InstanceID string `json:"instanceID,omitempty"`
+	// Device the ISO is attached at.
+	Device string `json:"device,omitempty"`
 }
 
 type NewVMSpecOSImage struct {
@@ -248,6 +288,9 @@ type VirtualMachineStatus struct {
 	// an IPAddressClaimRef, the address written into ipconfigN.
 	// +optional
 	Networks []VirtualMachineNetworkStatus `json:"networks,omitempty"`
+	// CloudInit is the NoCloud datasource attached from spec.vmSpec.cloudInit.
+	// +optional
+	CloudInit *VirtualMachineCloudInitStatus `json:"cloudInit,omitempty"`
 }
 
 // +kubebuilder:object:root=true

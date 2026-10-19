@@ -292,6 +292,19 @@ func (pc *ProxmoxClient) DeleteVM(vmName, nodeName string) error {
 	}
 	// Delete VM
 	task, err := VirtualMachine.Delete(ctx)
+	if err != nil && VirtualMachine.HasTag(proxmox.MakeTag(proxmox.TagCloudInit)) {
+		// The library removes the cloud-init ISO it attached before it destroys
+		// the machine, and gives up when the token may not delete storage
+		// content (Datastore.Allocate). The machine still has to go; the ISO
+		// is left behind for an operator with the right to remove it.
+		log.Log.Info("Could not remove the cloud-init ISO before destroying the VM, leaving it on the storage",
+			"vm", vmName, "iso", fmt.Sprintf(proxmox.UserDataISOFormat, VirtualMachine.VMID), "error", err.Error())
+		if _, tagErr := VirtualMachine.RemoveTag(ctx, proxmox.MakeTag(proxmox.TagCloudInit)); tagErr != nil &&
+			!proxmox.IsErrNoop(tagErr) {
+			return fmt.Errorf("removing the cloud-init tag of %s to destroy it: %w", vmName, tagErr)
+		}
+		task, err = VirtualMachine.Delete(ctx)
+	}
 	if err != nil {
 		return err
 	}

@@ -304,6 +304,12 @@ func (r *VirtualMachineReconciler) handleVirtualMachineOperations(ctx context.Co
 			}
 			return *netRes, nil
 		}
+		// The NoCloud datasource comes after the addresses: its generated
+		// network-config is built from them.
+		if ciErr := r.reconcileNoCloud(ctx, pc, vm); ciErr != nil {
+			logger.Error(ciErr, "Error applying the cloud-init datasource")
+			return ctrl.Result{}, client.IgnoreNotFound(ciErr)
+		}
 		// Check if auto start is enabled
 		var res ctrl.Result
 		res, err = r.handleAutoStart(ctx, pc, vm)
@@ -412,6 +418,9 @@ func (r *VirtualMachineReconciler) handleCreateFromScratch(ctx context.Context, 
 			return dontRequeue, netErr
 		}
 		return *netRes, nil
+	}
+	if ciErr := r.reconcileNoCloud(ctx, pc, vm); ciErr != nil {
+		return dontRequeue, ciErr
 	}
 
 	return r.startCreatedVM(ctx, pc, vm, nodeName)

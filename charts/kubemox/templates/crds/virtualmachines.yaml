@@ -236,6 +236,49 @@ spec:
               vmSpec:
                 description: This field should be modified further
                 properties:
+                  cloudInit:
+                    description: |-
+                      CloudInit feeds the guest a NoCloud datasource built from a Secret:
+                      an ISO with the Secret's user-data, meta-data, network-config and
+                      vendor-data, uploaded through the Proxmox API and attached at Device.
+                      Unlike cloudInitConfig it carries arbitrary user-data without a
+                      snippet file on the node. A change to the Secret rebuilds the ISO with
+                      a new instance id; the guest applies it on its next boot.
+                    properties:
+                      device:
+                        default: ide2
+                        description: Device the ISO is attached at.
+                        type: string
+                      nameservers:
+                        description: |-
+                          Nameservers written into the generated network-config. Ignored when
+                          the Secret carries its own network-config.
+                        items:
+                          type: string
+                        type: array
+                      secretRef:
+                        description: |-
+                          SecretRef names a Secret in this namespace. Keys: user-data (required),
+                          and optionally meta-data, network-config and vendor-data. A missing
+                          meta-data is generated with an instance id derived from the content
+                          and the machine's name as hostname; a missing network-config is
+                          generated from the ports that got an address through an
+                          IPAddressClaim, matched by MAC, when there are any.
+                        properties:
+                          name:
+                            default: ""
+                            description: |-
+                              Name of the referent.
+                              This field is effectively required, but due to backwards compatibility is
+                              allowed to be empty. Instances of this type with an empty value here are
+                              almost certainly wrong.
+                              More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                            type: string
+                        type: object
+                        x-kubernetes-map-type: atomic
+                    required:
+                    - secretRef
+                    type: object
                   cloudInitConfig:
                     description: Cloud Init Config
                     properties:
@@ -438,6 +481,10 @@ spec:
                     minimum: 1
                     type: integer
                 type: object
+                x-kubernetes-validations:
+                - message: cloudInit (a NoCloud ISO from a Secret) and cloudInitConfig
+                    (Proxmox's own cloud-init drive) are two datasources; set one
+                  rule: '!(has(self.cloudInit) && has(self.cloudInitConfig))'
             required:
             - connectionRef
             - name
@@ -453,6 +500,19 @@ spec:
           status:
             description: VirtualMachineStatus defines the observed state of VirtualMachine
             properties:
+              cloudInit:
+                description: CloudInit is the NoCloud datasource attached from spec.vmSpec.cloudInit.
+                properties:
+                  device:
+                    description: Device the ISO is attached at.
+                    type: string
+                  hash:
+                    description: Hash of the content the attached ISO was built from.
+                    type: string
+                  instanceID:
+                    description: InstanceID in the meta-data of the attached ISO.
+                    type: string
+                type: object
               conditions:
                 description: Conditions is the metav1.Condition of the Virtual Machine
                 items:
