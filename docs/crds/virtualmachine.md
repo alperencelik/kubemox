@@ -172,3 +172,49 @@ spec:
       userData: "ubuntu-cloud-config-workers.yaml" # That should be inside snippets folder in Proxmox node
 EOF
 ```
+
+## VLANs and addresses from Cluster API IPAM
+
+```yaml
+spec:
+  vmSpec:
+    network:
+      - model: virtio
+        bridge: vmbr70
+        vlan: 101
+        ipAddressClaimRef:
+          name: web-0
+```
+
+`vlan` tags the port on the bridge. `ipAddressClaimRef` names an `IPAddressClaim` (`ipam.cluster.x-k8s.io/v1beta1`) in the same namespace; once an IPAM provider binds it to an `IPAddress`, the address, prefix and gateway are written into the matching `ipconfigN` of the machine, which a cloud-init drive turns into the guest's network configuration. Until every claimed port has its address the machine is not started, and the `NetworkReady` condition says which claim it waits for. `status.networks` lists each port with its MAC and the address it got.
+
+Changing a port's bridge or VLAN keeps its MAC: the guest sees the same network card on another network, not a new card. The operator only reads the IPAM objects; it does not create claims, and on a cluster without the IPAM CRDs a ref is reported as `IPAMUnavailable`.
+
+## cloud-init from a Secret (NoCloud)
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: web-cloud-init
+stringData:
+  user-data: |
+    #cloud-config
+    users:
+      - name: admin
+        ssh_authorized_keys: [ssh-ed25519 AAAA...]
+---
+spec:
+  vmSpec:
+    cloudInit:
+      secretRef:
+        name: web-cloud-init
+      device: ide2          # default
+      nameservers: [10.0.0.1]
+```
+
+`cloudInit` builds a NoCloud ISO from the Secret — `user-data` (required), `meta-data`, `network-config`, `vendor-data` — uploads it through the Proxmox API to the node's ISO storage as `user-data-<vmid>.iso` and attaches it at `device`. No snippet file on the node is involved, which is what `cloudInitConfig`, Proxmox's own cloud-init drive, would need for arbitrary user-data; the two are exclusive.
+
+A missing `meta-data` is generated with the machine's name as hostname and an instance id derived from the content, so a change to the Secret gives cloud-init a new instance and it runs again on the guest's next boot; the operator does not reboot the guest. A missing `network-config` is generated from the ports that got an address through an `ipAddressClaimRef`, matched by MAC, with `nameservers` as the resolvers. `status.cloudInit` records the hash, instance id and device of the attached ISO; the ISO is removed with the machine.
+
+Rebuilding the ISO, and removing it when the machine is deleted, needs `Datastore.Allocate` on the ISO storage for the token (the first upload only needs `Datastore.AllocateTemplate`). Without it the machine is still destroyed and the ISO is left on the storage, which the operator log says.
