@@ -55,6 +55,12 @@ type VirtualMachineVolumeSpec struct {
 	// blank disk.
 	// +optional
 	Source *VirtualMachineVolumeSource `json:"source,omitempty"`
+	// Cloneable lets VirtualMachineVolumes in other namespaces copy this one
+	// through source.disk. Inside its own namespace a volume can always be
+	// copied. Defaults to false, so a tenant's data stays in its namespace
+	// unless the owner says otherwise.
+	// +kubebuilder:default:=false
+	Cloneable bool `json:"cloneable,omitempty"`
 	// DeletionProtection keeps the volume on the holder when this object is
 	// deleted, so the data survives the object. Defaults to false: deleting
 	// the object frees the volume.
@@ -78,11 +84,26 @@ type VirtualMachineVolumeSource struct {
 	// grown to Size afterwards when the source is smaller.
 	// +optional
 	Volume string `json:"volume,omitempty"`
-	// Disk is another VirtualMachineVolume in the same namespace to copy from.
-	// It has to be Ready, on the same node, and not attached to a running
-	// VirtualMachine while the copy is made.
+	// Disk is another VirtualMachineVolume to copy from. It has to be Ready,
+	// on the same node, and not attached to a VirtualMachine while the copy
+	// is made. A volume in another namespace is only copied when it is
+	// marked cloneable.
 	// +optional
-	Disk *corev1.LocalObjectReference `json:"disk,omitempty"`
+	Disk *VirtualMachineVolumeDiskSource `json:"disk,omitempty"`
+}
+
+// VirtualMachineVolumeDiskSource names the VirtualMachineVolume a new disk
+// is copied from.
+type VirtualMachineVolumeDiskSource struct {
+	// Name of the VirtualMachineVolume to copy.
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+	// Namespace of that volume. Defaults to the namespace of the volume
+	// being created. Another namespace works only when the source volume
+	// has `cloneable: true`, which is how a platform publishes golden
+	// images from one namespace to every tenant.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
 }
 
 // VirtualMachineVolumeHolder identifies the holder VM that keeps the volume

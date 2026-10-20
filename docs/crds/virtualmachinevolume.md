@@ -35,10 +35,50 @@ spec:
 | `size` | Size in GiB. It can be raised later, which grows the volume in place; it cannot be lowered. |
 | `source` | Where the data comes from. Leave it out for a blank disk. Immutable. |
 | `source.volume` | A Proxmox volume id to copy with `import-from`: a file on a storage with the `import` content type (`local:import/debian.qcow2`), or the disk of a template (`local-zfs:base-9001-disk-0`). The copy is grown to `size` when the source is smaller. |
-| `source.disk` | Another `VirtualMachineVolume` in the same namespace to copy. It has to be Ready, on the same node, and not attached while the copy is made. |
+| `source.disk` | Another `VirtualMachineVolume` to copy: `name`, and `namespace` when it is not this one. It has to be Ready, on the same node, and not attached while the copy is made. |
+| `cloneable` | Let volumes in other namespaces copy this one. Default `false`: a volume is only ever copied inside its own namespace. |
 | `deletionProtection` | Keep the volume on the holder when this object is deleted. Default `false`: deleting the object frees the volume. |
 
 Copying from a file needs a storage with the `import` content type (`pvesm set local --content backup,iso,vztmpl,import` on Proxmox VE 8.4 or later); copying from a template disk or another volume does not.
+
+## Copying across namespaces
+
+A volume is copied inside its own namespace freely. A copy from another namespace is made only when the source carries `cloneable: true`; otherwise the new volume waits with `Ready=False`, reason `SourceNotCloneable`, and goes on as soon as the owner sets the flag. This is how a platform keeps golden images in one namespace and lets every tenant start from them:
+
+```yaml
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachineVolume
+metadata:
+  name: debian-12
+  namespace: images
+spec:
+  connectionRef:
+    name: proxmox-connection-sample
+  nodeName: lowtower
+  storage: local-zfs
+  size: 10
+  cloneable: true
+  source:
+    volume: local:import/debian-12-genericcloud-amd64.qcow2
+---
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachineVolume
+metadata:
+  name: web-system
+  namespace: team-a
+spec:
+  connectionRef:
+    name: proxmox-connection-sample
+  nodeName: lowtower
+  storage: local-zfs
+  size: 20
+  source:
+    disk:
+      name: debian-12
+      namespace: images
+```
+
+The copy is a full `import-from` of the source's current volume, so the source may be grown, re-attached or deleted afterwards without touching the copies. Both volumes have to be on the same node: a Proxmox volume is reachable from the node that owns it, and `import-from` runs there.
 
 ## Status
 

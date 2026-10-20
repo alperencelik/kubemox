@@ -62,6 +62,7 @@ const (
 	reasonVolumeCreating      = "Creating"
 	reasonVolumeSourceWaiting = "SourceNotReady"
 	reasonVolumeSourceBusy    = "SourceBusy"
+	reasonVolumeSourceKept    = "SourceNotCloneable"
 	reasonVolumeFailed        = "ProxmoxRefused"
 	reasonVolumeInUse         = "InUse"
 
@@ -192,6 +193,9 @@ func (r *VirtualMachineVolumeReconciler) create(ctx context.Context, pc *proxmox
 // resolveSource turns the spec source into the import-from argument: a
 // volume id as given, or the current volume id of another
 // VirtualMachineVolume once that one is Ready and not attached to anything.
+// A source in another namespace is copied only when it is marked cloneable;
+// until then this waits rather than fails, so marking the source later is
+// enough.
 func (r *VirtualMachineVolumeReconciler) resolveSource(ctx context.Context,
 	vol *proxmoxv1alpha1.VirtualMachineVolume) (importFrom string, result *ctrl.Result, err error) {
 	src := vol.Spec.Source
@@ -201,31 +205,44 @@ func (r *VirtualMachineVolumeReconciler) resolveSource(ctx context.Context,
 	case src.Volume != "":
 		return src.Volume, nil, nil
 	case src.Disk != nil:
+		key := types.NamespacedName{Namespace: src.Disk.Namespace, Name: src.Disk.Name}
+		if key.Namespace == "" {
+			key.Namespace = vol.Namespace
+		}
+		name := src.Disk.Name
+		if key.Namespace != vol.Namespace {
+			name = key.String()
+		}
 		other := &proxmoxv1alpha1.VirtualMachineVolume{}
-		key := types.NamespacedName{Namespace: vol.Namespace, Name: src.Disk.Name}
 		if err = r.Get(ctx, key, other); err != nil {
 			if kerrors.IsNotFound(err) {
 				res, serr := r.setReady(ctx, vol, metav1.ConditionFalse, reasonVolumeSourceWaiting,
-					fmt.Sprintf("source VirtualMachineVolume %s does not exist", src.Disk.Name),
+					fmt.Sprintf("source VirtualMachineVolume %s does not exist", name),
 					proxmoxv1alpha1.VirtualMachineVolumePhasePending, volumeSourceRetry)
 				return "", &res, serr
 			}
 			return "", nil, err
 		}
 		switch {
+		case key.Namespace != vol.Namespace && !other.Spec.Cloneable:
+			res, serr := r.setReady(ctx, vol, metav1.ConditionFalse, reasonVolumeSourceKept,
+				fmt.Sprintf("source VirtualMachineVolume %s is in another namespace and not cloneable; "+
+					"its owner has to set spec.cloneable to true", name),
+				proxmoxv1alpha1.VirtualMachineVolumePhasePending, volumeSourceRetry)
+			return "", &res, serr
 		case other.Status.Volume == "" || other.Status.Phase == proxmoxv1alpha1.VirtualMachineVolumePhasePending:
 			res, serr := r.setReady(ctx, vol, metav1.ConditionFalse, reasonVolumeSourceWaiting,
-				fmt.Sprintf("source VirtualMachineVolume %s is not ready yet", src.Disk.Name),
+				fmt.Sprintf("source VirtualMachineVolume %s is not ready yet", name),
 				proxmoxv1alpha1.VirtualMachineVolumePhasePending, volumeSourceRetry)
 			return "", &res, serr
 		case other.Spec.NodeName != vol.Spec.NodeName:
 			return "", nil, r.terminal(ctx, vol, fmt.Sprintf(
 				"source VirtualMachineVolume %s lives on node %s, this one on %s; a copy cannot cross nodes",
-				src.Disk.Name, other.Spec.NodeName, vol.Spec.NodeName))
+				name, other.Spec.NodeName, vol.Spec.NodeName))
 		case other.Status.AttachedTo != "":
 			res, serr := r.setReady(ctx, vol, metav1.ConditionFalse, reasonVolumeSourceBusy,
 				fmt.Sprintf("source VirtualMachineVolume %s is attached to VirtualMachine %s; "+
-					"a copy is only made while the source is free", src.Disk.Name, other.Status.AttachedTo),
+					"a copy is only made while the source is free", name, other.Status.AttachedTo),
 				proxmoxv1alpha1.VirtualMachineVolumePhasePending, volumeSourceRetry)
 			return "", &res, serr
 		}
