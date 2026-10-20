@@ -432,54 +432,7 @@ func (pc *ProxmoxClient) CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine)
 	if err != nil {
 		return err
 	}
-	virtualMachineSpec := vm.Spec.VMSpec
-
-	osName := vm.Spec.VMSpec.OSImage.Name
-	osValue := vm.Spec.VMSpec.OSImage.Value
-
-	// Create VM from scratch
-	VMOptions := []proxmox.VirtualMachineOption{
-		{
-			Name:  virtualMachineSocketOption,
-			Value: virtualMachineSpec.Socket,
-		},
-		{
-			Name:  virtualMachineCPUOption,
-			Value: virtualMachineSpec.Cores,
-		},
-		{
-			Name:  virtualMachineMemoryOption,
-			Value: virtualMachineSpec.Memory,
-		},
-		{
-			Name:  osName,
-			Value: osValue + ",media=cdrom",
-		},
-		{
-			Name:  "name",
-			Value: vm.Spec.Name,
-		},
-	}
-	// handle the disks and networks
-	// for each disk and network, add the disk and network to the VMOptions
-	// Drives that attach a VirtualMachineVolume are reassigned onto the VM
-	// after it exists; only the disks the VM owns are created with it.
-	if ownDisks := OwnDisks(virtualMachineSpec.Disk); len(ownDisks) != 0 {
-		for _, disk := range ownDisks {
-			VMOptions = append(VMOptions, proxmox.VirtualMachineOption{
-				Name:  disk.Device,
-				Value: disk.Storage + ":" + strconv.Itoa(disk.Size),
-			})
-		}
-	}
-	if virtualMachineSpec.Network != nil {
-		for i, network := range *virtualMachineSpec.Network {
-			VMOptions = append(VMOptions, proxmox.VirtualMachineOption{
-				Name:  "net" + strconv.Itoa(i),
-				Value: network.Model + ",bridge=" + network.Bridge,
-			})
-		}
-	}
+	VMOptions := scratchCreateOptions(vm)
 	// Make sure that not two VMs are created at the exact time
 	var vmID int
 	var task *proxmox.Task
@@ -1661,4 +1614,39 @@ func getPciDevices(vm *proxmoxv1alpha1.VirtualMachine) []proxmoxv1alpha1.PciDevi
 		return vm.Spec.Template.PciDevices
 	}
 	return vm.Spec.VMSpec.PciDevices
+}
+
+// scratchCreateOptions builds the options a VM built from scratch is created
+// with: sizing, name, the disks the VM owns and its ports. The install medium
+// is optional: a machine that boots from an attached VirtualMachineVolume has
+// none, and an option with an empty name is what Proxmox rejects as
+// "_root: property is not defined in schema".
+func scratchCreateOptions(vm *proxmoxv1alpha1.VirtualMachine) []proxmox.VirtualMachineOption {
+	virtualMachineSpec := vm.Spec.VMSpec
+	opts := []proxmox.VirtualMachineOption{
+		{Name: virtualMachineSocketOption, Value: virtualMachineSpec.Socket},
+		{Name: virtualMachineCPUOption, Value: virtualMachineSpec.Cores},
+		{Name: virtualMachineMemoryOption, Value: virtualMachineSpec.Memory},
+	}
+	if osImage := virtualMachineSpec.OSImage; osImage.Name != "" {
+		opts = append(opts, proxmox.VirtualMachineOption{Name: osImage.Name, Value: osImage.Value + ",media=cdrom"})
+	}
+	opts = append(opts, proxmox.VirtualMachineOption{Name: "name", Value: vm.Spec.Name})
+	// Drives that attach a VirtualMachineVolume are reassigned onto the VM
+	// after it exists; only the disks the VM owns are created with it.
+	for _, disk := range OwnDisks(virtualMachineSpec.Disk) {
+		opts = append(opts, proxmox.VirtualMachineOption{
+			Name:  disk.Device,
+			Value: disk.Storage + ":" + strconv.Itoa(disk.Size),
+		})
+	}
+	if virtualMachineSpec.Network != nil {
+		for i, network := range *virtualMachineSpec.Network {
+			opts = append(opts, proxmox.VirtualMachineOption{
+				Name:  "net" + strconv.Itoa(i),
+				Value: network.Model + ",bridge=" + network.Bridge,
+			})
+		}
+	}
+	return opts
 }
