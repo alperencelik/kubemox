@@ -202,10 +202,11 @@ func main() {
 	// WatchesRawSource in their SetupWithManager. No separate mgr.Add is needed.
 
 	if err = (&proxmoxcontroller.VirtualMachineReconciler{
-		Client:   k8sClient,
-		Scheme:   mgr.GetScheme(),
-		Watcher:  vmWatcher,
-		Recorder: mgr.GetEventRecorder("VirtualMachine"),
+		Client:    k8sClient,
+		Scheme:    mgr.GetScheme(),
+		Watcher:   vmWatcher,
+		Recorder:  mgr.GetEventRecorder("VirtualMachine"),
+		APIReader: mgr.GetAPIReader(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachine")
 		os.Exit(1)

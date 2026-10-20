@@ -181,6 +181,37 @@ type VirtualMachineNetwork struct {
 	Model string `json:"model"`
 	// Bridge is the name of the bridge
 	Bridge string `json:"bridge"`
+	// VLAN is the 802.1Q tag of the port on the bridge. Zero leaves the port untagged.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=4094
+	// +optional
+	VLAN int `json:"vlan,omitempty"`
+	// IPAddressClaimRef names an IPAddressClaim (ipam.cluster.x-k8s.io) in
+	// this namespace. Once the claim holds an IPAddress, its address, prefix
+	// and gateway are written into the matching ipconfigN of the machine for
+	// cloud-init to apply; until then the machine is not started.
+	// +optional
+	IPAddressClaimRef *corev1.LocalObjectReference `json:"ipAddressClaimRef,omitempty"`
+}
+
+// VirtualMachineNetworkStatus is what the operator knows about one network
+// port of the machine.
+type VirtualMachineNetworkStatus struct {
+	// Index is the N of netN and ipconfigN.
+	Index int `json:"index"`
+	// MACAddress is the port's MAC as Proxmox reports it.
+	// +optional
+	MACAddress string `json:"macAddress,omitempty"`
+	// Address is the address with prefix (10.0.0.5/24) written into ipconfigN
+	// from the IPAddressClaim.
+	// +optional
+	Address string `json:"address,omitempty"`
+	// Gateway is the gateway written into ipconfigN.
+	// +optional
+	Gateway string `json:"gateway,omitempty"`
+	// IPAddressClaim is the claim the address came from.
+	// +optional
+	IPAddressClaim string `json:"ipAddressClaim,omitempty"`
 }
 
 type QEMUStatus struct {
@@ -213,6 +244,10 @@ type VirtualMachineStatus struct {
 	// reconciled successfully.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+	// Networks is one entry per network port: its MAC and, for a port with
+	// an IPAddressClaimRef, the address written into ipconfigN.
+	// +optional
+	Networks []VirtualMachineNetworkStatus `json:"networks,omitempty"`
 }
 
 // +kubebuilder:object:root=true
