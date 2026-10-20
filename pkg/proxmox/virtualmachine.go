@@ -57,6 +57,8 @@ const (
 	virtualMachineUpdateSteps     = 3
 	virtualMachineDeleteTimesNum  = 10
 	virtualMachineDeleteSteps     = 3
+	// vmStateUnknown is reported when the state could not be read.
+	vmStateUnknown = "unknown"
 	// The network name
 	netStr = "net"
 	// Placeholder when QEMU agent data is unavailable or the VM does not exist yet
@@ -104,6 +106,7 @@ func (pc *ProxmoxClient) CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine
 	CloneOptions.Full = proxmox.IntOrBool(vm.Spec.CloneMode.IsFullClone())
 	CloneOptions.Name = vm.Name
 	CloneOptions.Target = nodeName
+	CloneOptions.Pool = vm.Spec.Pool
 	log.Log.Info(fmt.Sprintf("Creating VM from template: %s", templateVMName))
 	// Make sure that not two VMs are created at the exact time
 	mutex.Lock()
@@ -393,7 +396,13 @@ func (pc *ProxmoxClient) GetVMState(vmName, nodeName string) (state string, err 
 	// Gets the VMstate from Proxmox API
 	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
-		return "unknown", err
+		return vmStateUnknown, err
+	}
+	// The cached object keeps the status it was fetched with; a power
+	// decision needs the status Proxmox has now, or a machine stopped a
+	// moment ago still reads as running and is never started again.
+	if err = VirtualMachine.Ping(ctx); err != nil {
+		return vmStateUnknown, err
 	}
 	switch VirtualMachine.Status {
 	case VirtualMachineRunningState:
@@ -401,7 +410,7 @@ func (pc *ProxmoxClient) GetVMState(vmName, nodeName string) (state string, err 
 	case VirtualMachineStoppedState:
 		return VirtualMachineStoppedState, nil
 	default:
-		return "unknown", err
+		return vmStateUnknown, err
 	}
 }
 
@@ -478,6 +487,9 @@ func (pc *ProxmoxClient) CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine)
 			})
 		}
 	}
+	// Pool, tags, SMBIOS UUID, firmware: the parts of the spec that belong
+	// to the machine rather than to a device.
+	VMOptions = append(VMOptions, creationOptions(vm)...)
 	// Make sure that not two VMs are created at the exact time
 	var vmID int
 	var task *proxmox.Task
@@ -794,7 +806,8 @@ func (pc *ProxmoxClient) ConfigureVirtualMachine(vm *proxmoxv1alpha1.VirtualMach
 	if err != nil {
 		return err
 	}
-	return nil
+	// SMBIOS UUID, BIOS, machine type and tags.
+	return pc.ConfigureIdentity(vm)
 }
 
 func (pc *ProxmoxClient) deleteVirtualMachineOption(vm *proxmoxv1alpha1.VirtualMachine,

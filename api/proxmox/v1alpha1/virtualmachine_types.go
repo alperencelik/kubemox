@@ -52,9 +52,24 @@ type VirtualMachineSpec struct {
 	DeletionProtection bool `json:"deletionProtection,omitempty"`
 	// EnableAutoStart is a flag that indicates whether the VM should automatically start when it's powered off.
 	// If true, the VM will start automatically when it's powered off.
-	// If not set, it defaults to true.
+	// If not set, it defaults to true. PowerState, when set, takes precedence.
 	// +kubebuilder:default:=true
 	EnableAutoStart bool `json:"enableAutoStart,omitempty"`
+	// PowerState is what the operator does about the machine's power.
+	// Running starts it whenever it is found stopped, Stopped stops it whenever
+	// it is found running, Manual leaves the power alone and only keeps the
+	// configuration. Unset keeps the EnableAutoStart behaviour.
+	// +kubebuilder:validation:Enum=Running;Stopped;Manual
+	// +optional
+	PowerState PowerState `json:"powerState,omitempty"`
+	// Pool is the Proxmox resource pool the machine is created in. It is
+	// applied at creation; a change afterwards is not applied.
+	// +optional
+	Pool string `json:"pool,omitempty"`
+	// Tags are Proxmox tags kept on the machine next to the operator's own
+	// tag. Tags present on the machine but not listed here are left alone.
+	// +optional
+	Tags []string `json:"tags,omitempty"`
 	// AdditionalConfig is the additional configuration of the VM
 	// +kubebuilder:validation:Optional
 	AdditionalConfig map[string]string `json:"additionalConfig,omitempty"`
@@ -71,6 +86,18 @@ type VirtualMachineSpec struct {
 	// +kubebuilder:validation:Required
 	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 }
+
+// PowerState is what the operator does about a machine's power.
+type PowerState string
+
+const (
+	// PowerStateRunning starts the machine whenever it is found stopped.
+	PowerStateRunning PowerState = "Running"
+	// PowerStateStopped stops the machine whenever it is found running.
+	PowerStateStopped PowerState = "Stopped"
+	// PowerStateManual leaves the power alone and only keeps the configuration.
+	PowerStateManual PowerState = "Manual"
+)
 
 // CloneMode selects between a full copy of the template's disks and a linked
 // clone that references the template's base snapshot.
@@ -123,6 +150,69 @@ type NewVMSpec struct {
 	PciDevices []PciDevice `json:"pciDevices,omitempty"`
 	// Cloud Init Config
 	CloudInitConfig *CloudInitConfig `json:"cloudInitConfig,omitempty"`
+	// SMBIOSUUID sets the UUID in smbios1. Cloud-init takes it as the
+	// instance identity, so a new value makes it run again on the next boot.
+	// +kubebuilder:validation:Pattern=`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`
+	// +optional
+	SMBIOSUUID string `json:"smbiosUUID,omitempty"`
+	// Firmware selects BIOS or UEFI, the EFI vars disk, a TPM and the machine type.
+	// +optional
+	Firmware *VirtualMachineFirmware `json:"firmware,omitempty"`
+	// GuestAgent enables the QEMU guest agent channel (agent=1). Without it
+	// Proxmox cannot ask the guest for its addresses or run commands in it,
+	// and the operator's status shows no IP. A clone inherits the template's
+	// setting; a machine built from scratch has it off unless set here.
+	// +kubebuilder:default:=false
+	// +optional
+	GuestAgent bool `json:"guestAgent,omitempty"`
+}
+
+// VirtualMachineFirmware is the firmware side of a machine built from scratch.
+type VirtualMachineFirmware struct {
+	// Bios is seabios (the Proxmox default) or ovmf for UEFI.
+	// +kubebuilder:validation:Enum=seabios;ovmf
+	// +optional
+	Bios string `json:"bios,omitempty"`
+	// Machine is the QEMU machine type, such as q35. Empty keeps the Proxmox default (i440fx).
+	// +optional
+	Machine string `json:"machine,omitempty"`
+	// SCSIController is the SCSI controller model (scsihw): virtio-scsi-single,
+	// virtio-scsi-pci, lsi, lsi53c810, megasas or pvscsi. Empty keeps the
+	// Proxmox default (lsi), which a cloud image built for virtio-scsi, such
+	// as Ubuntu's, cannot boot from.
+	// +kubebuilder:validation:Enum=virtio-scsi-single;virtio-scsi-pci;lsi;lsi53c810;megasas;pvscsi
+	// +optional
+	SCSIController string `json:"scsiController,omitempty"`
+	// EFIDisk is the EFI vars disk ovmf needs. It is created with the machine
+	// and left alone afterwards.
+	// +optional
+	EFIDisk *VirtualMachineEFIDisk `json:"efiDisk,omitempty"`
+	// TPM is a TPM state disk. It is created with the machine and left alone afterwards.
+	// +optional
+	TPM *VirtualMachineTPM `json:"tpm,omitempty"`
+}
+
+// VirtualMachineEFIDisk is the efidisk0 of a UEFI machine.
+type VirtualMachineEFIDisk struct {
+	// Storage the EFI vars disk is allocated on.
+	// +kubebuilder:validation:MinLength=1
+	Storage string `json:"storage"`
+	// PreEnrolledKeys enrolls the Microsoft Secure Boot keys, which is what a
+	// Secure Boot guest expects. Off leaves Secure Boot disabled.
+	// +kubebuilder:default:=false
+	PreEnrolledKeys bool `json:"preEnrolledKeys,omitempty"`
+}
+
+// VirtualMachineTPM is the tpmstate0 of a machine.
+type VirtualMachineTPM struct {
+	// Storage the TPM state disk is allocated on.
+	// +kubebuilder:validation:MinLength=1
+	Storage string `json:"storage"`
+	// Version is the TPM version: v2.0 (default) or v1.2.
+	// +kubebuilder:validation:Enum=v1.2;v2.0
+	// +kubebuilder:default:="v2.0"
+	// +optional
+	Version string `json:"version,omitempty"`
 }
 
 type NewVMSpecOSImage struct {
