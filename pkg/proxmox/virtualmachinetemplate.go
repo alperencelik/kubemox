@@ -27,8 +27,8 @@ func (pc *ProxmoxClient) CheckVirtualMachineTemplateDelta(
 	virtualMachineConfig := VirtualMachine.VirtualMachineConfig
 	// Compare with the desired VM
 	actualMachineSpec := VirtualMachineComparison{
-		Cores:   virtualMachineConfig.Cores,
-		Sockets: virtualMachineConfig.Sockets,
+		Cores:   derefInt(virtualMachineConfig.Cores),
+		Sockets: derefInt(virtualMachineConfig.Sockets),
 		Memory:  int(virtualMachineConfig.Memory),
 	}
 	desiredMachineSpec := VirtualMachineComparison{
@@ -132,7 +132,7 @@ func (pc *ProxmoxClient) ImportDiskToVM(vmName, nodeName, diskName, storageName 
 		return err
 	}
 	// Check if scsi0 is already imported or not
-	scsi0 := VirtualMachine.VirtualMachineConfig.SCSI0
+	scsi0 := VirtualMachine.VirtualMachineConfig.SCSIs["scsi0"]
 	if scsi0 != "" {
 		return nil
 	}
@@ -170,7 +170,7 @@ func (pc *ProxmoxClient) AddCloudInitDrive(vmName, nodeName string) error {
 		log.Log.Error(err, "Error getting VM for adding cloud-init drive")
 	}
 	// Check if cloud-init drive is already added or not
-	cloudInitDrive := VirtualMachine.VirtualMachineConfig.IDE2
+	cloudInitDrive := VirtualMachine.VirtualMachineConfig.IDEs["ide2"]
 	if cloudInitDrive != "" {
 		return nil
 	}
@@ -443,8 +443,8 @@ func (pc *ProxmoxClient) GetCloudInitConfig(vmName, nodeName string) (proxmoxv1a
 		DNSDomain:       virtualMachineConfig.Searchdomain,
 		DNSServers:      strings.Split(virtualMachineConfig.Nameserver, ","),
 		SSHKeys:         strings.Split(virtualMachineConfig.SSHKeys, ""),
-		UpgradePackages: virtualMachineConfig.CIUpgrade != 0,
-		IPConfig:        IPConfigParser(virtualMachineConfig.IPConfig0),
+		UpgradePackages: virtualMachineConfig.CIUpgrade != nil && bool(*virtualMachineConfig.CIUpgrade),
+		IPConfig:        IPConfigParser(virtualMachineConfig.IPConfigs["ipconfig0"]),
 	}
 	return *cloudInitConfig, nil
 }

@@ -101,7 +101,7 @@ func (pc *ProxmoxClient) CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine
 	var CloneOptions proxmox.VirtualMachineCloneOptions
 	// A linked clone lives on the template's storage by definition, so no
 	// storage is passed here in either mode.
-	CloneOptions.Full = vm.Spec.CloneMode.CloneFlag()
+	CloneOptions.Full = proxmox.IntOrBool(vm.Spec.CloneMode.IsFullClone())
 	CloneOptions.Name = vm.Name
 	CloneOptions.Target = nodeName
 	log.Log.Info(fmt.Sprintf("Creating VM from template: %s", templateVMName))
@@ -291,7 +291,7 @@ func (pc *ProxmoxClient) DeleteVM(vmName, nodeName string) error {
 		}
 	}
 	// Delete VM
-	task, err := VirtualMachine.Delete(ctx)
+	task, err := VirtualMachine.Delete(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -756,7 +756,7 @@ func (pc *ProxmoxClient) GetNetworkConfiguration(vm *proxmoxv1alpha1.VirtualMach
 		return make(map[string]string), err
 	}
 	// Get all networks of VM
-	return VirtualMachine.VirtualMachineConfig.MergeNets(), nil
+	return VirtualMachine.VirtualMachineConfig.Nets, nil
 }
 
 func parseNetworkConfiguration(networks map[string]string) ([]proxmoxv1alpha1.VirtualMachineNetwork, error) {
@@ -1190,8 +1190,8 @@ func (pc *ProxmoxClient) CheckVirtualMachineDelta(vm *proxmoxv1alpha1.VirtualMac
 
 	VirtualMachineConfig := VirtualMachine.VirtualMachineConfig
 	actualVM := VirtualMachineComparison{
-		Cores:    VirtualMachineConfig.Cores,
-		Sockets:  VirtualMachineConfig.Sockets,
+		Cores:    derefInt(VirtualMachineConfig.Cores),
+		Sockets:  derefInt(VirtualMachineConfig.Sockets),
 		Memory:   int(VirtualMachineConfig.Memory),
 		Networks: VirtualMachineNetworksParsed,
 		Disks:    sortDisks(VirtualMachineDisksParsed),
@@ -1320,7 +1320,7 @@ func (pc *ProxmoxClient) GetPCIConfiguration(vmName, nodeName string) (map[strin
 	if err != nil {
 		return make(map[string]string), err
 	}
-	PCIs := VirtualMachine.VirtualMachineConfig.MergeHostPCIs()
+	PCIs := VirtualMachine.VirtualMachineConfig.HostPCIs
 	return PCIs, nil
 }
 

@@ -40,8 +40,8 @@ func (pc *ProxmoxClient) lxcFromConfigWhenStopped(nodeName string, containerID i
 		Name:            cc.Hostname,
 		CPUs:            cc.Cores,
 	}
-	if cc.Memory > 0 {
-		c.MaxMem = uint64(cc.Memory) * 1024 * 1024
+	if cc.Memory != nil && *cc.Memory > 0 {
+		c.MaxMem = uint64(*cc.Memory) * 1024 * 1024
 	}
 	setProxmoxContainerClient(c, pc.Client)
 	return c, nil
@@ -95,7 +95,7 @@ func (pc *ProxmoxClient) CloneContainer(container *proxmoxv1alpha1.Container) er
 	}
 
 	var CloneOptions proxmox.ContainerCloneOptions
-	CloneOptions.Full = container.Spec.CloneMode.CloneFlag()
+	CloneOptions.Full = proxmox.IntOrBool(container.Spec.CloneMode.IsFullClone())
 	CloneOptions.Hostname = containerName
 	CloneOptions.Target = nodeName
 	log.Log.Info(fmt.Sprintf("Cloning container %s from template %s", containerName, templateContainerName))
@@ -239,7 +239,7 @@ func (pc *ProxmoxClient) DeleteContainer(containerName, nodeName string) error {
 	// Delete container
 	mutex.Lock()
 	// Delete container
-	task, err := container.Delete(ctx)
+	task, err := container.Delete(ctx, nil)
 	if err != nil {
 		return err
 	}
