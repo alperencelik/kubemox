@@ -85,6 +85,10 @@ serviceAccount:
   name: ""
 
 podAnnotations: {}
+# Labels added to the operator pod, next to the selector labels. A platform
+# that admits traffic to its API server by pod label, or routes metrics by
+# one, sets it here instead of patching the Deployment after every upgrade.
+podLabels: {}
 
 podSecurityContext: {}
   # fsGroup: 2000
