@@ -1,6 +1,7 @@
 package proxmox
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -18,6 +19,21 @@ func isLXCNotRunningErr(err error) bool {
 		return false
 	}
 	return strings.Contains(strings.ToLower(err.Error()), "not running")
+}
+
+// isContainerGoneErr reports whether err says the container does not exist:
+// either no container has the name, or Proxmox has no config for the VMID
+// ("Configuration file 'nodes/<node>/lxc/<vmid>.conf' does not exist").
+func isContainerGoneErr(err error) bool {
+	var notFound *NotFoundError
+	if errors.As(err, &notFound) {
+		return true
+	}
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "configuration file") && strings.Contains(msg, "does not exist")
 }
 
 func setProxmoxContainerClient(c *proxmox.Container, client *proxmox.Client) {
@@ -175,7 +191,7 @@ func (pc *ProxmoxClient) GetContainer(containerName, nodeName string) (*proxmox.
 		return nil, err
 	}
 	if containerID == 0 {
-		return nil, fmt.Errorf("container %s not found", containerName)
+		return nil, &NotFoundError{Message: fmt.Sprintf("container %s not found", containerName)}
 	}
 	// Check cache for container object
 	if container := pc.getCachedContainer(nodeName, containerID); container != nil {
@@ -219,43 +235,60 @@ func (pc *ProxmoxClient) StopContainer(containerName, nodeName string) error {
 	return nil
 }
 
+// DeleteContainer stops and destroys the container. A container that is
+// already gone counts as deleted, so the caller can drop its finalizer.
 func (pc *ProxmoxClient) DeleteContainer(containerName, nodeName string) error {
-	// Get container
-	mutex.Lock()
 	container, err := pc.GetContainer(containerName, nodeName)
+	if err == nil {
+		// The cached object may be stale: read what Proxmox has now.
+		err = container.Ping(ctx)
+	}
+	if isContainerGoneErr(err) {
+		log.Log.Info(fmt.Sprintf("Container %s is already deleted", containerName))
+		pc.forgetContainer(nodeName, containerName, container)
+		return nil
+	}
 	if err != nil {
 		return err
 	}
-	mutex.Unlock()
-	containerStatus := container.Status
-	if containerStatus == VirtualMachineRunningState {
-		// Stop container
-		err = pc.StopContainer(containerName, nodeName)
-		if err != nil {
+	if container.Status == VirtualMachineRunningState {
+		if err = pc.StopContainer(containerName, nodeName); err != nil {
 			return err
 		}
 	}
 	log.Log.Info(fmt.Sprintf("Deleting container %s", containerName))
-	// Delete container
 	mutex.Lock()
-	// Delete container
+	defer mutex.Unlock()
 	task, err := container.Delete(ctx, nil)
-	if err != nil {
+	switch {
+	case isContainerGoneErr(err):
+	case err != nil:
 		return err
-	}
-	// TODO: Change all task.WaitForCompleteStatus stuff
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 5)
-	switch taskCompleted {
-	case false:
-		log.Log.Error(taskErr, "Can't delete container")
-	case true:
-		log.Log.Info(fmt.Sprintf("Container %s has been deleted", containerName))
 	default:
-		log.Log.Info("Container is already deleted")
+		taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 5)
+		if !taskCompleted {
+			if taskErr != nil {
+				return taskErr
+			}
+			return fmt.Errorf("timeout waiting for container %s delete task to finish", containerName)
+		}
+		if !taskStatus {
+			return &TaskError{ExitStatus: task.ExitStatus}
+		}
 	}
-	pc.deleteCachedContainer(nodeName, containerName)
-	mutex.Unlock()
+	log.Log.Info(fmt.Sprintf("Container %s has been deleted", containerName))
+	pc.forgetContainer(nodeName, containerName, container)
 	return nil
+}
+
+// forgetContainer drops a deleted container from the caches. Proxmox hands a
+// freed VMID out again, so a cached object would otherwise describe the next
+// container that gets it.
+func (pc *ProxmoxClient) forgetContainer(nodeName, containerName string, container *proxmox.Container) {
+	pc.deleteCachedContainer(nodeName, containerName)
+	if container != nil {
+		pc.deleteCachedContainerObject(nodeName, int(container.VMID))
+	}
 }
 
 func (pc *ProxmoxClient) StartContainer(containerName, nodeName string) error {
