@@ -39,13 +39,14 @@ func TestContainerWatcher_Drift(t *testing.T) {
 				cts[100] = tc.ct
 			}
 			f, _ := newFakeLXCHost(t, cts)
-			fetcher, key, rkey := containerWatcherFixture(t, f, i, tc.autoStart)
+			fetcher, key := containerWatcherFixture(t, f, i, tc.autoStart)
 
 			desired, err := fetcher.GetDesiredState(context.Background(), key)
 			if err != nil {
 				t.Fatal(err)
 			}
-			raw, err := fetcher.FetchExternalResource(context.Background(), rkey)
+			raw, err := fetcher.FetchExternalResource(context.Background(), ContainerConfigExtractor(
+				&proxmoxv1alpha1.Container{ObjectMeta: metav1.ObjectMeta{Name: key.Name}}).ResourceKey)
 			if err != nil {
 				t.Fatalf("FetchExternalResource = %v; a failed poll never triggers a reconcile", err)
 			}
@@ -69,7 +70,7 @@ func TestContainerWatcher_Drift(t *testing.T) {
 // Container and a ProxmoxConnection pointed at f. The connection name is
 // unique per case because NewProxmoxClientFromRef caches clients by name.
 func containerWatcherFixture(t *testing.T, f *fakeLXCHost, i int, autoStart bool) (
-	*ContainerFetcher, types.NamespacedName, ProxmoxResourceKey) {
+	*ContainerFetcher, types.NamespacedName) {
 	t.Helper()
 	scheme := runtime.NewScheme()
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
@@ -79,14 +80,10 @@ func containerWatcherFixture(t *testing.T, f *fakeLXCHost, i int, autoStart bool
 		ObjectMeta: metav1.ObjectMeta{Name: connRef.Name, ResourceVersion: "1"},
 		Spec:       proxmoxv1alpha1.ProxmoxConnectionSpec{Endpoint: f.url, TokenID: "test@pve!t", Secret: "secret"},
 	}
-	ct := &proxmoxv1alpha1.Container{
-		ObjectMeta: metav1.ObjectMeta{Name: testCTName},
-		Spec: proxmoxv1alpha1.ContainerSpec{
-			Name: testCTName, NodeName: lxcTestNode, EnableAutoStart: autoStart, ConnectionRef: connRef,
-			Template: proxmoxv1alpha1.ContainerTemplate{Cores: 2, Memory: 512},
-		},
-	}
+	ct := testContainer("a", 0)
+	ct.Spec.EnableAutoStart = autoStart
+	ct.Spec.ConnectionRef = connRef
+	ct.Spec.Template = proxmoxv1alpha1.ContainerTemplate{Cores: 2, Memory: 512}
 	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(conn, ct).Build()
-	return &ContainerFetcher{Client: cl}, types.NamespacedName{Name: ct.Name},
-		ProxmoxResourceKey{Name: testCTName, NodeName: lxcTestNode, ConnectionRef: connRef}
+	return &ContainerFetcher{Client: cl}, types.NamespacedName{Name: ct.Name}
 }

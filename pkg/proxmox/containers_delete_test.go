@@ -17,36 +17,26 @@ func assertMutexFree(t *testing.T) {
 func TestDeleteContainer_NoSuchName_CountsAsDeleted(t *testing.T) {
 	_, pc := newFakeLXCHost(t, map[int]*fakeCT{})
 
-	if err := pc.DeleteContainer(testCTName, lxcTestNode); err != nil {
+	if err := pc.DeleteContainer(testContainer("a", 0)); err != nil {
 		t.Fatalf("DeleteContainer of a missing container = %v, want nil so the finalizer goes", err)
 	}
 	assertMutexFree(t)
 }
 
-func TestDeleteContainer_GoneBehindTheCache_CountsAsDeleted(t *testing.T) {
-	f, pc := newFakeLXCHost(t, map[int]*fakeCT{100: {name: testCTName, status: VirtualMachineRunningState}})
-	if _, err := pc.GetContainer(testCTName, lxcTestNode); err != nil {
-		t.Fatal(err)
-	}
-	// Someone runs `pct destroy 100`; kubemox still caches the running CT.
-	delete(f.cts, 100)
+func TestDeleteContainer_RecordedVMIDGone_CountsAsDeleted(t *testing.T) {
+	_, pc := newFakeLXCHost(t, map[int]*fakeCT{})
 
-	if err := pc.DeleteContainer(testCTName, lxcTestNode); err != nil {
+	// status.status.id says 100, but someone ran `pct destroy 100`.
+	if err := pc.DeleteContainer(testContainer("a", 100)); err != nil {
 		t.Fatalf("DeleteContainer = %v, want nil", err)
 	}
 	assertMutexFree(t)
-	if _, ok := pc.getCachedContainerID(lxcTestNode, testCTName); ok {
-		t.Error("the VMID of the deleted container is still cached")
-	}
 }
 
 func TestDeleteContainer_StopsThenDestroys(t *testing.T) {
 	f, pc := newFakeLXCHost(t, map[int]*fakeCT{100: {name: testCTName, status: VirtualMachineRunningState}})
-	if _, err := pc.GetContainer(testCTName, lxcTestNode); err != nil {
-		t.Fatal(err)
-	}
 
-	if err := pc.DeleteContainer(testCTName, lxcTestNode); err != nil {
+	if err := pc.DeleteContainer(testContainer("a", 100)); err != nil {
 		t.Fatal(err)
 	}
 	assertMutexFree(t)
@@ -56,9 +46,6 @@ func TestDeleteContainer_StopsThenDestroys(t *testing.T) {
 	if _, ok := f.cts[100]; ok {
 		t.Error("the container still exists")
 	}
-	if _, ok := pc.getCachedContainerID(lxcTestNode, testCTName); ok {
-		t.Error("the VMID of the deleted container is still cached")
-	}
 }
 
 func TestDeleteContainer_DestroyRefused_ReturnsErrorAndUnlocks(t *testing.T) {
@@ -66,7 +53,7 @@ func TestDeleteContainer_DestroyRefused_ReturnsErrorAndUnlocks(t *testing.T) {
 		100: {name: testCTName, status: VirtualMachineStoppedState, lockErr: "CT is locked (backup)"},
 	})
 
-	if err := pc.DeleteContainer(testCTName, lxcTestNode); err == nil {
+	if err := pc.DeleteContainer(testContainer("a", 100)); err == nil {
 		t.Fatal("DeleteContainer = nil although Proxmox refused, so the finalizer would go and the CT stay")
 	}
 	assertMutexFree(t)

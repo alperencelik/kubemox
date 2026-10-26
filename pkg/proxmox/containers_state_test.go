@@ -9,22 +9,22 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 )
 
-const testCTName = "web"
-
 func TestGetContainer_ReadsCurrentState(t *testing.T) {
 	f, pc := newFakeLXCHost(t, map[int]*fakeCT{100: {name: testCTName, status: VirtualMachineRunningState}})
-	if ct, err := pc.GetContainer(testCTName, lxcTestNode); err != nil || ct.Status != VirtualMachineRunningState {
+	obj := testContainer("a", 100)
+	if ct, err := pc.GetContainer(obj); err != nil || ct.Status != VirtualMachineRunningState {
 		t.Fatalf("GetContainer = %+v, %v", ct, err)
 	}
 
 	f.cts[100].status = VirtualMachineStoppedState // `pct stop 100`
 
-	ct, err := pc.GetContainer(testCTName, lxcTestNode)
+	ct, err := pc.GetContainer(obj)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,17 +35,18 @@ func TestGetContainer_ReadsCurrentState(t *testing.T) {
 
 func TestContainerExists_FollowsDestroyAndRecreate(t *testing.T) {
 	f, pc := newFakeLXCHost(t, map[int]*fakeCT{100: {name: testCTName, status: VirtualMachineRunningState}})
-	if ok, err := pc.ContainerExists(testCTName, lxcTestNode); err != nil || !ok {
+	obj := testContainer("a", 0) // not recorded yet: looked up by hostname
+	if ok, err := pc.ContainerExists(obj); err != nil || !ok {
 		t.Fatalf("ContainerExists = %v, %v; want true", ok, err)
 	}
 
 	delete(f.cts, 100) // `pct destroy 100`
-	if ok, err := pc.ContainerExists(testCTName, lxcTestNode); err != nil || ok {
+	if ok, err := pc.ContainerExists(obj); err != nil || ok {
 		t.Fatalf("ContainerExists after destroy = %v, %v; want false, nil", ok, err)
 	}
 
 	f.cts[101] = &fakeCT{name: testCTName, status: VirtualMachineStoppedState} // created again by hand
-	ct, err := pc.GetContainer(testCTName, lxcTestNode)
+	ct, err := pc.GetContainer(obj)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,11 +70,10 @@ func TestContainerFetcher_SeesChangesBetweenPolls(t *testing.T) {
 			Endpoint: f.url, TokenID: "test@pve!t", Secret: "secret",
 		},
 	}
-	fetcher := &ContainerFetcher{Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(conn).Build()}
-	key := ProxmoxResourceKey{
-		Name: testCTName, NodeName: lxcTestNode,
-		ConnectionRef: &corev1.LocalObjectReference{Name: conn.Name},
-	}
+	ct := testContainer("a", 100)
+	ct.Spec.ConnectionRef = &corev1.LocalObjectReference{Name: conn.Name}
+	fetcher := &ContainerFetcher{Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(conn, ct).Build()}
+	key := client.ObjectKeyFromObject(ct)
 	poll := func() ContainerDesiredState {
 		t.Helper()
 		raw, err := fetcher.FetchExternalResource(context.Background(), key)
