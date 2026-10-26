@@ -1,0 +1,31 @@
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: Container
+metadata:
+  name: container-from-ostemplate
+spec:
+  connectionRef:
+    name: proxmoxconnection-sample
+  name: container-from-ostemplate
+  nodeName: lowtower
+  deletionProtection: false
+  enableAutoStart: true
+  template:
+    # A container template (or OCI archive) that is already on a storage
+    osTemplate: local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst
+    unprivileged: true
+    features: nesting=1
+    cores: 1
+    memory: 1024
+    disk:
+      - storage: local-zfs
+        size: 8
+    network:
+      - bridge: vmbr1
+        vlan: 201
+        ip: 198.18.1.23/24
+        gateway: 198.18.1.1
+        mtu: 1500
+    nameserver: 198.18.0.53
+    searchDomain: example.internal
+    sshPublicKeys:
+      - ssh-ed25519 AAAA... user@host

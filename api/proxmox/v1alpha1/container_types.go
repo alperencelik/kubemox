@@ -28,8 +28,9 @@ import (
 
 // ContainerSpec defines the desired state of Container
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.connectionRef) || has(self.connectionRef)", message="ConnectionRef is required once set"
-// +kubebuilder:validation:XValidation:rule="(has(self.template.name) && self.template.name != \"\") != has(self.template.image)", message="Set exactly one of template.name or template.image"
-// +kubebuilder:validation:XValidation:rule="!has(self.template.image) || (size(self.template.disk) > 0)", message="template.disk is required when template.image is set (rootfs volume)"
+// +kubebuilder:validation:XValidation:rule="[has(self.template.name) && self.template.name != \"\", has(self.template.image), has(self.template.osTemplate) && self.template.osTemplate != \"\"].filter(x, x).size() == 1", message="Set exactly one of template.name, template.image or template.osTemplate"
+// +kubebuilder:validation:XValidation:rule="!(has(self.template.image) || has(self.template.osTemplate)) || (has(self.template.disk) && size(self.template.disk) > 0)", message="template.disk is required when template.image or template.osTemplate is set (rootfs volume)"
+// +kubebuilder:validation:XValidation:rule="!has(self.template.name) || self.template.name == \"\" || ((!has(self.template.sshPublicKeys) || size(self.template.sshPublicKeys) == 0) && !(has(self.template.unprivileged) && self.template.unprivileged))", message="template.sshPublicKeys and template.unprivileged apply on create only; a clone (template.name) inherits them from its template"
 // +kubebuilder:validation:XValidation:rule="!has(self.template.image) || (has(self.template.image.reference) && self.template.image.reference != \"\" && has(self.template.image.storage) && self.template.image.storage != \"\")", message="template.image.reference and template.image.storage are required when template.image is set"
 //
 //nolint:lll // CEL validation rule is too long
@@ -64,11 +65,26 @@ type ContainerSpec struct {
 }
 
 type ContainerTemplate struct {
-	// Name of the template container on Proxmox to clone from (mutually exclusive with Image)
+	// Name of the template container on Proxmox to clone from (mutually exclusive with Image and OSTemplate)
 	Name string `json:"name,omitempty"`
 	// Image pulls an OCI image into Proxmox storage and clones from the resulting template CT.
-	// Mutually exclusive with Name.
+	// Mutually exclusive with Name and OSTemplate.
 	Image *ContainerTemplateImage `json:"image,omitempty"`
+	// OSTemplate is a volume to create the container from: a container template archive or an OCI
+	// image archive that is already on a storage, e.g. local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst.
+	// Mutually exclusive with Name and Image.
+	OSTemplate string `json:"osTemplate,omitempty"`
+	// Unprivileged creates the container with its root mapped to an unprivileged user on the host.
+	// Applied on create only.
+	Unprivileged bool `json:"unprivileged,omitempty"`
+	// Features is the Proxmox features string, for example nesting=1,keyctl=1.
+	Features string `json:"features,omitempty"`
+	// SSHPublicKeys are written to root's authorized_keys on create.
+	SSHPublicKeys []string `json:"sshPublicKeys,omitempty"`
+	// Nameserver is the DNS server, or several separated by spaces. Default: the host's.
+	Nameserver string `json:"nameserver,omitempty"`
+	// SearchDomain is the DNS search domain. Default: the host's.
+	SearchDomain string `json:"searchDomain,omitempty"`
 	// Cores is the number of CPU cores
 	// +kubebuilder:validation:Minimum=1
 	Cores int `json:"cores,omitempty"`
@@ -102,11 +118,28 @@ type ContainerTemplateDisk struct {
 	Type string `json:"type,omitempty"`
 }
 
+// ContainerTemplateNetwork is one NIC: the first is eth0, the next eth1, and so on.
 type ContainerTemplateNetwork struct {
 	// Name is the name of the network
 	Model string `json:"model,omitempty"`
 	// Bridge is the name of the bridge
 	Bridge string `json:"bridge,omitempty"`
+	// VLAN is the Proxmox VLAN tag (1-4094) of the NIC. Omit for untagged traffic on the bridge.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=4094
+	VLAN *int32 `json:"vlan,omitempty"`
+	// IP is the IPv4 address in CIDR notation, dhcp, or manual. Default: dhcp.
+	// +kubebuilder:validation:Pattern=`^(dhcp|manual|([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2})$`
+	IP string `json:"ip,omitempty"`
+	// Gateway is the IPv4 default gateway of the NIC.
+	Gateway string `json:"gateway,omitempty"`
+	// MTU of the NIC. Default: the bridge's.
+	// +kubebuilder:validation:Minimum=64
+	// +kubebuilder:validation:Maximum=65535
+	MTU int `json:"mtu,omitempty"`
+	// Firewall enables the Proxmox firewall on the NIC.
+	Firewall bool `json:"firewall,omitempty"`
 }
 
 // ContainerStatus defines the observed state of Container

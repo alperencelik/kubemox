@@ -119,7 +119,7 @@ func TestOCICreateOptionsCarryTheUIDTag(t *testing.T) {
 	obj.Spec.Template.Image = &proxmoxv1alpha1.ContainerTemplateImage{Reference: "nginx:1.27", Storage: "local"}
 	obj.Spec.Template.Disk = []proxmoxv1alpha1.ContainerTemplateDisk{{Storage: "local-lvm", Size: 4}}
 
-	opts, err := ociNewContainerOptions(obj, "local:vztmpl/nginx-1.27.tar", testCTName)
+	opts, err := newContainerOptions(obj, "local:vztmpl/nginx-1.27.tar", testCTName)
 	if err != nil {
 		t.Fatal(err)
 	}

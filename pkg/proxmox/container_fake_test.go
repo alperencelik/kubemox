@@ -158,6 +158,11 @@ func (f *fakeLXCHost) serveCT(w http.ResponseWriter, r *http.Request, id int, su
 	case "PUT /config":
 		ct.set(ctParams(r))
 		writeCTData(w, nil)
+	case "PUT /resize":
+		p := ctParams(r)
+		volume, _, _ := strings.Cut(ct.config[p["disk"]], ",")
+		ct.config[p["disk"]] = volume + ",size=" + p["size"]
+		writeCTData(w, fakeCTUPID("resize", id))
 	case "POST /clone":
 		p := ctParams(r)
 		newID, _ := strconv.Atoi(p["newid"])

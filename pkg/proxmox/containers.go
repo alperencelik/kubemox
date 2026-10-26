@@ -97,6 +97,9 @@ func (pc *ProxmoxClient) CloneContainer(container *proxmoxv1alpha1.Container) (i
 	if container.Spec.Template.Image != nil {
 		return pc.CreateContainerFromOCIImage(container)
 	}
+	if container.Spec.Template.OSTemplate != "" {
+		return pc.createContainerFromVolume(container, container.Spec.Template.OSTemplate)
+	}
 	templateContainerName := TemplateContainerName(container.Spec.Template)
 	named, err := pc.containersNamed(templateContainerName, nodeName)
 	if err != nil {
@@ -139,6 +142,9 @@ func (pc *ProxmoxClient) CloneContainer(container *proxmoxv1alpha1.Container) (i
 		Name: containerOptionTags, Value: withContainerUIDTag(containerTags(templateContainer), container),
 	}); err != nil {
 		return 0, fmt.Errorf("tagging container %s (vmid %d): %w", containerName, newID, err)
+	}
+	if err = pc.applyCloneSettings(clone, container); err != nil {
+		return 0, err
 	}
 	return newID, nil
 }
@@ -386,7 +392,7 @@ func (pc *ProxmoxClient) UpdateContainer(container *proxmoxv1alpha1.Container) e
 		}
 		// Config of container doesn't require restart
 	}
-	return nil
+	return updateContainerNets(ProxmoxContainer, container)
 }
 
 func (pc *ProxmoxClient) RestartContainer(ct *proxmoxv1alpha1.Container) (bool, error) {
