@@ -37,11 +37,10 @@ type CachedClient struct {
 }
 
 type NodeCache struct {
-	node          *proxmox.Node
-	vms           map[string]int                  // vmName -> vmID
-	vmObjs        map[int]*proxmox.VirtualMachine // vmID -> VirtualMachine object
-	containers    map[string]int                  // containerName -> containerID
-	containerObjs map[int]*proxmox.Container      // containerID -> Container object
+	node       *proxmox.Node
+	vms        map[string]int                  // vmName -> vmID
+	vmObjs     map[int]*proxmox.VirtualMachine // vmID -> VirtualMachine object
+	containers map[string]int                  // containerName -> containerID
 }
 
 // NewProxmoxClient builds a client from the credentials written inline in the

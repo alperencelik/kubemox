@@ -22,34 +22,6 @@ func (pc *ProxmoxClient) setCachedContainerID(nodeName, containerName string, co
 	pc.nodesCache[nodeName].containers[containerName] = containerID
 }
 
-func (pc *ProxmoxClient) setCachedContainer(nodeName string, containerID int, container *proxmox.Container) {
-	pc.vmIDMutex.Lock()
-	defer pc.vmIDMutex.Unlock()
-	if _, exists := pc.nodesCache[nodeName]; !exists {
-		pc.nodesCache[nodeName] = NodeCache{
-			vms:           make(map[string]int),
-			vmObjs:        make(map[int]*proxmox.VirtualMachine),
-			containers:    make(map[string]int),
-			containerObjs: make(map[int]*proxmox.Container),
-		}
-	} else if pc.nodesCache[nodeName].containerObjs == nil {
-		// Initialize mapping if nil (for existing cache entries before upgrade)
-		entry := pc.nodesCache[nodeName]
-		entry.containerObjs = make(map[int]*proxmox.Container)
-		pc.nodesCache[nodeName] = entry
-	}
-	pc.nodesCache[nodeName].containerObjs[containerID] = container
-}
-
-func (pc *ProxmoxClient) getCachedContainer(nodeName string, containerID int) *proxmox.Container {
-	pc.vmIDMutex.RLock()
-	defer pc.vmIDMutex.RUnlock()
-	if nodeCache, exists := pc.nodesCache[nodeName]; exists && nodeCache.containerObjs != nil {
-		return nodeCache.containerObjs[containerID]
-	}
-	return nil
-}
-
 func (pc *ProxmoxClient) getCachedContainerID(nodeName, containerName string) (int, bool) {
 	pc.vmIDMutex.RLock()
 	defer pc.vmIDMutex.RUnlock()
@@ -67,13 +39,5 @@ func (pc *ProxmoxClient) deleteCachedContainer(nodeName, containerName string) {
 		if nodeCache.containers != nil {
 			delete(nodeCache.containers, containerName)
 		}
-	}
-}
-
-func (pc *ProxmoxClient) deleteCachedContainerObject(nodeName string, containerID int) {
-	pc.vmIDMutex.Lock()
-	defer pc.vmIDMutex.Unlock()
-	if nodeCache, exists := pc.nodesCache[nodeName]; exists && nodeCache.containerObjs != nil {
-		delete(nodeCache.containerObjs, containerID)
 	}
 }

@@ -1,6 +1,7 @@
 package proxmox
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -18,6 +19,21 @@ func isLXCNotRunningErr(err error) bool {
 		return false
 	}
 	return strings.Contains(strings.ToLower(err.Error()), "not running")
+}
+
+// isContainerGoneErr reports whether err says the container does not exist:
+// either no container has the name, or Proxmox has no config for the VMID
+// ("Configuration file 'nodes/<node>/lxc/<vmid>.conf' does not exist").
+func isContainerGoneErr(err error) bool {
+	var notFound *NotFoundError
+	if errors.As(err, &notFound) {
+		return true
+	}
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "configuration file") && strings.Contains(msg, "does not exist")
 }
 
 func setProxmoxContainerClient(c *proxmox.Container, client *proxmox.Client) {
@@ -143,28 +159,16 @@ func (pc *ProxmoxClient) GetContainerID(containerName, nodeName string) (int, er
 }
 
 func (pc *ProxmoxClient) ContainerExists(containerName, nodeName string) (bool, error) {
-	// Check cache
-	if _, ok := pc.getCachedContainerID(nodeName, containerName); ok {
-		return true, nil
+	_, err := pc.GetContainer(containerName, nodeName)
+	if isContainerGoneErr(err) {
+		return false, nil
 	}
-
-	node, err := pc.getNode(ctx, nodeName)
-	if err != nil {
-		return false, err
-	}
-	containers, err := node.Containers(ctx)
-	if err != nil {
-		return false, err
-	}
-	for _, container := range containers {
-		if container.Name == containerName {
-			pc.setCachedContainerID(nodeName, containerName, int(container.VMID))
-			return true, nil
-		}
-	}
-	return false, nil
+	return err == nil, err
 }
 
+// GetContainer reads the container from Proxmox on every call. Only the
+// name -> VMID mapping is cached: the client lives as long as its
+// ProxmoxConnection, so a cached object would never be refreshed.
 func (pc *ProxmoxClient) GetContainer(containerName, nodeName string) (*proxmox.Container, error) {
 	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
@@ -175,25 +179,20 @@ func (pc *ProxmoxClient) GetContainer(containerName, nodeName string) (*proxmox.
 		return nil, err
 	}
 	if containerID == 0 {
-		return nil, fmt.Errorf("container %s not found", containerName)
+		return nil, &NotFoundError{Message: fmt.Sprintf("container %s not found", containerName)}
 	}
-	// Check cache for container object
-	if container := pc.getCachedContainer(nodeName, containerID); container != nil {
-		return container, nil
-	}
-	// If not in cache, fetch from API
 	container, err := node.Container(ctx, containerID)
-	if err != nil {
-		if isLXCNotRunningErr(err) {
-			container, err = pc.lxcFromConfigWhenStopped(nodeName, containerID)
-		}
-		if err != nil {
-			return nil, err
-		}
+	if isLXCNotRunningErr(err) {
+		container, err = pc.lxcFromConfigWhenStopped(nodeName, containerID)
 	}
-	// Store in cache
-	pc.setCachedContainer(nodeName, containerID, container)
-
+	if isContainerGoneErr(err) {
+		// The VMID was destroyed outside kubemox: look the name up again next time.
+		pc.deleteCachedContainer(nodeName, containerName)
+		return nil, &NotFoundError{Message: fmt.Sprintf("container %s not found: %v", containerName, err)}
+	}
+	if err != nil {
+		return nil, err
+	}
 	return container, nil
 }
 
@@ -264,8 +263,6 @@ func (pc *ProxmoxClient) StartContainer(containerName, nodeName string) error {
 	if err != nil {
 		return err
 	}
-	// TODO: Main problem here is that if the cache is stale, the status will be stale as well
-	// and the operator will try to start an already running VM.
 	err = container.Ping(ctx)
 	if err != nil {
 		if !isLXCNotRunningErr(err) {
@@ -290,7 +287,6 @@ func (pc *ProxmoxClient) StartContainer(containerName, nodeName string) error {
 		return &TaskError{ExitStatus: taskID.ExitStatus}
 	}
 	log.Log.Info(fmt.Sprintf("Container %s has been started", containerName))
-	pc.deleteCachedContainerObject(nodeName, int(container.VMID))
 	return nil
 }
 
