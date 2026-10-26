@@ -218,42 +218,45 @@ func (pc *ProxmoxClient) StopContainer(containerName, nodeName string) error {
 	return nil
 }
 
+// DeleteContainer stops and destroys the container. A container that is
+// already gone counts as deleted, so the caller can drop its finalizer.
 func (pc *ProxmoxClient) DeleteContainer(containerName, nodeName string) error {
-	// Get container
-	mutex.Lock()
 	container, err := pc.GetContainer(containerName, nodeName)
+	if isContainerGoneErr(err) {
+		log.Log.Info(fmt.Sprintf("Container %s is already deleted", containerName))
+		pc.deleteCachedContainer(nodeName, containerName)
+		return nil
+	}
 	if err != nil {
 		return err
 	}
-	mutex.Unlock()
-	containerStatus := container.Status
-	if containerStatus == VirtualMachineRunningState {
-		// Stop container
-		err = pc.StopContainer(containerName, nodeName)
-		if err != nil {
+	if container.Status == VirtualMachineRunningState {
+		if err = pc.StopContainer(containerName, nodeName); err != nil {
 			return err
 		}
 	}
 	log.Log.Info(fmt.Sprintf("Deleting container %s", containerName))
-	// Delete container
 	mutex.Lock()
-	// Delete container
+	defer mutex.Unlock()
 	task, err := container.Delete(ctx, nil)
-	if err != nil {
+	switch {
+	case isContainerGoneErr(err):
+	case err != nil:
 		return err
-	}
-	// TODO: Change all task.WaitForCompleteStatus stuff
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 5)
-	switch taskCompleted {
-	case false:
-		log.Log.Error(taskErr, "Can't delete container")
-	case true:
-		log.Log.Info(fmt.Sprintf("Container %s has been deleted", containerName))
 	default:
-		log.Log.Info("Container is already deleted")
+		taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 5)
+		if !taskCompleted {
+			if taskErr != nil {
+				return taskErr
+			}
+			return fmt.Errorf("timeout waiting for container %s delete task to finish", containerName)
+		}
+		if !taskStatus {
+			return &TaskError{ExitStatus: task.ExitStatus}
+		}
 	}
+	log.Log.Info(fmt.Sprintf("Container %s has been deleted", containerName))
 	pc.deleteCachedContainer(nodeName, containerName)
-	mutex.Unlock()
 	return nil
 }
 

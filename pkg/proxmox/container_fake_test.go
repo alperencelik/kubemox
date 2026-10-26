@@ -53,6 +53,17 @@ func newFakeLXCHost(t *testing.T, cts map[int]*fakeCT) (*fakeLXCHost, *ProxmoxCl
 	return f, &ProxmoxClient{Client: client, nodesCache: make(map[string]NodeCache)}
 }
 
+func (f *fakeLXCHost) called(call string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, c := range f.calls {
+		if c == call {
+			return true
+		}
+	}
+	return false
+}
+
 func (f *fakeLXCHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
