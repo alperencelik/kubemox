@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/alperencelik/kube-external-watcher/watcher"
+	"github.com/google/go-cmp/cmp"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
@@ -24,8 +25,19 @@ type Resource interface {
 
 // ContainerDesiredState represents the comparable desired/actual state for a Container.
 type ContainerDesiredState struct {
-	Cores  int
-	Memory int
+	Exists bool
+	// Running is left nil on the desired side when enableAutoStart is off, so
+	// a stopped container is not drift then (see ContainerStateComparator).
+	Running *bool
+	Cores   int
+	Memory  int
+}
+
+// ContainerStateComparator compares ContainerDesiredState values and skips
+// Running when either side leaves it unset.
+func ContainerStateComparator() *watcher.DeepEqualComparator {
+	return watcher.NewDeepEqualComparator(
+		cmp.FilterValues(func(x, y *bool) bool { return x == nil || y == nil }, cmp.Ignore()))
 }
 
 // VMTemplateDesiredState represents the comparable desired/actual state for a VirtualMachineTemplate.
@@ -199,10 +211,16 @@ func (f *ContainerFetcher) GetDesiredState(ctx context.Context, key types.Namesp
 	if reconcileMode == kubernetes.ReconcileModeWatchOnly || reconcileMode == kubernetes.ReconcileModeEnsureExists {
 		return nil, nil
 	}
-	return ContainerDesiredState{
+	desired := ContainerDesiredState{
+		Exists: true,
 		Cores:  container.Spec.Template.Cores,
 		Memory: container.Spec.Template.Memory,
-	}, nil
+	}
+	if container.Spec.EnableAutoStart {
+		running := true
+		desired.Running = &running
+	}
+	return desired, nil
 }
 
 func (f *ContainerFetcher) FetchExternalResource(ctx context.Context, objKey any) (any, error) {
@@ -215,6 +233,10 @@ func (f *ContainerFetcher) FetchExternalResource(ctx context.Context, objKey any
 		return nil, fmt.Errorf("getting Proxmox client: %w", err)
 	}
 	container, err := pc.GetContainer(key.Name, key.NodeName)
+	if isContainerGoneErr(err) {
+		// A missing container is a state to compare, not a failed poll.
+		return (*gopxmx.Container)(nil), nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -226,9 +248,15 @@ func (f *ContainerFetcher) TransformExternalState(raw any) (any, error) {
 	if !ok {
 		return nil, fmt.Errorf("unexpected external state type: %T", raw)
 	}
+	if container == nil {
+		return ContainerDesiredState{}, nil
+	}
+	running := container.Status == VirtualMachineRunningState
 	return ContainerDesiredState{
-		Cores:  container.CPUs,
-		Memory: int(container.MaxMem / 1024 / 1024),
+		Exists:  true,
+		Running: &running,
+		Cores:   container.CPUs,
+		Memory:  int(container.MaxMem / 1024 / 1024),
 	}, nil
 }
 
