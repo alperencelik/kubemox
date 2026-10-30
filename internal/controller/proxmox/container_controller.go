@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strings"
 	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -59,6 +58,8 @@ const (
 	typeStoppedContainer   = "stopped"
 	typeCreatingContainer  = "Creating"
 	typeErrorContainer     = "Error"
+	// NameConflict: the container found for this object belongs to another one.
+	typeNameConflictContainer = "NameConflict"
 )
 
 // +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=containers,verbs=get;list;watch;create;update;patch;delete
@@ -98,7 +99,7 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	case kubernetes.ReconcileModeEnsureExists:
 		logger.Info(fmt.Sprintf("Reconciling Container %s in EnsureExists mode", container.Name))
 		var containerExists bool
-		containerExists, err = pc.ContainerExists(container.Spec.Name, container.Spec.NodeName)
+		containerExists, err = pc.ContainerExists(container)
 		if err != nil {
 			logger.Error(err, "Failed to check if Container exists")
 			return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -178,15 +179,19 @@ func (r *ContainerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return builder.Complete(r)
 }
 
-func (r *ContainerReconciler) CloneContainer(pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) error {
+func (r *ContainerReconciler) CloneContainer(ctx context.Context, pc *proxmox.ProxmoxClient,
+	container *proxmoxv1alpha1.Container) error {
 	containerName := container.Spec.Name
-	nodeName := container.Spec.NodeName
 	r.Recorder.Eventf(container, nil, "Normal", "Creating", "Creating", fmt.Sprintf("Creating Container %s", containerName))
-	err := pc.CloneContainer(container)
+	id, err := pc.CloneContainer(container)
 	if err != nil {
 		return err
 	}
-	err = pc.StartContainer(containerName, nodeName)
+	// From here on the container is addressed by this VMID, not by its hostname.
+	if err = r.recordContainerID(ctx, container, id); err != nil {
+		return err
+	}
+	err = pc.StartContainer(container)
 	if err != nil {
 		return err
 	}
@@ -208,7 +213,7 @@ func (r *ContainerReconciler) UpdateContainer(ctx context.Context, pc *proxmox.P
 
 func (r *ContainerReconciler) UpdateContainerStatus(ctx context.Context, pc *proxmox.ProxmoxClient,
 	container *proxmoxv1alpha1.Container) error {
-	containerStatus, err := pc.UpdateContainerStatus(container.Spec.Name, container.Spec.NodeName)
+	containerStatus, err := pc.UpdateContainerStatus(container)
 	if err != nil {
 		return err
 	}
@@ -252,15 +257,14 @@ func (r *ContainerReconciler) StartOrUpdateContainer(ctx context.Context,
 	pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) error {
 	logger := log.FromContext(ctx)
 	containerName := container.Spec.Name
-	nodeName := container.Spec.NodeName
 	// Update Container
-	containerState, err := pc.GetContainerState(containerName, nodeName)
+	containerState, err := pc.GetContainerState(container)
 	if err != nil {
 		logger.Error(err, "Failed to get Container state")
 		return err
 	}
 	if containerState == typeStoppedContainer {
-		err := pc.StartContainer(containerName, nodeName)
+		err := pc.StartContainer(container)
 		if err != nil {
 			logger.Error(err, "Failed to start Container")
 			return err
@@ -281,7 +285,7 @@ func (r *ContainerReconciler) handleCloneContainer(ctx context.Context,
 	pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) error {
 	logger := log.FromContext(ctx)
 	// Create Container
-	err := r.CloneContainer(pc, container)
+	err := r.CloneContainer(ctx, pc, container)
 	if err != nil {
 		logger.Error(err, "Failed to clone Container")
 		return err
@@ -361,7 +365,10 @@ func (r *ContainerReconciler) reconcileOCIImageDrift(ctx context.Context, pc *pr
 			"container", container.Spec.Name, "appliedRef", appliedRef, "desiredRef", desiredRef)
 		r.Recorder.Eventf(container, nil, "Normal", "Replacing", "Replacing",
 			fmt.Sprintf("Replacing Container %s (OCI reference or storage changed)", container.Spec.Name))
-		if err := pc.DeleteContainer(container.Spec.Name, container.Spec.NodeName); err != nil {
+		if err := pc.DeleteContainer(container); err != nil {
+			return false, err
+		}
+		if err := r.forgetContainerID(ctx, container); err != nil {
 			return false, err
 		}
 		if err := r.patchAppliedOCIImageStatus(ctx, container, "", ""); err != nil {
@@ -376,7 +383,7 @@ func (r *ContainerReconciler) reconcileOCIImageDrift(ctx context.Context, pc *pr
 		return false, nil
 	}
 
-	lxc, err := pc.GetContainer(container.Spec.Name, container.Spec.NodeName)
+	lxc, err := pc.GetContainer(container)
 	if err != nil {
 		return containerExists, err
 	}
@@ -392,8 +399,8 @@ func (r *ContainerReconciler) reconcileOCIImageDrift(ctx context.Context, pc *pr
 		}
 		container.Status.AppliedImageReference = desiredRef
 		container.Status.AppliedImageStorage = desiredStor
-	case strings.TrimSpace(tags) == "":
-		logger.Info("Bootstrapping applied OCI status (no tags on CT; assuming spec matches workload)", "container", container.Spec.Name)
+	case !proxmox.LXCHasAnyOCIImageTag(tags):
+		logger.Info("Bootstrapping applied OCI status (no image tag on CT; assuming spec matches workload)", "container", container.Spec.Name)
 		if err := r.patchAppliedOCIImageStatus(ctx, container, desiredRef, desiredStor); err != nil {
 			return containerExists, err
 		}
@@ -403,7 +410,10 @@ func (r *ContainerReconciler) reconcileOCIImageDrift(ctx context.Context, pc *pr
 		logger.Info("OCI image tag mismatch; replacing Proxmox container", "container", container.Spec.Name)
 		r.Recorder.Eventf(container, nil, "Normal", "Replacing", "Replacing",
 			fmt.Sprintf("Replacing Container %s (OCI image tag mismatch)", container.Spec.Name))
-		if err := pc.DeleteContainer(container.Spec.Name, container.Spec.NodeName); err != nil {
+		if err := pc.DeleteContainer(container); err != nil {
+			return false, err
+		}
+		if err := r.forgetContainerID(ctx, container); err != nil {
 			return false, err
 		}
 		if err := r.patchAppliedOCIImageStatus(ctx, container, "", ""); err != nil {
@@ -419,9 +429,9 @@ func (r *ContainerReconciler) reconcileOCIImageDrift(ctx context.Context, pc *pr
 func (r *ContainerReconciler) handleContainerOperations(ctx context.Context,
 	pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) error {
 	logger := log.FromContext(ctx)
-	containerExists, err := pc.ContainerExists(container.Spec.Name, container.Spec.NodeName)
+	containerExists, err := r.claimContainer(ctx, pc, container)
 	if err != nil {
-		logger.Error(err, "Failed to check if Container exists")
+		logger.Error(err, "Failed to find the Proxmox container of the Container")
 		return client.IgnoreNotFound(err)
 	}
 	containerExists, err = r.reconcileOCIImageDrift(ctx, pc, container, containerExists)
@@ -446,16 +456,14 @@ func (r *ContainerReconciler) handleContainerOperations(ctx context.Context,
 func (r *ContainerReconciler) handleAutoStart(ctx context.Context,
 	pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	containerName := container.Spec.Name
-	nodeName := container.Spec.NodeName
 	if container.Spec.EnableAutoStart {
-		containerState, err := pc.GetContainerState(containerName, nodeName)
+		containerState, err := pc.GetContainerState(container)
 		if err != nil {
 			logger.Error(err, "Failed to get Container state")
 			return ctrl.Result{}, err
 		}
 		if containerState == typeStoppedContainer {
-			err := pc.StartContainer(containerName, nodeName)
+			err := pc.StartContainer(container)
 			if err != nil {
 				logger.Error(err, "Failed to start Container")
 				return ctrl.Result{}, err
@@ -470,15 +478,72 @@ func (r *ContainerReconciler) handleContainerDeletion(ctx context.Context,
 	pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) error {
 	logger := log.FromContext(ctx)
 	containerName := container.Spec.Name
-	nodeName := container.Spec.NodeName
 	r.Recorder.Eventf(container, nil, "Normal", "Deleting", "Deleting", fmt.Sprintf("Deleting Container %s", containerName))
 	if container.Spec.DeletionProtection {
 		logger.Info(fmt.Sprintf("Container %s is protected from deletion", containerName))
 		return nil
 	}
-	if err := pc.DeleteContainer(containerName, nodeName); err != nil {
+	if err := pc.DeleteContainer(container); err != nil {
 		return err
 	}
 	r.Recorder.Eventf(container, nil, "Normal", "Deleted", "Deleted", fmt.Sprintf("Deleted Container %s", containerName))
 	return nil
+}
+
+// claimContainer finds the object's Proxmox container, tags it with the
+// object's UID when an older kubemox created it, and records its VMID. A
+// container that belongs to another object gets the NameConflict condition
+// and is left alone; the error makes the reconcile retry with backoff, so the
+// object is created once the other one is gone.
+func (r *ContainerReconciler) claimContainer(ctx context.Context,
+	pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) (bool, error) {
+	id, err := pc.ClaimContainer(container)
+	switch {
+	case proxmox.IsContainerNotFound(err):
+		return false, r.forgetContainerID(ctx, container)
+	case proxmox.IsNameConflict(err):
+		r.Recorder.Eventf(container, nil, "Warning", typeNameConflictContainer, "Claiming", "%v", err)
+		patch := client.MergeFrom(container.DeepCopy())
+		container.Status.Status = proxmoxv1alpha1.QEMUStatus{}
+		meta.SetStatusCondition(&container.Status.Conditions, metav1.Condition{
+			Type:    typeNameConflictContainer,
+			Status:  metav1.ConditionTrue,
+			Reason:  "ContainerOfAnotherObject",
+			Message: err.Error(),
+		})
+		if patchErr := r.Status().Patch(ctx, container, patch); patchErr != nil {
+			return false, patchErr
+		}
+		return false, err
+	case err != nil:
+		return false, err
+	}
+	return true, r.recordContainerID(ctx, container, id)
+}
+
+// recordContainerID writes the VMID that the object's container is addressed
+// by from now on, and drops a NameConflict condition left from before.
+func (r *ContainerReconciler) recordContainerID(ctx context.Context,
+	container *proxmoxv1alpha1.Container, id int) error {
+	if container.Status.Status.ID == id &&
+		meta.FindStatusCondition(container.Status.Conditions, typeNameConflictContainer) == nil {
+		return nil
+	}
+	patch := client.MergeFrom(container.DeepCopy())
+	container.Status.Status.ID = id
+	container.Status.Status.Node = container.Spec.NodeName
+	meta.RemoveStatusCondition(&container.Status.Conditions, typeNameConflictContainer)
+	return r.Status().Patch(ctx, container, patch)
+}
+
+// forgetContainerID drops the VMID of a container that is gone. Proxmox hands
+// a freed VMID out again, and a lookup by the old one could then land on a
+// container that is not this object's.
+func (r *ContainerReconciler) forgetContainerID(ctx context.Context, container *proxmoxv1alpha1.Container) error {
+	if container.Status.Status.ID == 0 {
+		return nil
+	}
+	patch := client.MergeFrom(container.DeepCopy())
+	container.Status.Status = proxmoxv1alpha1.QEMUStatus{}
+	return r.Status().Patch(ctx, container, patch)
 }

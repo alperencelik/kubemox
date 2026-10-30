@@ -34,3 +34,42 @@ spec:
       - model: virtio
         bridge: vmbr0
 ```
+
+## Creating a container from a volume
+
+Instead of cloning a template container (`template.name`) or pulling an OCI image (`template.image`), a container can be created from a container template or OCI archive that is already on a storage. Set `template.osTemplate` to its volume ID:
+
+```yaml
+  template:
+    osTemplate: local:vztmpl/debian-13-standard_13.1-2_amd64.tar.zst
+    unprivileged: true
+    features: nesting=1
+    cores: 1
+    memory: 1024
+    disk:
+      - storage: local-zfs
+        size: 8
+    network:
+      - bridge: vmbr1
+        vlan: 201            # Proxmox VLAN tag, omit for untagged
+        ip: 198.18.1.23/24   # CIDR, dhcp (the default) or manual
+        gateway: 198.18.1.1
+        mtu: 1500
+        firewall: false
+    nameserver: 198.18.0.53
+    searchDomain: example.internal
+    sshPublicKeys:
+      - ssh-ed25519 AAAA... user@host
+```
+
+The NIC fields work for every kind of template. Each entry in `network` becomes `eth0`, `eth1` and so on. When a NIC changes, kubemox applies the change to the container through its config, with the container running, and the MAC address stays the same.
+
+`unprivileged` and `sshPublicKeys` exist only when a container is created, so they cannot be combined with `template.name`: a clone inherits them from its template. On a clone, kubemox grows the root disk to `disk[0].size` if that is larger than the template's, and then applies the NICs, `nameserver`, `searchDomain` and `features`.
+
+## Identity
+
+Proxmox keeps VMIDs unique, not hostnames, so kubemox binds a `Container` to its Proxmox container by VMID:
+
+- When kubemox creates the container, it writes the VMID to `status.status.id` and tags the container `kubemox-uid-<metadata.uid>`. From then on the container is addressed by that VMID only. Renaming it in Proxmox does not detach it.
+- `spec.name` is looked up only while `status.status.id` is empty. A container with that hostname is adopted only if it carries the object's tag, or if it is the only container with that hostname and carries no `kubemox-uid` tag at all, as one created by an older kubemox does. On adoption, kubemox writes the tag.
+- A container tagged for another object is never changed or deleted. The `Container` gets the condition `NameConflict` and is retried with backoff. Deleting such a `Container` removes only the object.

@@ -1,6 +1,7 @@
 package proxmox
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -18,6 +19,21 @@ func isLXCNotRunningErr(err error) bool {
 		return false
 	}
 	return strings.Contains(strings.ToLower(err.Error()), "not running")
+}
+
+// isContainerGoneErr reports whether err says the container does not exist:
+// either no container has the name, or Proxmox has no config for the VMID
+// ("Configuration file 'nodes/<node>/lxc/<vmid>.conf' does not exist").
+func isContainerGoneErr(err error) bool {
+	var notFound *NotFoundError
+	if errors.As(err, &notFound) {
+		return true
+	}
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "configuration file") && strings.Contains(msg, "does not exist")
 }
 
 func setProxmoxContainerClient(c *proxmox.Container, client *proxmox.Client) {
@@ -68,30 +84,34 @@ func lxcOSInfoFromContainer(c *proxmox.Container) string {
 	return "LXC"
 }
 
-// CloneContainer clones a container from a template
-func (pc *ProxmoxClient) CloneContainer(container *proxmoxv1alpha1.Container) error {
+// CloneContainer clones the container from its template, tags it with the
+// object's UID and returns its VMID.
+func (pc *ProxmoxClient) CloneContainer(container *proxmoxv1alpha1.Container) (int, error) {
 	// Returning an error is quite reasonable here since that error moved up
 	// to the controller and will be handled there as requeue
 	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
 	if _, err := pc.getNode(ctx, nodeName); err != nil {
-		return err
+		return 0, err
 	}
 	if container.Spec.Template.Image != nil {
 		return pc.CreateContainerFromOCIImage(container)
 	}
+	if container.Spec.Template.OSTemplate != "" {
+		return pc.createContainerFromVolume(container, container.Spec.Template.OSTemplate)
+	}
 	templateContainerName := TemplateContainerName(container.Spec.Template)
-	templateContainerID, err := pc.GetContainerID(templateContainerName, nodeName)
+	named, err := pc.containersNamed(templateContainerName, nodeName)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	// If templateContainerID is 0, return error that template not found
-	if templateContainerID == 0 {
-		return fmt.Errorf("template container %s not found on node %s", templateContainerName, nodeName)
+	if len(named) != 1 {
+		return 0, fmt.Errorf("template container %s: %d containers on node %s have that name, want 1",
+			templateContainerName, len(named), nodeName)
 	}
-	templateContainer, err := pc.GetContainer(templateContainerName, nodeName)
+	templateContainer, err := pc.getContainerByID(nodeName, int(named[0].VMID))
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	var CloneOptions proxmox.ContainerCloneOptions
@@ -103,104 +123,125 @@ func (pc *ProxmoxClient) CloneContainer(container *proxmoxv1alpha1.Container) er
 	newID, task, err := templateContainer.Clone(ctx, &CloneOptions)
 	if err != nil {
 		log.Log.Error(err, "Can't clone container")
-		return err
+		return 0, err
 	}
 	taskStatus, taskCompleted, taskWaitErr := task.WaitForCompleteStatus(ctx, 5, 10)
 	if !taskStatus {
 		// Return the task.ExitStatus as an error
-		return &TaskError{ExitStatus: task.ExitStatus}
+		return 0, &TaskError{ExitStatus: task.ExitStatus}
 	}
 	if !taskCompleted {
-		return taskWaitErr
+		return 0, taskWaitErr
 	}
-	// Cache the new container ID
-	pc.setCachedContainerID(nodeName, containerName, newID)
-	return nil
-}
-
-func (pc *ProxmoxClient) GetContainerID(containerName, nodeName string) (int, error) {
-	// Get node
-	node, err := pc.getNode(ctx, nodeName)
+	clone, err := pc.getContainerByID(nodeName, newID)
 	if err != nil {
 		return 0, err
 	}
-	// If it's cached, return it
-	if cachedID, ok := pc.getCachedContainerID(nodeName, containerName); ok {
-		return cachedID, nil
+	// The clone carries the template's tags; a kubemox-uid tag among them is replaced.
+	if _, err = clone.Config(ctx, proxmox.ContainerOption{
+		Name: containerOptionTags, Value: withContainerUIDTag(containerTags(templateContainer), container),
+	}); err != nil {
+		return 0, fmt.Errorf("tagging container %s (vmid %d): %w", containerName, newID, err)
 	}
-	// If not cached, fetch from API
-	containers, err := node.Containers(ctx)
-	if err != nil {
+	if err = pc.applyCloneSettings(clone, container); err != nil {
 		return 0, err
 	}
-	for _, container := range containers {
-		if container.Name == containerName {
-			pc.setCachedContainerID(nodeName, containerName, int(container.VMID))
-			return int(container.VMID), nil
-		}
-	}
-	return 0, nil
+	return newID, nil
 }
 
-func (pc *ProxmoxClient) ContainerExists(containerName, nodeName string) (bool, error) {
-	// Check cache
-	if _, ok := pc.getCachedContainerID(nodeName, containerName); ok {
-		return true, nil
-	}
-
-	node, err := pc.getNode(ctx, nodeName)
-	if err != nil {
-		return false, err
-	}
-	containers, err := node.Containers(ctx)
-	if err != nil {
-		return false, err
-	}
-	for _, container := range containers {
-		if container.Name == containerName {
-			pc.setCachedContainerID(nodeName, containerName, int(container.VMID))
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func (pc *ProxmoxClient) GetContainer(containerName, nodeName string) (*proxmox.Container, error) {
+// containersNamed lists the containers on the node whose hostname is name.
+// Proxmox does not keep hostnames unique, so there may be several.
+func (pc *ProxmoxClient) containersNamed(name, nodeName string) ([]*proxmox.Container, error) {
 	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		return nil, err
 	}
-	containerID, err := pc.GetContainerID(containerName, nodeName)
+	containers, err := node.Containers(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if containerID == 0 {
-		return nil, fmt.Errorf("container %s not found", containerName)
-	}
-	// Check cache for container object
-	if container := pc.getCachedContainer(nodeName, containerID); container != nil {
-		return container, nil
-	}
-	// If not in cache, fetch from API
-	container, err := node.Container(ctx, containerID)
-	if err != nil {
-		if isLXCNotRunningErr(err) {
-			container, err = pc.lxcFromConfigWhenStopped(nodeName, containerID)
+	var named []*proxmox.Container
+	for _, c := range containers {
+		if c.Name == name {
+			named = append(named, c)
 		}
+	}
+	return named, nil
+}
+
+func (pc *ProxmoxClient) ContainerExists(container *proxmoxv1alpha1.Container) (bool, error) {
+	_, err := pc.GetContainer(container)
+	if isContainerGoneErr(err) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// GetContainer returns the Proxmox container that belongs to the object,
+// read from the API. It is addressed by status.status.id once kubemox has
+// recorded it; the hostname is looked up only before that. Either way a
+// container tagged for another object fails with NameConflictError.
+func (pc *ProxmoxClient) GetContainer(ct *proxmoxv1alpha1.Container) (*proxmox.Container, error) {
+	id := ct.Status.Status.ID
+	if id == 0 {
+		named, err := pc.containersNamed(ct.Spec.Name, ct.Spec.NodeName)
 		if err != nil {
 			return nil, err
 		}
+		if id, err = pickContainerByName(ct, named); err != nil {
+			return nil, err
+		}
 	}
-	// Store in cache
-	pc.setCachedContainer(nodeName, containerID, container)
-
+	container, err := pc.getContainerByID(ct.Spec.NodeName, id)
+	if err != nil {
+		return nil, err
+	}
+	if err = checkContainerOwner(ct, container); err != nil {
+		return nil, err
+	}
 	return container, nil
 }
 
-func (pc *ProxmoxClient) StopContainer(containerName, nodeName string) error {
+func (pc *ProxmoxClient) getContainerByID(nodeName string, containerID int) (*proxmox.Container, error) {
+	node, err := pc.getNode(ctx, nodeName)
+	if err != nil {
+		return nil, err
+	}
+	container, err := node.Container(ctx, containerID)
+	if isLXCNotRunningErr(err) {
+		container, err = pc.lxcFromConfigWhenStopped(nodeName, containerID)
+	}
+	if isContainerGoneErr(err) {
+		return nil, &NotFoundError{Message: fmt.Sprintf("container %d not found on node %s: %v", containerID, nodeName, err)}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return container, nil
+}
+
+// ClaimContainer returns the VMID of the object's container and tags it with
+// the object's UID when it carries no kubemox-uid tag yet.
+func (pc *ProxmoxClient) ClaimContainer(ct *proxmoxv1alpha1.Container) (int, error) {
+	container, err := pc.GetContainer(ct)
+	if err != nil {
+		return 0, err
+	}
+	if containerOwnerUID(containerTags(container)) == "" {
+		log.Log.Info(fmt.Sprintf("Adopting container %s (vmid %d)", ct.Spec.Name, container.VMID))
+		if _, err = container.Config(ctx, proxmox.ContainerOption{
+			Name: containerOptionTags, Value: withContainerUIDTag(containerTags(container), ct),
+		}); err != nil {
+			return 0, fmt.Errorf("tagging container %s (vmid %d): %w", ct.Spec.Name, container.VMID, err)
+		}
+	}
+	return int(container.VMID), nil
+}
+
+func (pc *ProxmoxClient) StopContainer(ct *proxmoxv1alpha1.Container) error {
 	// Get container
-	log.Log.Info(fmt.Sprintf("Stopping container %s", containerName))
-	container, err := pc.GetContainer(containerName, nodeName)
+	log.Log.Info(fmt.Sprintf("Stopping container %s", ct.Spec.Name))
+	container, err := pc.GetContainer(ct)
 	if err != nil {
 		return err
 	}
@@ -219,59 +260,57 @@ func (pc *ProxmoxClient) StopContainer(containerName, nodeName string) error {
 	return nil
 }
 
-func (pc *ProxmoxClient) DeleteContainer(containerName, nodeName string) error {
-	// Get container
-	mutex.Lock()
-	container, err := pc.GetContainer(containerName, nodeName)
-	if err != nil {
+// DeleteContainer stops and destroys the object's container. A container
+// that is already gone counts as deleted, and so does one that belongs to
+// another object, which is left alone: the caller can drop its finalizer.
+func (pc *ProxmoxClient) DeleteContainer(ct *proxmoxv1alpha1.Container) error {
+	containerName := ct.Spec.Name
+	container, err := pc.GetContainer(ct)
+	switch {
+	case isContainerGoneErr(err):
+		log.Log.Info(fmt.Sprintf("Container %s is already deleted", containerName))
+		return nil
+	case IsNameConflict(err):
+		log.Log.Info(fmt.Sprintf("Not deleting container %s: %v", containerName, err))
+		return nil
+	case err != nil:
 		return err
 	}
-	mutex.Unlock()
-	containerStatus := container.Status
-	if containerStatus == VirtualMachineRunningState {
-		// Stop container
-		err = pc.StopContainer(containerName, nodeName)
-		if err != nil {
+	if container.Status == VirtualMachineRunningState {
+		if err = pc.StopContainer(ct); err != nil {
 			return err
 		}
 	}
-	log.Log.Info(fmt.Sprintf("Deleting container %s", containerName))
-	// Delete container
+	log.Log.Info(fmt.Sprintf("Deleting container %s (vmid %d)", containerName, container.VMID))
 	mutex.Lock()
-	// Delete container
+	defer mutex.Unlock()
 	task, err := container.Delete(ctx, nil)
-	if err != nil {
+	switch {
+	case isContainerGoneErr(err):
+	case err != nil:
 		return err
-	}
-	// TODO: Change all task.WaitForCompleteStatus stuff
-	_, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 5)
-	switch taskCompleted {
-	case false:
-		log.Log.Error(taskErr, "Can't delete container")
-	case true:
-		log.Log.Info(fmt.Sprintf("Container %s has been deleted", containerName))
 	default:
-		log.Log.Info("Container is already deleted")
+		taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 5)
+		if !taskCompleted {
+			if taskErr != nil {
+				return taskErr
+			}
+			return fmt.Errorf("timeout waiting for container %s delete task to finish", containerName)
+		}
+		if !taskStatus {
+			return &TaskError{ExitStatus: task.ExitStatus}
+		}
 	}
-	pc.deleteCachedContainer(nodeName, containerName)
-	mutex.Unlock()
+	log.Log.Info(fmt.Sprintf("Container %s has been deleted", containerName))
 	return nil
 }
 
-func (pc *ProxmoxClient) StartContainer(containerName, nodeName string) error {
-	// Get container
-	container, err := pc.GetContainer(containerName, nodeName)
+func (pc *ProxmoxClient) StartContainer(ct *proxmoxv1alpha1.Container) error {
+	container, err := pc.GetContainer(ct)
 	if err != nil {
 		return err
 	}
-	// TODO: Main problem here is that if the cache is stale, the status will be stale as well
-	// and the operator will try to start an already running VM.
-	err = container.Ping(ctx)
-	if err != nil {
-		if !isLXCNotRunningErr(err) {
-			return err
-		}
-	} else if container.Status == VirtualMachineRunningState {
+	if container.Status == VirtualMachineRunningState {
 		return nil
 	}
 	taskID, err := container.Start(ctx)
@@ -284,28 +323,25 @@ func (pc *ProxmoxClient) StartContainer(containerName, nodeName string) error {
 			log.Log.Error(taskErr, "Can't start container")
 			return taskErr
 		}
-		return fmt.Errorf("timeout waiting for container %s start task to finish", containerName)
+		return fmt.Errorf("timeout waiting for container %s start task to finish", ct.Spec.Name)
 	}
 	if !taskStatus {
 		return &TaskError{ExitStatus: taskID.ExitStatus}
 	}
-	log.Log.Info(fmt.Sprintf("Container %s has been started", containerName))
-	pc.deleteCachedContainerObject(nodeName, int(container.VMID))
+	log.Log.Info(fmt.Sprintf("Container %s has been started", ct.Spec.Name))
 	return nil
 }
 
-func (pc *ProxmoxClient) GetContainerState(containerName, nodeName string) (string, error) {
-	// Get container
-	container, err := pc.GetContainer(containerName, nodeName)
+func (pc *ProxmoxClient) GetContainerState(ct *proxmoxv1alpha1.Container) (string, error) {
+	container, err := pc.GetContainer(ct)
 	if err != nil {
 		return "", err
 	}
-	// Get container state
 	return container.Status, nil
 }
 
-func (pc *ProxmoxClient) UpdateContainerStatus(containerName, nodeName string) (proxmoxv1alpha1.QEMUStatus, error) {
-	container, err := pc.GetContainer(containerName, nodeName)
+func (pc *ProxmoxClient) UpdateContainerStatus(ct *proxmoxv1alpha1.Container) (proxmoxv1alpha1.QEMUStatus, error) {
+	container, err := pc.GetContainer(ct)
 	if err != nil {
 		return proxmoxv1alpha1.QEMUStatus{}, err
 	}
@@ -334,12 +370,11 @@ func (pc *ProxmoxClient) UpdateContainerStatus(containerName, nodeName string) (
 func (pc *ProxmoxClient) UpdateContainer(container *proxmoxv1alpha1.Container) error {
 	// Get container from proxmox
 	containerName := container.Spec.Name
-	nodeName := container.Spec.NodeName
 	var cpuOption proxmox.ContainerOption
 	var memoryOption proxmox.ContainerOption
 	cpuOption.Name = virtualMachineCPUOption
 	memoryOption.Name = virtualMachineMemoryOption
-	ProxmoxContainer, err := pc.GetContainer(containerName, nodeName)
+	ProxmoxContainer, err := pc.GetContainer(container)
 	if err != nil {
 		return err
 	}
@@ -357,12 +392,12 @@ func (pc *ProxmoxClient) UpdateContainer(container *proxmoxv1alpha1.Container) e
 		}
 		// Config of container doesn't require restart
 	}
-	return nil
+	return updateContainerNets(ProxmoxContainer, container)
 }
 
-func (pc *ProxmoxClient) RestartContainer(containerName, nodeName string) (bool, error) {
+func (pc *ProxmoxClient) RestartContainer(ct *proxmoxv1alpha1.Container) (bool, error) {
 	// Get container
-	container, err := pc.GetContainer(containerName, nodeName)
+	container, err := pc.GetContainer(ct)
 	if err != nil {
 		return false, err
 	}
@@ -373,7 +408,7 @@ func (pc *ProxmoxClient) RestartContainer(containerName, nodeName string) (bool,
 	}
 	// Retry method to understand if container is stopped
 	for i := 0; i < 5; i++ {
-		contStatus, errr := pc.GetContainerState(containerName, nodeName)
+		contStatus, errr := pc.GetContainerState(ct)
 		if errr != nil {
 			return false, errr
 		}
@@ -387,10 +422,7 @@ func (pc *ProxmoxClient) RestartContainer(containerName, nodeName string) (bool,
 }
 
 func (pc *ProxmoxClient) CheckContainerDelta(container *proxmoxv1alpha1.Container) (bool, error) {
-	// Get container
-	containerName := container.Spec.Name
-	nodeName := container.Spec.NodeName
-	ProxmoxContainer, err := pc.GetContainer(containerName, nodeName)
+	ProxmoxContainer, err := pc.GetContainer(container)
 	if err != nil {
 		return false, err
 	}
@@ -403,9 +435,7 @@ func (pc *ProxmoxClient) CheckContainerDelta(container *proxmoxv1alpha1.Containe
 }
 
 func (pc *ProxmoxClient) IsContainerReady(container *proxmoxv1alpha1.Container) (bool, error) {
-	containerName := container.Spec.Name
-	nodeName := container.Spec.NodeName
-	lxc, err := pc.GetContainer(containerName, nodeName)
+	lxc, err := pc.GetContainer(container)
 	if err != nil {
 		return false, err
 	}
