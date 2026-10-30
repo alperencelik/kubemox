@@ -187,6 +187,7 @@ func main() {
 	containerWatcher := watcher.NewExternalWatcher(&proxmox.ContainerFetcher{Client: k8sClient},
 		append(watcherOpts,
 			watcher.WithMetrics("Container"),
+			watcher.WithComparator(proxmox.ContainerStateComparator()),
 			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.Container{},
 				proxmox.ContainerConfigExtractor, autoRegisterOpts...),
 		)...)

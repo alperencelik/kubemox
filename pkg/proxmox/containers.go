@@ -182,6 +182,22 @@ func (pc *ProxmoxClient) ContainerExists(containerName, nodeName string) (bool, 
 }
 
 func (pc *ProxmoxClient) GetContainer(containerName, nodeName string) (*proxmox.Container, error) {
+	containerID, err := pc.GetContainerID(containerName, nodeName)
+	if err != nil {
+		return nil, err
+	}
+	// Check cache for container object
+	if container := pc.getCachedContainer(nodeName, containerID); container != nil {
+		return container, nil
+	}
+	// If not in cache, fetch from API
+	return pc.refreshContainer(containerName, nodeName)
+}
+
+// refreshContainer reads the container from Proxmox, bypassing the cached
+// object, and stores it in the cache. The watcher calls it on every poll, which
+// is what keeps the cache fresh.
+func (pc *ProxmoxClient) refreshContainer(containerName, nodeName string) (*proxmox.Container, error) {
 	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
 		return nil, err
@@ -193,24 +209,42 @@ func (pc *ProxmoxClient) GetContainer(containerName, nodeName string) (*proxmox.
 	if containerID == 0 {
 		return nil, &NotFoundError{Message: fmt.Sprintf("container %s not found", containerName)}
 	}
-	// Check cache for container object
-	if container := pc.getCachedContainer(nodeName, containerID); container != nil {
-		return container, nil
-	}
-	// If not in cache, fetch from API
 	container, err := node.Container(ctx, containerID)
+	if isLXCNotRunningErr(err) {
+		container, err = pc.lxcFromConfigWhenStopped(nodeName, containerID)
+	}
+	if isContainerGoneErr(err) {
+		// The VMID was destroyed outside kubemox: look the name up again next time
+		pc.deleteCachedContainer(nodeName, containerName)
+		pc.deleteCachedContainerObject(nodeName, containerID)
+		return nil, &NotFoundError{Message: fmt.Sprintf("container %s not found: %v", containerName, err)}
+	}
 	if err != nil {
-		if isLXCNotRunningErr(err) {
-			container, err = pc.lxcFromConfigWhenStopped(nodeName, containerID)
-		}
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
 	}
 	// Store in cache
 	pc.setCachedContainer(nodeName, containerID, container)
 
 	return container, nil
+}
+
+// findContainerNode returns the node that has the container, or an empty string
+// when no node in the cluster has it.
+func (pc *ProxmoxClient) findContainerNode(containerName string) (string, error) {
+	cluster, err := pc.Client.Cluster(ctx)
+	if err != nil {
+		return "", err
+	}
+	resources, err := cluster.Resources(ctx, "vm")
+	if err != nil {
+		return "", err
+	}
+	for _, resource := range resources {
+		if resource.Type == "lxc" && resource.Name == containerName {
+			return resource.Node, nil
+		}
+	}
+	return "", nil
 }
 
 // DeleteContainer stops and destroys the container. It returns a NotFoundError
@@ -383,6 +417,8 @@ func (pc *ProxmoxClient) UpdateContainer(container *proxmoxv1alpha1.Container) e
 		} else {
 			log.Log.Info(fmt.Sprintf("Container %s has been updated", containerName))
 		}
+		// The cached object still holds the old cores and memory
+		pc.deleteCachedContainerObject(nodeName, int(ProxmoxContainer.VMID))
 		// Config of container doesn't require restart
 	}
 	return nil
@@ -401,11 +437,12 @@ func (pc *ProxmoxClient) RestartContainer(containerName, nodeName string) (bool,
 	}
 	// Retry method to understand if container is stopped
 	for i := 0; i < 5; i++ {
-		contStatus, errr := pc.GetContainerState(containerName, nodeName)
+		// Bypass the cache, it holds the status from before the reboot
+		current, errr := pc.refreshContainer(containerName, nodeName)
 		if errr != nil {
 			return false, errr
 		}
-		if contStatus == VirtualMachineRunningState {
+		if current.Status == VirtualMachineRunningState {
 			return true, nil
 		} else {
 			time.Sleep(5 * time.Second)
