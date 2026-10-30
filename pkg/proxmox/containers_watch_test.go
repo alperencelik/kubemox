@@ -114,8 +114,8 @@ func TestContainerFetcher_PollFollowsDestroyAndRecreate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ok, existsErr := pc.ContainerExists(testCTName, lxcTestNode); existsErr != nil || !ok {
-		t.Fatalf("ContainerExists = %v, %v; want true", ok, existsErr)
+	if _, err = pc.GetContainer(testCTName, lxcTestNode); err != nil {
+		t.Fatal(err)
 	}
 
 	delete(f.cts, 100) // `pct destroy 100`
