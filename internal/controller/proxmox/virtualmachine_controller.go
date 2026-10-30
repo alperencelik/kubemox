@@ -30,10 +30,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -237,14 +239,32 @@ func (r *VirtualMachineReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&proxmoxv1alpha1.VirtualMachine{}).
 		WithEventFilter(predicate.Funcs{
 			UpdateFunc: func(e event.UpdateEvent) bool {
-				oldVM := e.ObjectOld.(*proxmoxv1alpha1.VirtualMachine)
-				newVM := e.ObjectNew.(*proxmoxv1alpha1.VirtualMachine)
+				oldVM, oldOK := e.ObjectOld.(*proxmoxv1alpha1.VirtualMachine)
+				newVM, newOK := e.ObjectNew.(*proxmoxv1alpha1.VirtualMachine)
+				if !oldOK || !newOK {
+					// Events of the other kinds this controller watches
+					// (VirtualMachineVolume) are filtered by their own watch.
+					return true
+				}
 				condition1 := !reflect.DeepEqual(oldVM.Spec, newVM.Spec)
 				condition2 := newVM.ObjectMeta.GetDeletionTimestamp().IsZero()
 				condition3 := !reflect.DeepEqual(oldVM.GetAnnotations(), newVM.GetAnnotations())
 				return condition1 || !condition2 || condition3
 			},
 		}).
+		// A volume turning Ready, or coming back to its holder, wakes the
+		// VMs that reference it.
+		Watches(&proxmoxv1alpha1.VirtualMachineVolume{}, handler.EnqueueRequestsFromMapFunc(r.vmsForVolume),
+			builder.WithPredicates(predicate.Funcs{
+				UpdateFunc: func(e event.UpdateEvent) bool {
+					oldVol, oldOK := e.ObjectOld.(*proxmoxv1alpha1.VirtualMachineVolume)
+					newVol, newOK := e.ObjectNew.(*proxmoxv1alpha1.VirtualMachineVolume)
+					if !oldOK || !newOK {
+						return false
+					}
+					return oldVol.Status.Phase != newVol.Status.Phase || oldVol.Status.AttachedTo != newVol.Status.AttachedTo
+				},
+			})).
 		WatchesRawSource(r.Watcher).
 		WithOptions(controller.Options{MaxConcurrentReconciles: VMmaxConcurrentReconciles})
 
@@ -290,6 +310,15 @@ func (r *VirtualMachineReconciler) handleVirtualMachineOperations(ctx context.Co
 		if err != nil {
 			logger.Error(err, "Error handling additional configuration")
 			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
+		// Attach the volumes the spec names and give back the ones it dropped
+		// before the VM is (re)started.
+		if volRes, volErr := r.reconcileVolumes(ctx, pc, vm); volErr != nil || volRes != nil {
+			if volErr != nil {
+				logger.Error(volErr, "Error reconciling volumes")
+				return ctrl.Result{}, client.IgnoreNotFound(volErr)
+			}
+			return *volRes, nil
 		}
 		// Check if auto start is enabled
 		var res ctrl.Result
@@ -361,6 +390,12 @@ func (r *VirtualMachineReconciler) handleCreateFromTemplate(ctx context.Context,
 		logger.Error(err, "Error handling additional configuration")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	if volRes, volErr := r.reconcileVolumes(ctx, pc, vm); volErr != nil || volRes != nil {
+		if volErr != nil {
+			return dontRequeue, volErr
+		}
+		return *volRes, nil
+	}
 	return r.startCreatedVM(ctx, pc, vm, nodeName)
 }
 
@@ -387,6 +422,15 @@ func (r *VirtualMachineReconciler) handleCreateFromScratch(ctx context.Context, 
 	err = r.handleCloudInitOperations(ctx, pc, vm)
 	if err != nil {
 		return dontRequeue, err
+	}
+	// Volumes go on before the first start: attaching to a stopped VM needs
+	// no hotplug, and a volume that is not ready keeps the VM from booting
+	// without the drive the spec promised it.
+	if volRes, volErr := r.reconcileVolumes(ctx, pc, vm); volErr != nil || volRes != nil {
+		if volErr != nil {
+			return dontRequeue, volErr
+		}
+		return *volRes, nil
 	}
 
 	return r.startCreatedVM(ctx, pc, vm, nodeName)
@@ -518,8 +562,19 @@ func (r *VirtualMachineReconciler) UpdateVirtualMachine(ctx context.Context,
 		}
 		return &dontRequeue, err
 	}
+	// The slots of volumes attached to this VM are not the own-disk code's to
+	// touch, including one whose ref the spec just dropped: it stays until the
+	// VM stops, and removing it here would unplug it as a stray disk.
+	attached, err := r.attachedVolumes(ctx, vm)
+	if err != nil {
+		return &dontRequeue, err
+	}
+	reserved := make([]string, 0, len(attached))
+	for _, vol := range attached {
+		reserved = append(reserved, vol.Status.Slot)
+	}
 	// ConfigureVirtualMachine is checks the delta for Disk and Network and updates the VM without a restart
-	err = pc.ConfigureVirtualMachine(vm)
+	err = pc.ConfigureVirtualMachine(vm, reserved...)
 	if err != nil {
 		logger.Error(err, "Failed to configure VirtualMachine")
 		var taskErr *proxmox.TaskError
@@ -571,6 +626,16 @@ func (r *VirtualMachineReconciler) handleDelete(ctx context.Context, _ ctrl.Requ
 	}
 	// Stop watching before deleting since delete can't be reverted
 	r.Watcher.Unregister(client.ObjectKeyFromObject(vm))
+
+	// Volumes attached by volumeRef belong to their holder, and destroying
+	// the VM would take them along: give them back first. A protected VM is
+	// not destroyed, so it keeps them.
+	if !vm.Spec.DeletionProtection {
+		if err := r.releaseVolumes(ctx, pc, vm); err != nil {
+			logger.Error(err, "Error giving volumes back before deleting VirtualMachine")
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
+	}
 
 	// Perform all operations to delete the VM if the VM is not marked as deleting
 	// TODO: Evaluate the requirement of check mechanism for VM whether it's already deleting

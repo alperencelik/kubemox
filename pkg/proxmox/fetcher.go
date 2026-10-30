@@ -89,12 +89,33 @@ func (f *VirtualMachineFetcher) GetDesiredState(ctx context.Context, key types.N
 	if reconcileMode == kubernetes.ReconcileModeWatchOnly || reconcileMode == kubernetes.ReconcileModeEnsureExists {
 		return nil, nil
 	}
+	disks := getDisks(vm)
+	// A volume attached to this VM shows up on Proxmox as a drive with the
+	// volume's storage and size, so the desired state lists it that way,
+	// whether or not the spec still names it: one whose ref was dropped
+	// stays attached until the VM stops. One not attached yet is left out:
+	// the reconcile attaches it, and until then its slot is expected to be
+	// empty.
+	var volumes proxmoxv1alpha1.VirtualMachineVolumeList
+	if err := f.Client.List(ctx, &volumes, cc.InNamespace(vm.Namespace)); err != nil {
+		return nil, err
+	}
+	for _, vol := range volumes.Items {
+		if vol.Status.AttachedTo != vm.Name || vol.Status.Volume == "" || vol.Status.Slot == "" {
+			continue
+		}
+		disks = append(disks, proxmoxv1alpha1.VirtualMachineDisk{
+			Storage: VolumeStorage(vol.Status.Volume),
+			Size:    vol.Status.Size,
+			Device:  vol.Status.Slot,
+		})
+	}
 	return VirtualMachineComparison{
 		Cores:    GetCores(vm),
 		Sockets:  getSockets(vm),
 		Memory:   GetMemory(vm),
 		Networks: getNetworks(vm),
-		Disks:    sortDisks(getDisks(vm)),
+		Disks:    sortDisks(disks),
 	}, nil
 }
 
