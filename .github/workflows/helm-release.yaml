@@ -2,10 +2,10 @@ name: Update and Publish Helm Chart
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'charts/kubemox/**'
+    # Stable releases only: pre-release tags carry the final chart version, so
+    # they would publish it early.
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
 
 jobs:
   update-chart:
@@ -33,6 +33,12 @@ jobs:
           # Get current version
           CURRENT_VERSION=$(yq '.version' charts/kubemox/Chart.yaml)
           echo "Current version: $CURRENT_VERSION"
+          RELEASE_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$CURRENT_VERSION" != "$RELEASE_VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match chart version $CURRENT_VERSION."
+            echo "::error::Bump charts/kubemox/Chart.yaml before tagging a release."
+            exit 1
+          fi
           echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
       - name: Checkout Helm Charts Repo
