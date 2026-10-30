@@ -27,6 +27,8 @@ type fakeCT struct {
 	// pingErr, when set, makes status/current fail with this message, the way
 	// a stopped container can answer it.
 	pingErr string
+	cores   int
+	memory  int // MiB
 }
 
 // fakeLXCHost is the slice of the Proxmox API the Container code touches.
@@ -34,6 +36,7 @@ type fakeCT struct {
 // status line, which is where go-proxmox reads it from.
 type fakeLXCHost struct {
 	mu    sync.Mutex
+	url   string // API base URL, for a ProxmoxConnection endpoint
 	cts   map[int]*fakeCT
 	calls []string // "METHOD path" in order
 	// taskExit is the exit status of every task; empty means OK.
@@ -48,7 +51,8 @@ func newFakeLXCHost(t *testing.T, cts map[int]*fakeCT) (*fakeLXCHost, *ProxmoxCl
 	f := &fakeLXCHost{cts: cts}
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
-	client := proxmox.NewClient(srv.URL+"/api2/json",
+	f.url = srv.URL + "/api2/json"
+	client := proxmox.NewClient(f.url,
 		proxmox.WithAPIToken("test@pve!t", "secret"),
 		proxmox.WithHTTPClient(srv.Client()))
 	return f, &ProxmoxClient{Client: client, nodesCache: make(map[string]NodeCache)}
@@ -63,6 +67,18 @@ func (f *fakeLXCHost) called(call string) bool {
 		}
 	}
 	return false
+}
+
+func (f *fakeLXCHost) countCalls(call string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, c := range f.calls {
+		if c == call {
+			n++
+		}
+	}
+	return n
 }
 
 func (f *fakeLXCHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +124,12 @@ func (f *fakeLXCHost) serveCT(w http.ResponseWriter, r *http.Request, id int, su
 		}
 		writeCTData(w, ct.summary(id))
 	case "GET /config":
-		writeCTData(w, map[string]any{"hostname": ct.name})
+		writeCTData(w, map[string]any{"hostname": ct.name, "cores": ct.cores, "memory": ct.memory})
+	case "PUT /config":
+		writeCTData(w, fakeCTUPID("vzset", id))
+	case "POST /status/reboot":
+		ct.status = VirtualMachineRunningState
+		writeCTData(w, fakeCTUPID("vzreboot", id))
 	case "POST /status/stop":
 		ct.status = VirtualMachineStoppedState
 		writeCTData(w, fakeCTUPID("vzstop", id))
@@ -132,7 +153,10 @@ func (f *fakeLXCHost) serveCT(w http.ResponseWriter, r *http.Request, id int, su
 
 // summary is the container as /lxc and /lxc/{vmid}/status/current list it.
 func (ct *fakeCT) summary(id int) map[string]any {
-	return map[string]any{"vmid": id, "name": ct.name, "status": ct.status}
+	return map[string]any{
+		"vmid": id, "name": ct.name, "status": ct.status,
+		"cpus": ct.cores, "maxmem": ct.memory * 1024 * 1024,
+	}
 }
 
 func fakeCTUPID(kind string, id int) string {
