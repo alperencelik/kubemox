@@ -1,0 +1,16 @@
+apiVersion: proxmox.alperen.cloud/v1alpha1
+kind: VirtualMachineVolume
+metadata:
+  labels:
+    app.kubernetes.io/name: virtualmachinevolume
+    app.kubernetes.io/instance: virtualmachinevolume-sample
+    app.kubernetes.io/part-of: kubemox
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: kubemox
+  name: virtualmachinevolume-sample
+spec:
+  connectionRef:
+    name: proxmox-connection-sample
+  nodeName: "lowtower"
+  storage: "local-zfs"
+  size: 10

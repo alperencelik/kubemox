@@ -254,6 +254,14 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "StorageDownloadURL")
 		os.Exit(1)
 	}
+	if err = (&proxmoxcontroller.VirtualMachineVolumeReconciler{
+		Client:   k8sClient,
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorder("VirtualMachineVolume"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "VirtualMachineVolume")
+		os.Exit(1)
+	}
 	if err = (&proxmoxcontroller.VirtualMachineTemplateReconciler{
 		Client:   k8sClient,
 		Scheme:   mgr.GetScheme(),
