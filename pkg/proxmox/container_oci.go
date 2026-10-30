@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	pve "github.com/luthermonson/go-proxmox"
@@ -73,6 +72,16 @@ func LXCHasOCIImageTag(tagsField string, imageRef string) bool {
 	}
 	for _, t := range strings.Split(tagsField, ";") {
 		if strings.TrimSpace(t) == want {
+			return true
+		}
+	}
+	return false
+}
+
+// LXCHasAnyOCIImageTag reports whether Proxmox tags include an image tag at all.
+func LXCHasAnyOCIImageTag(tagsField string) bool {
+	for _, t := range strings.Split(tagsField, ";") {
+		if strings.HasPrefix(strings.TrimSpace(t), "img-") {
 			return true
 		}
 	}
@@ -299,7 +308,11 @@ func ociNewContainerOptions(ct *proxmoxv1alpha1.Container, volid, hostname strin
 	if mem < 16 {
 		mem = 512
 	}
-	opts := []pve.ContainerOption{
+	imageTag := ""
+	if ct.Spec.Template.Image != nil {
+		imageTag = OCIImageProxmoxTag(ct.Spec.Template.Image.Reference)
+	}
+	return []pve.ContainerOption{
 		{Name: "hostname", Value: hostname},
 		{Name: "ostemplate", Value: volid},
 		{Name: "rootfs", Value: rootfs},
@@ -307,62 +320,51 @@ func ociNewContainerOptions(ct *proxmoxv1alpha1.Container, volid, hostname strin
 		{Name: "cores", Value: cores},
 		{Name: "net0", Value: net0FromSpec(ct)},
 		{Name: "start", Value: 0},
-	}
-	if ct.Spec.Template.Image != nil {
-		if t := OCIImageProxmoxTag(ct.Spec.Template.Image.Reference); t != "" {
-			opts = append(opts, pve.ContainerOption{Name: "tags", Value: t})
-		}
-	}
-	return opts, nil
+		{Name: containerOptionTags, Value: withContainerUIDTag(imageTag, ct)},
+	}, nil
 }
 
-// CreateContainerFromOCIImage creates a single LXC from the pulled OCI ostemplate volume.
+// CreateContainerFromOCIImage creates a single LXC from the pulled OCI ostemplate volume and returns its VMID.
 // Proxmox supports pct create with ostemplate pointing at the same vztmpl/oci blob for each instance;
 // no intermediate template CT or clone step is required (avoids leaving kubemox-oci-* plus the workload CT).
-func (pc *ProxmoxClient) CreateContainerFromOCIImage(ct *proxmoxv1alpha1.Container) error {
+func (pc *ProxmoxClient) CreateContainerFromOCIImage(ct *proxmoxv1alpha1.Container) (int, error) {
 	volid, err := pc.ensureOCIVolume(ct)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	nodeName := ct.Spec.NodeName
 	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	host := ct.Spec.Name
 	opts, err := ociNewContainerOptions(ct, volid, host)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	log.Log.Info(fmt.Sprintf("Creating container %s from OCI ostemplate %s", host, volid))
-	createTask, err := node.NewContainer(ctx, 0, opts...)
+	// The VMID is picked here rather than by Proxmox so that it is known
+	// without looking the hostname up, which need not be unique. The mutex
+	// keeps a concurrent VM create from picking the same one.
+	var id int
+	var createTask *pve.Task
+	func() {
+		mutex.Lock()
+		defer mutex.Unlock()
+		if id, err = getNextVMID(pc.Client); err == nil {
+			createTask, err = node.NewContainer(ctx, id, opts...)
+		}
+	}()
 	if err != nil {
 		log.Log.Error(err, "Failed to create container from OCI image")
-		return err
+		return 0, err
 	}
 	ok, done, err := createTask.WaitForCompleteStatus(ctx, 360, 5)
 	if !ok {
-		return &TaskError{ExitStatus: createTask.ExitStatus}
+		return 0, &TaskError{ExitStatus: createTask.ExitStatus}
 	}
 	if !done {
-		return err
+		return 0, err
 	}
-	var id int
-	for attempt := range 24 {
-		if attempt > 0 {
-			time.Sleep(2 * time.Second)
-		}
-		id, err = pc.GetContainerID(host, nodeName)
-		if err != nil {
-			return err
-		}
-		if id != 0 {
-			break
-		}
-	}
-	if id == 0 {
-		return fmt.Errorf("container %s not found in Proxmox API after create from OCI", host)
-	}
-	pc.setCachedContainerID(nodeName, host, id)
-	return nil
+	return id, nil
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/alperencelik/kube-external-watcher/watcher"
+	"github.com/google/go-cmp/cmp"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
@@ -24,8 +25,19 @@ type Resource interface {
 
 // ContainerDesiredState represents the comparable desired/actual state for a Container.
 type ContainerDesiredState struct {
-	Cores  int
-	Memory int
+	Exists bool
+	// Running is left nil on the desired side when enableAutoStart is off, so
+	// a stopped container is not drift then (see ContainerStateComparator).
+	Running *bool
+	Cores   int
+	Memory  int
+}
+
+// ContainerStateComparator compares ContainerDesiredState values and skips
+// Running when either side leaves it unset.
+func ContainerStateComparator() *watcher.DeepEqualComparator {
+	return watcher.NewDeepEqualComparator(
+		cmp.FilterValues(func(x, y *bool) bool { return x == nil || y == nil }, cmp.Ignore()))
 }
 
 // VMTemplateDesiredState represents the comparable desired/actual state for a VirtualMachineTemplate.
@@ -199,22 +211,36 @@ func (f *ContainerFetcher) GetDesiredState(ctx context.Context, key types.Namesp
 	if reconcileMode == kubernetes.ReconcileModeWatchOnly || reconcileMode == kubernetes.ReconcileModeEnsureExists {
 		return nil, nil
 	}
-	return ContainerDesiredState{
+	desired := ContainerDesiredState{
+		Exists: true,
 		Cores:  container.Spec.Template.Cores,
 		Memory: container.Spec.Template.Memory,
-	}, nil
+	}
+	if container.Spec.EnableAutoStart {
+		running := true
+		desired.Running = &running
+	}
+	return desired, nil
 }
 
 func (f *ContainerFetcher) FetchExternalResource(ctx context.Context, objKey any) (any, error) {
-	key, ok := objKey.(ProxmoxResourceKey)
+	key, ok := objKey.(types.NamespacedName)
 	if !ok {
 		return nil, fmt.Errorf("unexpected resource key type: %T", objKey)
 	}
-	pc, err := NewProxmoxClientFromRef(ctx, f.Client, key.ConnectionRef)
+	ct := &proxmoxv1alpha1.Container{}
+	if err := f.Client.Get(ctx, key, ct); err != nil {
+		return nil, err
+	}
+	pc, err := NewProxmoxClientFromRef(ctx, f.Client, ct.Spec.ConnectionRef)
 	if err != nil {
 		return nil, fmt.Errorf("getting Proxmox client: %w", err)
 	}
-	container, err := pc.GetContainer(key.Name, key.NodeName)
+	container, err := pc.GetContainer(ct)
+	if isContainerGoneErr(err) {
+		// A missing container is a state to compare, not a failed poll.
+		return (*gopxmx.Container)(nil), nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -226,9 +252,15 @@ func (f *ContainerFetcher) TransformExternalState(raw any) (any, error) {
 	if !ok {
 		return nil, fmt.Errorf("unexpected external state type: %T", raw)
 	}
+	if container == nil {
+		return ContainerDesiredState{}, nil
+	}
+	running := container.Status == VirtualMachineRunningState
 	return ContainerDesiredState{
-		Cores:  container.CPUs,
-		Memory: int(container.MaxMem / 1024 / 1024),
+		Exists:  true,
+		Running: &running,
+		Cores:   container.CPUs,
+		Memory:  int(container.MaxMem / 1024 / 1024),
 	}, nil
 }
 
@@ -249,7 +281,7 @@ func (f *ContainerFetcher) UpdateResourceStatus(ctx context.Context, key types.N
 	if err != nil {
 		return err
 	}
-	containerStatus, err := pc.UpdateContainerStatus(container.Spec.Name, container.Spec.NodeName)
+	containerStatus, err := pc.UpdateContainerStatus(container)
 	if err != nil {
 		return err
 	}
@@ -339,15 +371,11 @@ func VMConfigExtractor(obj cc.Object) watcher.ResourceConfig {
 }
 
 // ContainerConfigExtractor extracts watcher.ResourceConfig from a Container object.
+// The key is the object itself: the fetcher reads it on every poll, because the
+// VMID it addresses the container by lands in status after the watcher has
+// registered, and the watcher keeps the key it registered with.
 func ContainerConfigExtractor(obj cc.Object) watcher.ResourceConfig {
-	container := obj.(*proxmoxv1alpha1.Container)
-	return watcher.ResourceConfig{
-		ResourceKey: ProxmoxResourceKey{
-			Name:          container.Spec.Name,
-			NodeName:      container.Spec.NodeName,
-			ConnectionRef: container.Spec.ConnectionRef,
-		},
-	}
+	return watcher.ResourceConfig{ResourceKey: cc.ObjectKeyFromObject(obj)}
 }
 
 // VMTemplateConfigExtractor extracts watcher.ResourceConfig from a VirtualMachineTemplate object.

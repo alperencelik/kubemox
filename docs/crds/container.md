@@ -34,3 +34,11 @@ spec:
       - model: virtio
         bridge: vmbr0
 ```
+
+## Identity
+
+Proxmox keeps VMIDs unique, not hostnames, so kubemox binds a `Container` to its Proxmox container by VMID:
+
+- When kubemox creates the container, it writes the VMID to `status.status.id` and tags the container `kubemox-uid-<metadata.uid>`. From then on the container is addressed by that VMID only. Renaming it in Proxmox does not detach it.
+- `spec.name` is looked up only while `status.status.id` is empty. A container with that hostname is adopted only if it carries the object's tag, or if it is the only container with that hostname and carries no `kubemox-uid` tag at all, as one created by an older kubemox does. On adoption, kubemox writes the tag.
+- A container tagged for another object is never changed or deleted. The `Container` gets the condition `NameConflict` and is retried with backoff. Deleting such a `Container` removes only the object.
