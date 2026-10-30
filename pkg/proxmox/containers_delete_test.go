@@ -5,7 +5,10 @@ import (
 	"testing"
 )
 
-const testCTName = "web"
+const (
+	testCTName      = "web"
+	testOtherCTName = "db"
+)
 
 // assertContainerGone fails unless err is the NotFoundError the controller
 // reads as "finish the deletion".
@@ -46,7 +49,7 @@ func TestDeleteContainer_VMIDReused_LeavesTheOtherContainerAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	// CT 100 is destroyed outside kubemox and Proxmox hands the VMID out again.
-	f.cts[100] = &fakeCT{name: "other", status: VirtualMachineRunningState}
+	f.cts[100] = &fakeCT{name: testOtherCTName, status: VirtualMachineRunningState}
 
 	assertContainerGone(t, pc.DeleteContainer(testCTName, lxcTestNode))
 	if f.called("POST /api2/json/nodes/" + lxcTestNode + "/lxc/100/status/stop") {
@@ -65,7 +68,7 @@ func TestDeleteContainer_VMIDReusedByStoppedCT_LeavesTheOtherContainerAlone(t *t
 	if _, err := pc.GetContainer(testCTName, lxcTestNode); err != nil {
 		t.Fatal(err)
 	}
-	f.cts[100] = &fakeCT{name: "other", status: VirtualMachineStoppedState, pingErr: "CT 100 not running"}
+	f.cts[100] = &fakeCT{name: testOtherCTName, status: VirtualMachineStoppedState, pingErr: "CT 100 not running"}
 
 	assertContainerGone(t, pc.DeleteContainer(testCTName, lxcTestNode))
 	if _, ok := f.cts[100]; !ok {

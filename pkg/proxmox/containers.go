@@ -213,107 +213,77 @@ func (pc *ProxmoxClient) GetContainer(containerName, nodeName string) (*proxmox.
 	return container, nil
 }
 
-func (pc *ProxmoxClient) StopContainer(containerName, nodeName string) error {
-	// Get container
-	log.Log.Info(fmt.Sprintf("Stopping container %s", containerName))
-	container, err := pc.GetContainer(containerName, nodeName)
-	if err != nil {
-		return err
-	}
-	// Stop container
-	if container.Status == VirtualMachineRunningState {
-		// Stop container called
-		taskID, err := container.Stop(ctx)
-		if err != nil {
-			return err
-		}
-		return waitForContainerTask(taskID, "stop", containerName, 3, 5)
-	}
-	return nil
-}
-
 // DeleteContainer stops and destroys the container. It returns a NotFoundError
 // when the container is already gone, so the caller can finish the deletion.
 func (pc *ProxmoxClient) DeleteContainer(containerName, nodeName string) error {
 	container, err := pc.GetContainer(containerName, nodeName)
 	if isContainerGoneErr(err) {
-		return pc.containerGone(containerName, nodeName, nil)
+		pc.deleteCachedContainer(nodeName, containerName)
+		// Make the error as not found error to complete the deletion
+		return &NotFoundError{Message: err.Error()}
 	}
 	if err != nil {
 		return err
 	}
 	// Ping to get latest status
 	err = container.Ping(ctx)
-	running := err == nil && container.Status == VirtualMachineRunningState
-	name := container.Name
+	current := container
 	if isLXCNotRunningErr(err) {
-		// A stopped CT can't be pinged, so read its name from the config.
-		var stopped *proxmox.Container
-		if stopped, err = pc.lxcFromConfigWhenStopped(nodeName, int(container.VMID)); err == nil {
-			name = stopped.Name
-		}
+		// A stopped container can't be pinged, read its config instead
+		current, err = pc.lxcFromConfigWhenStopped(nodeName, int(container.VMID))
 	}
-	// A different name means Proxmox gave the cached VMID to another container:
-	// leave that one alone.
-	if isContainerGoneErr(err) || (err == nil && name != containerName) {
-		return pc.containerGone(containerName, nodeName, container)
+	// A different name means Proxmox gave the cached VMID to another container
+	if isContainerGoneErr(err) || (err == nil && current.Name != containerName) {
+		pc.deleteCachedContainer(nodeName, containerName)
+		pc.deleteCachedContainerObject(nodeName, int(container.VMID))
+		return &NotFoundError{Message: fmt.Sprintf("container %s not found", containerName)}
 	}
 	if err != nil {
 		return err
 	}
-	if running {
-		if err = pc.StopContainer(containerName, nodeName); err != nil {
-			return err
+	containerStatus := current.Status
+	// Stop container if it's running
+	if containerStatus == VirtualMachineRunningState {
+		stopTask, stopErr := container.Stop(ctx)
+		if stopErr != nil {
+			log.Log.Error(stopErr, "Can't stop container")
+			return stopErr
+		}
+		taskStatus, taskCompleted, taskErr := stopTask.WaitForCompleteStatus(ctx, 3, 5)
+		if !taskCompleted {
+			log.Log.Error(taskErr, "Can't stop container")
+			if taskErr != nil {
+				return taskErr
+			}
+			return fmt.Errorf("timeout waiting for container %s stop task to finish", containerName)
+		}
+		if !taskStatus {
+			// Return the task.ExitStatus as error
+			return &TaskError{ExitStatus: stopTask.ExitStatus}
 		}
 	}
-	log.Log.Info(fmt.Sprintf("Deleting container %s", containerName))
+	// Delete container
 	task, err := container.Delete(ctx, nil)
-	if isContainerGoneErr(err) {
-		return pc.containerGone(containerName, nodeName, container)
-	}
 	if err != nil {
 		return err
 	}
-	if err = waitForContainerTask(task, "delete", containerName, 5, 5); err != nil {
-		return err
-	}
-	log.Log.Info(fmt.Sprintf("Container %s has been deleted", containerName))
-	pc.forgetContainer(nodeName, containerName, container)
-	return nil
-}
-
-// containerGone drops the caches of a container that no longer exists and
-// returns the NotFoundError that says so.
-func (pc *ProxmoxClient) containerGone(containerName, nodeName string, container *proxmox.Container) error {
-	log.Log.Info(fmt.Sprintf("Container %s is already deleted", containerName))
-	pc.forgetContainer(nodeName, containerName, container)
-	return &NotFoundError{Message: fmt.Sprintf("container %s not found", containerName)}
-}
-
-// waitForContainerTask waits for a task and returns an error unless it
-// finished successfully.
-func waitForContainerTask(task *proxmox.Task, action, containerName string, timesNum, steps int) error {
-	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, timesNum, steps)
+	taskStatus, taskCompleted, taskErr := task.WaitForCompleteStatus(ctx, 5, 5)
 	if !taskCompleted {
+		log.Log.Error(taskErr, "Can't delete container")
 		if taskErr != nil {
 			return taskErr
 		}
-		return fmt.Errorf("timeout waiting for container %s %s task to finish", containerName, action)
+		return fmt.Errorf("timeout waiting for container %s delete task to finish", containerName)
 	}
 	if !taskStatus {
+		// Return the task.ExitStatus as error
 		return &TaskError{ExitStatus: task.ExitStatus}
 	}
-	return nil
-}
-
-// forgetContainer drops a deleted container from the caches. Proxmox hands a
-// freed VMID out again, so a cached object would otherwise describe the next
-// container that gets it.
-func (pc *ProxmoxClient) forgetContainer(nodeName, containerName string, container *proxmox.Container) {
+	// Invalidate cache entry for this container
 	pc.deleteCachedContainer(nodeName, containerName)
-	if container != nil {
-		pc.deleteCachedContainerObject(nodeName, int(container.VMID))
-	}
+	pc.deleteCachedContainerObject(nodeName, int(container.VMID))
+
+	return nil
 }
 
 func (pc *ProxmoxClient) StartContainer(containerName, nodeName string) error {
