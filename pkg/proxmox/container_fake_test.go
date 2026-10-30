@@ -41,6 +41,12 @@ type fakeLXCHost struct {
 	calls []string // "METHOD path" in order
 	// taskExit is the exit status of every task; empty means OK.
 	taskExit string
+	// otherNodes maps a container name to the other node that has it.
+	otherNodes map[string]string
+	// vmNames lists the QEMU VMs in the cluster by name.
+	vmNames []string
+	// clusterErr, when set, makes /cluster/resources fail with this message.
+	clusterErr string
 }
 
 var fakeCTPath = regexp.MustCompile(`^/lxc/(\d+)(/.*)?$`)
@@ -87,6 +93,10 @@ func (f *fakeLXCHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.calls = append(f.calls, r.Method+" "+r.URL.Path)
 	path := strings.TrimPrefix(r.URL.Path, "/api2/json/nodes/"+lxcTestNode)
 	switch {
+	case r.URL.Path == "/api2/json/cluster/status":
+		writeCTData(w, []any{})
+	case r.URL.Path == "/api2/json/cluster/resources":
+		f.serveClusterResources(w)
 	case path == "/status":
 		writeCTData(w, map[string]any{"uptime": 1})
 	case path == "/lxc":
@@ -108,6 +118,28 @@ func (f *fakeLXCHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func (f *fakeLXCHost) serveClusterResources(w http.ResponseWriter) {
+	if f.clusterErr != "" {
+		writePVEError(w, f.clusterErr)
+		return
+	}
+	list := make([]map[string]any, 0, len(f.cts)+len(f.otherNodes)+len(f.vmNames))
+	for _, ct := range f.cts {
+		list = append(list, fakeClusterResource("lxc", ct.name, lxcTestNode))
+	}
+	for name, node := range f.otherNodes {
+		list = append(list, fakeClusterResource("lxc", name, node))
+	}
+	for _, name := range f.vmNames {
+		list = append(list, fakeClusterResource("qemu", name, lxcTestNode))
+	}
+	writeCTData(w, list)
+}
+
+func fakeClusterResource(kind, name, node string) map[string]any {
+	return map[string]any{"type": kind, "name": name, "node": node}
 }
 
 func (f *fakeLXCHost) serveCT(w http.ResponseWriter, r *http.Request, id int, sub string) {

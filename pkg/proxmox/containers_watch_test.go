@@ -2,9 +2,11 @@ package proxmox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
+	"github.com/alperencelik/kube-external-watcher/watcher"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -23,7 +25,7 @@ func TestContainerWatcher_Drift(t *testing.T) {
 	cases := []struct {
 		name      string
 		autoStart bool
-		ct        *fakeCT // nil: no such container on Proxmox
+		ct        *fakeCT
 		drift     bool
 	}{
 		{"running as asked", true, &fakeCT{status: VirtualMachineRunningState, cores: 2, memory: 512}, false},
@@ -31,16 +33,11 @@ func TestContainerWatcher_Drift(t *testing.T) {
 		{"stopped without autostart", false, &fakeCT{status: VirtualMachineStoppedState, cores: 2, memory: 512}, false},
 		{"running without autostart", false, &fakeCT{status: VirtualMachineRunningState, cores: 2, memory: 512}, false},
 		{"resized", true, &fakeCT{status: VirtualMachineRunningState, cores: 4, memory: 512}, true},
-		{"destroyed", true, nil, true},
 	}
 	for i, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cts := map[int]*fakeCT{}
-			if tc.ct != nil {
-				tc.ct.name = testCTName
-				cts[100] = tc.ct
-			}
-			f, _ := newFakeLXCHost(t, cts)
+			tc.ct.name = testCTName
+			f, _ := newFakeLXCHost(t, map[int]*fakeCT{100: tc.ct})
 			fetcher, key, rkey := containerWatcherFixture(t, f, fmt.Sprintf("lxc-drift-%d", i), tc.autoStart)
 
 			desired, err := fetcher.GetDesiredState(context.Background(), key)
@@ -49,7 +46,7 @@ func TestContainerWatcher_Drift(t *testing.T) {
 			}
 			raw, err := fetcher.FetchExternalResource(context.Background(), rkey)
 			if err != nil {
-				t.Fatalf("FetchExternalResource = %v; a failed poll never triggers a reconcile", err)
+				t.Fatalf("FetchExternalResource = %v", err)
 			}
 			if err = fetcher.UpdateResourceStatus(context.Background(), key, raw); err != nil {
 				t.Fatalf("UpdateResourceStatus = %v", err)
@@ -67,6 +64,79 @@ func TestContainerWatcher_Drift(t *testing.T) {
 				t.Fatalf("drift = %v, want %v; diff (-desired +actual):\n%s", drift, tc.drift, comparator.Diff(desired, actual))
 			}
 		})
+	}
+}
+
+// assertRemoved fails unless err is what makes the watcher trigger a reconcile
+// for a removed container.
+func assertRemoved(t *testing.T, err error) {
+	t.Helper()
+	if !errors.Is(err, watcher.ErrExternalResourceNotFound) {
+		t.Fatalf("FetchExternalResource = %v, want ErrExternalResourceNotFound", err)
+	}
+}
+
+func TestContainerFetcher_NoSuchContainer_ReportsRemoval(t *testing.T) {
+	f, _ := newFakeLXCHost(t, map[int]*fakeCT{})
+	fetcher, _, rkey := containerWatcherFixture(t, f, "lxc-no-such", true)
+
+	_, err := fetcher.FetchExternalResource(context.Background(), rkey)
+	assertRemoved(t, err)
+}
+
+func TestContainerFetcher_VMWithTheSameName_StillReportsRemoval(t *testing.T) {
+	f, _ := newFakeLXCHost(t, map[int]*fakeCT{})
+	f.vmNames = []string{testCTName}
+	fetcher, _, rkey := containerWatcherFixture(t, f, "lxc-vm-name", true)
+
+	_, err := fetcher.FetchExternalResource(context.Background(), rkey)
+	assertRemoved(t, err)
+}
+
+// A container that moved still exists, and a reconcile would clone a second one.
+func TestContainerFetcher_MigratedContainer_IsNotARemoval(t *testing.T) {
+	f, _ := newFakeLXCHost(t, map[int]*fakeCT{100: {name: testCTName, status: VirtualMachineRunningState}})
+	fetcher, _, rkey := containerWatcherFixture(t, f, "lxc-migrated", true)
+	pc, err := NewProxmoxClientFromRef(context.Background(), fetcher.Client, rkey.ConnectionRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pc.GetContainer(testCTName, lxcTestNode); err != nil {
+		t.Fatal(err)
+	}
+
+	delete(f.cts, 100) // `pct migrate 100 pve-other`
+	f.otherNodes = map[string]string{testCTName: "pve-other"}
+
+	_, err = fetcher.FetchExternalResource(context.Background(), rkey)
+	if err == nil || errors.Is(err, watcher.ErrExternalResourceNotFound) {
+		t.Fatalf("FetchExternalResource = %v, want an error that is not a removal", err)
+	}
+}
+
+func TestContainerFetcher_ClusterLookupFails_IsNotARemoval(t *testing.T) {
+	f, _ := newFakeLXCHost(t, map[int]*fakeCT{})
+	f.clusterErr = "cluster not ready - no quorum?"
+	fetcher, _, rkey := containerWatcherFixture(t, f, "lxc-no-quorum", true)
+
+	_, err := fetcher.FetchExternalResource(context.Background(), rkey)
+	if err == nil || errors.Is(err, watcher.ErrExternalResourceNotFound) {
+		t.Fatalf("FetchExternalResource = %v, want an error that is not a removal", err)
+	}
+}
+
+func TestContainerFetcher_ProxmoxError_IsNotARemoval(t *testing.T) {
+	f, _ := newFakeLXCHost(t, map[int]*fakeCT{
+		100: {name: testCTName, status: VirtualMachineRunningState, pingErr: "got timeout"},
+	})
+	fetcher, _, rkey := containerWatcherFixture(t, f, "lxc-timeout", true)
+
+	_, err := fetcher.FetchExternalResource(context.Background(), rkey)
+	if err == nil || errors.Is(err, watcher.ErrExternalResourceNotFound) {
+		t.Fatalf("FetchExternalResource = %v, want an error that is not a removal", err)
+	}
+	if f.called("GET /api2/json/cluster/resources") {
+		t.Error("a failed read was treated as a missing container")
 	}
 }
 
@@ -119,9 +189,8 @@ func TestContainerFetcher_PollFollowsDestroyAndRecreate(t *testing.T) {
 	}
 
 	delete(f.cts, 100) // `pct destroy 100`
-	if _, err = fetcher.FetchExternalResource(context.Background(), rkey); err != nil {
-		t.Fatal(err)
-	}
+	_, err = fetcher.FetchExternalResource(context.Background(), rkey)
+	assertRemoved(t, err)
 	if ok, existsErr := pc.ContainerExists(testCTName, lxcTestNode); existsErr != nil || ok {
 		t.Fatalf("ContainerExists after the poll = %v, %v; want false, nil", ok, existsErr)
 	}

@@ -25,7 +25,6 @@ type Resource interface {
 
 // ContainerDesiredState represents the comparable desired/actual state for a Container.
 type ContainerDesiredState struct {
-	Exists bool
 	// Running is left nil on the desired side when enableAutoStart is off, so
 	// a stopped container is not drift then (see ContainerStateComparator).
 	Running *bool
@@ -212,7 +211,6 @@ func (f *ContainerFetcher) GetDesiredState(ctx context.Context, key types.Namesp
 		return nil, nil
 	}
 	desired := ContainerDesiredState{
-		Exists: true,
 		Cores:  container.Spec.Template.Cores,
 		Memory: container.Spec.Template.Memory,
 	}
@@ -235,8 +233,7 @@ func (f *ContainerFetcher) FetchExternalResource(ctx context.Context, objKey any
 	// Fetch fresh container data from Proxmox API (bypass cache)
 	container, err := pc.refreshContainer(key.Name, key.NodeName)
 	if isContainerGoneErr(err) {
-		// A missing container is a state to compare, not a failed poll
-		return (*gopxmx.Container)(nil), nil
+		return nil, containerRemovedErr(pc, key)
 	}
 	if err != nil {
 		return nil, err
@@ -249,16 +246,26 @@ func (f *ContainerFetcher) TransformExternalState(raw any) (any, error) {
 	if !ok {
 		return nil, fmt.Errorf("unexpected external state type: %T", raw)
 	}
-	if container == nil {
-		return ContainerDesiredState{}, nil
-	}
 	running := container.Status == VirtualMachineRunningState
 	return ContainerDesiredState{
-		Exists:  true,
 		Running: &running,
 		Cores:   container.CPUs,
 		Memory:  int(container.MaxMem / 1024 / 1024),
 	}, nil
+}
+
+// containerRemovedErr returns the error for a container its node no longer has.
+// Only a container that no node has is reported as removed, because the
+// reconcile that follows creates it again.
+func containerRemovedErr(pc *ProxmoxClient, key ProxmoxResourceKey) error {
+	nodeName, err := pc.findContainerNode(key.Name)
+	if err != nil {
+		return err
+	}
+	if nodeName != "" {
+		return fmt.Errorf("container %s is on node %s, not on %s", key.Name, nodeName, key.NodeName)
+	}
+	return fmt.Errorf("container %s: %w", key.Name, watcher.ErrExternalResourceNotFound)
 }
 
 func (f *ContainerFetcher) IsResourceReadyToWatch(ctx context.Context, key types.NamespacedName) bool {
@@ -269,11 +276,7 @@ func (f *ContainerFetcher) IsResourceReadyToWatch(ctx context.Context, key types
 	)
 }
 
-func (f *ContainerFetcher) UpdateResourceStatus(ctx context.Context, key types.NamespacedName, external any) error {
-	// A missing container has no status to read, the drift it reports recreates it
-	if lxc, ok := external.(*gopxmx.Container); ok && lxc == nil {
-		return nil
-	}
+func (f *ContainerFetcher) UpdateResourceStatus(ctx context.Context, key types.NamespacedName, _ any) error {
 	container := &proxmoxv1alpha1.Container{}
 	if err := f.Client.Get(ctx, key, container); err != nil {
 		return err

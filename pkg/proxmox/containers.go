@@ -228,6 +228,25 @@ func (pc *ProxmoxClient) refreshContainer(containerName, nodeName string) (*prox
 	return container, nil
 }
 
+// findContainerNode returns the node that has the container, or an empty string
+// when no node in the cluster has it.
+func (pc *ProxmoxClient) findContainerNode(containerName string) (string, error) {
+	cluster, err := pc.Client.Cluster(ctx)
+	if err != nil {
+		return "", err
+	}
+	resources, err := cluster.Resources(ctx, "vm")
+	if err != nil {
+		return "", err
+	}
+	for _, resource := range resources {
+		if resource.Type == "lxc" && resource.Name == containerName {
+			return resource.Node, nil
+		}
+	}
+	return "", nil
+}
+
 // DeleteContainer stops and destroys the container. It returns a NotFoundError
 // when the container is already gone, so the caller can finish the deletion.
 func (pc *ProxmoxClient) DeleteContainer(containerName, nodeName string) error {
