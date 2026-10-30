@@ -35,6 +35,10 @@ rules:
   - "proxmoxconnections/finalizers"
   - "proxmoxconnections/status"
   verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+# Cluster API IPAM: addresses for ports with an ipAddressClaimRef (read only)
+- apiGroups: ["ipam.cluster.x-k8s.io"]
+  resources: ["ipaddressclaims", "ipaddresses"]
+  verbs: ["get", "list", "watch"]
 # Events
 - apiGroups: [""]
   resources: ["events"]
