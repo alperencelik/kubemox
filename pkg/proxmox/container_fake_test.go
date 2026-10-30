@@ -24,6 +24,9 @@ type fakeCT struct {
 	// lockErr, when set, makes destroy fail with this message, the way a
 	// locked or protected container refuses it.
 	lockErr string
+	// pingErr, when set, makes status/current fail with this message, the way
+	// a stopped container can answer it.
+	pingErr string
 }
 
 // fakeLXCHost is the slice of the Proxmox API the Container code touches.
@@ -33,6 +36,8 @@ type fakeLXCHost struct {
 	mu    sync.Mutex
 	cts   map[int]*fakeCT
 	calls []string // "METHOD path" in order
+	// taskExit is the exit status of every task; empty means OK.
+	taskExit string
 }
 
 var fakeCTPath = regexp.MustCompile(`^/lxc/(\d+)(/.*)?$`)
@@ -75,7 +80,11 @@ func (f *fakeLXCHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		writeCTData(w, list)
 	case strings.HasPrefix(path, "/tasks/"):
-		writeCTData(w, map[string]any{"status": "stopped", "exitstatus": "OK"})
+		exit := f.taskExit
+		if exit == "" {
+			exit = "OK"
+		}
+		writeCTData(w, map[string]any{"status": "stopped", "exitstatus": exit})
 	case fakeCTPath.MatchString(path):
 		m := fakeCTPath.FindStringSubmatch(path)
 		id, _ := strconv.Atoi(m[1])
@@ -93,6 +102,10 @@ func (f *fakeLXCHost) serveCT(w http.ResponseWriter, r *http.Request, id int, su
 	}
 	switch r.Method + " " + sub {
 	case "GET /status/current":
+		if ct.pingErr != "" {
+			writePVEError(w, ct.pingErr)
+			return
+		}
 		writeCTData(w, ct.summary(id))
 	case "GET /config":
 		writeCTData(w, map[string]any{"hostname": ct.name})

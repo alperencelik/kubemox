@@ -18,6 +18,7 @@ package proxmox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -31,7 +32,7 @@ import (
 	"github.com/alperencelik/kube-external-watcher/watcher"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
-	"k8s.io/apimachinery/pkg/api/errors"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -39,6 +40,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 )
@@ -228,7 +230,7 @@ func (r *ContainerReconciler) UpdateContainerStatus(ctx context.Context, pc *pro
 
 func (r *ContainerReconciler) handleResourceNotFound(ctx context.Context, err error) error {
 	logger := log.FromContext(ctx)
-	if errors.IsNotFound(err) {
+	if kerrors.IsNotFound(err) {
 		logger.Info("Container resource not found. Ignoring since object must be deleted")
 		return nil
 	}
@@ -361,7 +363,7 @@ func (r *ContainerReconciler) reconcileOCIImageDrift(ctx context.Context, pc *pr
 			"container", container.Spec.Name, "appliedRef", appliedRef, "desiredRef", desiredRef)
 		r.Recorder.Eventf(container, nil, "Normal", "Replacing", "Replacing",
 			fmt.Sprintf("Replacing Container %s (OCI reference or storage changed)", container.Spec.Name))
-		if err := pc.DeleteContainer(container.Spec.Name, container.Spec.NodeName); err != nil {
+		if err := deleteContainerForReplace(pc, container); err != nil {
 			return false, err
 		}
 		if err := r.patchAppliedOCIImageStatus(ctx, container, "", ""); err != nil {
@@ -403,7 +405,7 @@ func (r *ContainerReconciler) reconcileOCIImageDrift(ctx context.Context, pc *pr
 		logger.Info("OCI image tag mismatch; replacing Proxmox container", "container", container.Spec.Name)
 		r.Recorder.Eventf(container, nil, "Normal", "Replacing", "Replacing",
 			fmt.Sprintf("Replacing Container %s (OCI image tag mismatch)", container.Spec.Name))
-		if err := pc.DeleteContainer(container.Spec.Name, container.Spec.NodeName); err != nil {
+		if err := deleteContainerForReplace(pc, container); err != nil {
 			return false, err
 		}
 		if err := r.patchAppliedOCIImageStatus(ctx, container, "", ""); err != nil {
@@ -476,9 +478,31 @@ func (r *ContainerReconciler) handleContainerDeletion(ctx context.Context,
 		logger.Info(fmt.Sprintf("Container %s is protected from deletion", containerName))
 		return nil
 	}
-	if err := pc.DeleteContainer(containerName, nodeName); err != nil {
+	err := pc.DeleteContainer(containerName, nodeName)
+	var notFoundErr *proxmox.NotFoundError
+	if errors.As(err, &notFoundErr) {
+		logger.Info("Container not found, proceeding with finalizer removal")
+		return nil
+	}
+	if err != nil {
+		var taskErr *proxmox.TaskError
+		if errors.As(err, &taskErr) {
+			r.Recorder.Eventf(container, nil, "Warning", "Error", "Error", fmt.Sprintf("Container %s failed to delete due to %s", containerName, err))
+			return reconcile.TerminalError(err)
+		}
 		return err
 	}
 	r.Recorder.Eventf(container, nil, "Normal", "Deleted", "Deleted", fmt.Sprintf("Deleted Container %s", containerName))
 	return nil
+}
+
+// deleteContainerForReplace deletes the Proxmox container so it can be created
+// again. A container that is already gone needs no deleting.
+func deleteContainerForReplace(pc *proxmox.ProxmoxClient, container *proxmoxv1alpha1.Container) error {
+	err := pc.DeleteContainer(container.Spec.Name, container.Spec.NodeName)
+	var notFoundErr *proxmox.NotFoundError
+	if errors.As(err, &notFoundErr) {
+		return nil
+	}
+	return err
 }
