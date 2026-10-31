@@ -19,6 +19,9 @@ import (
 )
 
 type VirtualMachineComparison struct {
+	// Running is left nil on the desired side when enableAutoStart is off, so
+	// a stopped machine is not drift then (see RunningStateComparator).
+	Running  *bool
 	Sockets  int `json:"sockets"`
 	Cores    int `json:"cores"`
 	Memory   int `json:"memory"`
@@ -1290,6 +1293,15 @@ func (pc *ProxmoxClient) configureVirtualMachinePCI(vm *proxmoxv1alpha1.VirtualM
 			return err
 		}
 		if reboot {
+			// A stopped machine picks the change up on its next boot; starting
+			// it here would override enableAutoStart: false.
+			vmState, err := pc.GetVMState(vm.Name, vm.Spec.NodeName)
+			if err != nil {
+				return err
+			}
+			if vmState != VirtualMachineRunningState {
+				return nil
+			}
 			// Rebooting VM spawns two different tasks, one for stopping and one for starting
 			// and unfortunately you can't track the start so
 			// here we should do stop and start separately

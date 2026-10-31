@@ -52,16 +52,11 @@ type VirtualMachineSpec struct {
 	DeletionProtection bool `json:"deletionProtection,omitempty"`
 	// EnableAutoStart is a flag that indicates whether the VM should automatically start when it's powered off.
 	// If true, the VM will start automatically when it's powered off.
-	// If not set, it defaults to true. PowerState, when set, takes precedence.
+	// If false, the operator never starts it: a new VM is created stopped and
+	// an existing one stays in whatever power state it is in.
+	// If not set, it defaults to true.
 	// +kubebuilder:default:=true
-	EnableAutoStart bool `json:"enableAutoStart,omitempty"`
-	// PowerState is what the operator does about the machine's power.
-	// Running starts it whenever it is found stopped, Stopped stops it whenever
-	// it is found running, Manual leaves the power alone and only keeps the
-	// configuration. Unset keeps the EnableAutoStart behaviour.
-	// +kubebuilder:validation:Enum=Running;Stopped;Manual
-	// +optional
-	PowerState PowerState `json:"powerState,omitempty"`
+	EnableAutoStart *bool `json:"enableAutoStart,omitempty"`
 	// Pool is the Proxmox resource pool the machine is created in. It is
 	// applied at creation; a change afterwards is not applied.
 	// +optional
@@ -86,18 +81,6 @@ type VirtualMachineSpec struct {
 	// +kubebuilder:validation:Required
 	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
 }
-
-// PowerState is what the operator does about a machine's power.
-type PowerState string
-
-const (
-	// PowerStateRunning starts the machine whenever it is found stopped.
-	PowerStateRunning PowerState = "Running"
-	// PowerStateStopped stops the machine whenever it is found running.
-	PowerStateStopped PowerState = "Stopped"
-	// PowerStateManual leaves the power alone and only keeps the configuration.
-	PowerStateManual PowerState = "Manual"
-)
 
 // CloneMode selects between a full copy of the template's disks and a linked
 // clone that references the template's base snapshot.

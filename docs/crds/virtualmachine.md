@@ -177,7 +177,7 @@ EOF
 
 ```yaml
 spec:
-  powerState: Running        # Running | Stopped | Manual; unset keeps enableAutoStart
+  enableAutoStart: true      # false: the operator never starts the machine
   pool: tenant-a             # Proxmox resource pool, applied at creation
   tags: [web, tenant-a]      # kept on the machine next to the operator's own tag
   vmSpec:
@@ -195,6 +195,6 @@ spec:
         version: v2.0
 ```
 
-- `powerState` says what the operator does about the machine's power: `Running` starts it whenever it is found stopped, `Stopped` stops it whenever it is found running, `Manual` never touches the power and only keeps the configuration. It takes precedence over `enableAutoStart`, and unlike that boolean an explicit value does not get lost on an update.
+- `enableAutoStart: true` keeps the machine running: one found stopped on the next watcher poll (60 s) is started again. `false` means the operator never starts it: a new machine is created stopped and an existing one stays in whatever power state it is in. To keep a machine off, set `false` and power it off.
 - `pool` and the firmware disks (`efiDisk`, `tpm`) are applied when the machine is created and left alone afterwards. `bios`, `machine`, `scsiController`, `smbiosUUID` and `tags` are kept in line on every reconcile; a changed BIOS or UUID applies on the next boot, nothing restarts the machine for it. Tags present on the machine but not listed are left alone.
 - A new `smbiosUUID` is what cloud-init takes as a new instance, so it runs again on the next boot.

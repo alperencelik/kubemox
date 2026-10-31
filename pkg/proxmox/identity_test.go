@@ -80,7 +80,6 @@ func TestIdentityDriftAndMissingTags(t *testing.T) {
 	}
 	cfg := &proxmox.VirtualMachineConfig{
 		SMBios1: "uuid=0D9C1E2A-1111-4222-8333-444455556666,manufacturer=QUJD",
-		Bios:    "",
 		Machine: testMachine,
 		Tags:    "kubemox;other",
 	}

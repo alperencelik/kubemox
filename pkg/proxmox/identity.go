@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/luthermonson/go-proxmox"
+	"k8s.io/utils/ptr"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 )
@@ -133,17 +134,11 @@ func identityDrift(vm *proxmoxv1alpha1.VirtualMachine,
 		case optionSMBIOS:
 			have = "uuid=" + smbiosUUID(cfg.SMBios1)
 		case optionBios:
-			have = cfg.Bios
-			if have == "" {
-				have = "seabios"
-			}
+			have = ptr.Deref(cfg.Bios, "seabios")
 		case optionMachine:
 			have = cfg.Machine
 		case optionSCSIHW:
-			have = cfg.SCSIHW
-			if have == "" {
-				have = "lsi"
-			}
+			have = ptr.Deref(cfg.SCSIHW, "lsi")
 		case optionAgent:
 			// Proxmox reports "1" or "enabled=1,..." for an enabled agent.
 			have = "0"

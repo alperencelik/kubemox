@@ -37,6 +37,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -450,7 +451,7 @@ func (r *ContainerReconciler) handleAutoStart(ctx context.Context,
 	logger := log.FromContext(ctx)
 	containerName := container.Spec.Name
 	nodeName := container.Spec.NodeName
-	if container.Spec.EnableAutoStart {
+	if ptr.Deref(container.Spec.EnableAutoStart, true) {
 		containerState, err := pc.GetContainerState(containerName, nodeName)
 		if err != nil {
 			logger.Error(err, "Failed to get Container state")
