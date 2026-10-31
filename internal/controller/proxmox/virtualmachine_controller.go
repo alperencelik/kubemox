@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -395,6 +396,10 @@ func (r *VirtualMachineReconciler) handleCreateFromScratch(ctx context.Context, 
 func (r *VirtualMachineReconciler) startCreatedVM(ctx context.Context, pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine, nodeName string) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	vmName := vm.Spec.Name
+	if !ptr.Deref(vm.Spec.EnableAutoStart, true) {
+		logger.Info("VirtualMachine created and left stopped: enableAutoStart is false", "name", vmName)
+		return ctrl.Result{}, nil
+	}
 
 	startResult, err := pc.StartVM(vmName, nodeName)
 	if err != nil {
@@ -475,7 +480,7 @@ func (r *VirtualMachineReconciler) handleResourceNotFound(ctx context.Context, e
 func (r *VirtualMachineReconciler) handleAutoStart(ctx context.Context,
 	pc *proxmox.ProxmoxClient, vm *proxmoxv1alpha1.VirtualMachine) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	if vm.Spec.EnableAutoStart {
+	if ptr.Deref(vm.Spec.EnableAutoStart, true) {
 		vmName := vm.Spec.Name
 		nodeName := vm.Spec.NodeName
 		vmState, err := pc.GetVMState(vmName, nodeName)

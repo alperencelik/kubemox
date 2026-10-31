@@ -181,13 +181,14 @@ func main() {
 	vmWatcher := watcher.NewExternalWatcher(&proxmox.VirtualMachineFetcher{Client: k8sClient},
 		append(watcherOpts,
 			watcher.WithMetrics("VirtualMachine"),
+			watcher.WithComparator(proxmox.RunningStateComparator()),
 			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.VirtualMachine{},
 				proxmox.VMConfigExtractor, autoRegisterOpts...),
 		)...)
 	containerWatcher := watcher.NewExternalWatcher(&proxmox.ContainerFetcher{Client: k8sClient},
 		append(watcherOpts,
 			watcher.WithMetrics("Container"),
-			watcher.WithComparator(proxmox.ContainerStateComparator()),
+			watcher.WithComparator(proxmox.RunningStateComparator()),
 			watcher.WithAutoRegister(mgr.GetCache(), &proxmoxv1alpha1.Container{},
 				proxmox.ContainerConfigExtractor, autoRegisterOpts...),
 		)...)

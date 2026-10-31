@@ -14,6 +14,7 @@ import (
 	gopxmx "github.com/luthermonson/go-proxmox"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	cc "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -26,15 +27,15 @@ type Resource interface {
 // ContainerDesiredState represents the comparable desired/actual state for a Container.
 type ContainerDesiredState struct {
 	// Running is left nil on the desired side when enableAutoStart is off, so
-	// a stopped container is not drift then (see ContainerStateComparator).
+	// a stopped container is not drift then (see RunningStateComparator).
 	Running *bool
 	Cores   int
 	Memory  int
 }
 
-// ContainerStateComparator compares ContainerDesiredState values and skips
+// RunningStateComparator compares desired and actual state values and skips
 // Running when either side leaves it unset.
-func ContainerStateComparator() *watcher.DeepEqualComparator {
+func RunningStateComparator() *watcher.DeepEqualComparator {
 	return watcher.NewDeepEqualComparator(
 		cmp.FilterValues(func(x, y *bool) bool { return x == nil || y == nil }, cmp.Ignore()))
 }
@@ -100,13 +101,17 @@ func (f *VirtualMachineFetcher) GetDesiredState(ctx context.Context, key types.N
 	if reconcileMode == kubernetes.ReconcileModeWatchOnly || reconcileMode == kubernetes.ReconcileModeEnsureExists {
 		return nil, nil
 	}
-	return VirtualMachineComparison{
+	desired := VirtualMachineComparison{
 		Cores:    GetCores(vm),
 		Sockets:  getSockets(vm),
 		Memory:   GetMemory(vm),
 		Networks: getNetworks(vm),
 		Disks:    sortDisks(getDisks(vm)),
-	}, nil
+	}
+	if ptr.Deref(vm.Spec.EnableAutoStart, true) {
+		desired.Running = ptr.To(true)
+	}
+	return desired, nil
 }
 
 func (f *VirtualMachineFetcher) FetchExternalResource(ctx context.Context, objKey any) (any, error) {
@@ -159,6 +164,7 @@ func (f *VirtualMachineFetcher) TransformExternalState(raw any) (any, error) {
 	}
 
 	return VirtualMachineComparison{
+		Running:  ptr.To(vm.Status == VirtualMachineRunningState),
 		Cores:    derefInt(cfg.Cores),
 		Sockets:  derefInt(cfg.Sockets),
 		Memory:   int(cfg.Memory),
@@ -214,9 +220,8 @@ func (f *ContainerFetcher) GetDesiredState(ctx context.Context, key types.Namesp
 		Cores:  container.Spec.Template.Cores,
 		Memory: container.Spec.Template.Memory,
 	}
-	if container.Spec.EnableAutoStart {
-		running := true
-		desired.Running = &running
+	if ptr.Deref(container.Spec.EnableAutoStart, true) {
+		desired.Running = ptr.To(true)
 	}
 	return desired, nil
 }
