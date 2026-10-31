@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/alperencelik/kube-external-watcher/watcher"
+	"github.com/google/go-cmp/cmp"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
@@ -24,8 +25,18 @@ type Resource interface {
 
 // ContainerDesiredState represents the comparable desired/actual state for a Container.
 type ContainerDesiredState struct {
-	Cores  int
-	Memory int
+	// Running is left nil on the desired side when enableAutoStart is off, so
+	// a stopped container is not drift then (see ContainerStateComparator).
+	Running *bool
+	Cores   int
+	Memory  int
+}
+
+// ContainerStateComparator compares ContainerDesiredState values and skips
+// Running when either side leaves it unset.
+func ContainerStateComparator() *watcher.DeepEqualComparator {
+	return watcher.NewDeepEqualComparator(
+		cmp.FilterValues(func(x, y *bool) bool { return x == nil || y == nil }, cmp.Ignore()))
 }
 
 // VMTemplateDesiredState represents the comparable desired/actual state for a VirtualMachineTemplate.
@@ -131,7 +142,7 @@ func (f *VirtualMachineFetcher) TransformExternalState(raw any) (any, error) {
 	}
 	cfg := vm.VirtualMachineConfig
 
-	networks, err := parseNetworkConfiguration(cfg.MergeNets())
+	networks, err := parseNetworkConfiguration(cfg.Nets)
 	if err != nil {
 		return nil, err
 	}
@@ -148,8 +159,8 @@ func (f *VirtualMachineFetcher) TransformExternalState(raw any) (any, error) {
 	}
 
 	return VirtualMachineComparison{
-		Cores:    cfg.Cores,
-		Sockets:  cfg.Sockets,
+		Cores:    derefInt(cfg.Cores),
+		Sockets:  derefInt(cfg.Sockets),
 		Memory:   int(cfg.Memory),
 		Networks: networks,
 		Disks:    sortDisks(parsedDisks),
@@ -199,10 +210,15 @@ func (f *ContainerFetcher) GetDesiredState(ctx context.Context, key types.Namesp
 	if reconcileMode == kubernetes.ReconcileModeWatchOnly || reconcileMode == kubernetes.ReconcileModeEnsureExists {
 		return nil, nil
 	}
-	return ContainerDesiredState{
+	desired := ContainerDesiredState{
 		Cores:  container.Spec.Template.Cores,
 		Memory: container.Spec.Template.Memory,
-	}, nil
+	}
+	if container.Spec.EnableAutoStart {
+		running := true
+		desired.Running = &running
+	}
+	return desired, nil
 }
 
 func (f *ContainerFetcher) FetchExternalResource(ctx context.Context, objKey any) (any, error) {
@@ -214,7 +230,11 @@ func (f *ContainerFetcher) FetchExternalResource(ctx context.Context, objKey any
 	if err != nil {
 		return nil, fmt.Errorf("getting Proxmox client: %w", err)
 	}
-	container, err := pc.GetContainer(key.Name, key.NodeName)
+	// Fetch fresh container data from Proxmox API (bypass cache)
+	container, err := pc.refreshContainer(key.Name, key.NodeName)
+	if isContainerGoneErr(err) {
+		return nil, containerRemovedErr(pc, key)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -226,10 +246,26 @@ func (f *ContainerFetcher) TransformExternalState(raw any) (any, error) {
 	if !ok {
 		return nil, fmt.Errorf("unexpected external state type: %T", raw)
 	}
+	running := container.Status == VirtualMachineRunningState
 	return ContainerDesiredState{
-		Cores:  container.CPUs,
-		Memory: int(container.MaxMem / 1024 / 1024),
+		Running: &running,
+		Cores:   container.CPUs,
+		Memory:  int(container.MaxMem / 1024 / 1024),
 	}, nil
+}
+
+// containerRemovedErr returns the error for a container its node no longer has.
+// Only a container that no node has is reported as removed, because the
+// reconcile that follows creates it again.
+func containerRemovedErr(pc *ProxmoxClient, key ProxmoxResourceKey) error {
+	nodeName, err := pc.findContainerNode(key.Name)
+	if err != nil {
+		return err
+	}
+	if nodeName != "" {
+		return fmt.Errorf("container %s is on node %s, not on %s", key.Name, nodeName, key.NodeName)
+	}
+	return fmt.Errorf("container %s: %w", key.Name, watcher.ErrExternalResourceNotFound)
 }
 
 func (f *ContainerFetcher) IsResourceReadyToWatch(ctx context.Context, key types.NamespacedName) bool {
@@ -310,8 +346,8 @@ func (f *VirtualMachineTemplateFetcher) TransformExternalState(raw any) (any, er
 	}
 	cfg := vm.VirtualMachineConfig
 	return VMTemplateDesiredState{
-		Cores:   cfg.Cores,
-		Sockets: cfg.Sockets,
+		Cores:   derefInt(cfg.Cores),
+		Sockets: derefInt(cfg.Sockets),
 		Memory:  int(cfg.Memory),
 	}, nil
 }

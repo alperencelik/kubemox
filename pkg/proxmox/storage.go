@@ -16,15 +16,20 @@ func (pc *ProxmoxClient) StorageDownloadURL(ctx context.Context, node string,
 		return "", fmt.Errorf("unable to get node %s: %w", node, err)
 	}
 	storageDownloadURLOptions := proxmox.StorageDownloadURLOptions{
-		Content:            storageDownloadURLSpec.Content,
-		Filename:           storageDownloadURLSpec.Filename,
-		Node:               storageDownloadURLSpec.Node,
-		Storage:            storageDownloadURLSpec.Storage,
-		URL:                storageDownloadURLSpec.URL,
-		Checksum:           storageDownloadURLSpec.Checksum,
-		ChecksumAlgorithm:  storageDownloadURLSpec.ChecksumAlgorithm,
-		Compression:        storageDownloadURLSpec.Compression,
-		VerifyCertificates: proxmox.IntOrBool(storageDownloadURLSpec.VerifyCertificate),
+		Content:           storageDownloadURLSpec.Content,
+		Filename:          storageDownloadURLSpec.Filename,
+		Node:              storageDownloadURLSpec.Node,
+		Storage:           storageDownloadURLSpec.Storage,
+		URL:               storageDownloadURLSpec.URL,
+		Checksum:          storageDownloadURLSpec.Checksum,
+		ChecksumAlgorithm: storageDownloadURLSpec.ChecksumAlgorithm,
+		Compression:       storageDownloadURLSpec.Compression,
+	}
+	// Only an explicit true is sent, which keeps the previous wire behaviour:
+	// false was omitted (omitempty) and Proxmox applied its own default.
+	if storageDownloadURLSpec.VerifyCertificate {
+		verify := proxmox.IntOrBool(true)
+		storageDownloadURLOptions.VerifyCertificates = &verify
 	}
 	// Post request to get download URL
 	response, err := Node.StorageDownloadURL(ctx, &storageDownloadURLOptions)
