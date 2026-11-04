@@ -14,7 +14,7 @@ spec:
     shortNames:
     - cc
     singular: customcertificate
-  scope: Namespaced
+  scope: Cluster
   versions:
   - name: v1alpha1
     schema:

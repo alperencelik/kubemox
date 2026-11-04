@@ -19,6 +19,7 @@ package proxmox
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -275,7 +276,7 @@ func (r *CustomCertificateReconciler) CreateOrUpdateCertificateObject(ctx contex
 	cert := &certmanagerv1.Certificate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      customCertificate.Name,
-			Namespace: customCertificate.Namespace,
+			Namespace: os.Getenv("POD_NAMESPACE"), // Create cert object in the same namespace as the operator
 		},
 	}
 	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, cert, func() error {
