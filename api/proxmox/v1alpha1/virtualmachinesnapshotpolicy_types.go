@@ -32,17 +32,12 @@ type VirtualMachineSnapshotPolicySpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	NamespaceSelector NamespaceSelector `json:"namespaceSelector,omitempty"`
-
+	// LabelSelector picks VirtualMachines in the policy's own namespace.
 	LabelSelector metav1.LabelSelector `json:"labelSelector,omitempty"`
 
 	SnapshotSchedule string `json:"snapshotSchedule,omitempty"`
 	// +kubebuilder:validation:Required
 	ConnectionRef *corev1.LocalObjectReference `json:"connectionRef,omitempty"`
-}
-
-type NamespaceSelector struct {
-	Namespaces []string `json:"namespaces,omitempty"`
 }
 
 // VirtualMachineSnapshotPolicyStatus defines the observed state of VirtualMachineSnapshotPolicy

@@ -683,12 +683,7 @@ func (pc *ProxmoxClient) UpdateVM(vm *proxmoxv1alpha1.VirtualMachine) (bool, err
 	return updateStatus, nil
 }
 
-func (pc *ProxmoxClient) CreateVMSnapshot(vmName, snapshotName string) (statusCode int, err error) {
-	nodeName, err := pc.GetNodeOfVM(vmName)
-	if err != nil {
-		log.Log.Error(err, "Error getting node of VM for snapshot creation")
-		return 1, err
-	}
+func (pc *ProxmoxClient) CreateVMSnapshot(vmName, nodeName, snapshotName string) (statusCode int, err error) {
 	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for snapshot creation")
@@ -711,39 +706,20 @@ func (pc *ProxmoxClient) CreateVMSnapshot(vmName, snapshotName string) (statusCo
 	return 0, nil
 }
 
-func (pc *ProxmoxClient) GetVMSnapshots(vmName string) ([]string, error) {
-	nodeName, err := pc.GetNodeOfVM(vmName)
-	if err != nil {
-		log.Log.Error(err, "Error getting node of VM for snapshot listing")
-	}
+func (pc *ProxmoxClient) GetVMSnapshots(vmName, nodeName string) ([]string, error) {
 	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
-		log.Log.Error(err, "Error getting VM for snapshot listing")
+		return nil, err
 	}
-	// Get snapshots
 	snapshots, err := VirtualMachine.Snapshots(ctx)
 	if err != nil {
-		log.Log.Error(err, "Error getting snapshots")
+		return nil, err
 	}
 	snapshotNames := make([]string, 0, len(snapshots))
 	for _, snapshot := range snapshots {
 		snapshotNames = append(snapshotNames, snapshot.Name)
 	}
-	return snapshotNames, err
-}
-
-func (pc *ProxmoxClient) VMSnapshotExists(vmName, snapshotName string) bool {
-	snapshots, err := pc.GetVMSnapshots(vmName)
-	if err != nil {
-		log.Log.Error(err, "Error getting snapshots")
-		return false
-	}
-	for _, snapshot := range snapshots {
-		if strings.EqualFold(snapshot, snapshotName) {
-			return true
-		}
-	}
-	return false
+	return snapshotNames, nil
 }
 
 func (pc *ProxmoxClient) RemoveVirtualMachineTag(vmName, nodeName, tag string) error {

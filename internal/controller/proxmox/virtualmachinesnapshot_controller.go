@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
+	"github.com/alperencelik/kubemox/pkg/guestname"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 	"github.com/alperencelik/kubemox/pkg/utils"
@@ -86,13 +87,6 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 
 	logger.Info("Reconciling VirtualMachineSnapshot", "Name", vmSnapshot.Name)
 
-	// Get the Proxmox client reference
-	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, vmSnapshot.Spec.ConnectionRef)
-	if err != nil {
-		logger.Error(err, "unable to get Proxmox client")
-		return ctrl.Result{}, err
-	}
-
 	// Get ref vm
 	vm, err := r.getVMreference(ctx, vmSnapshot)
 	if err != nil {
@@ -108,6 +102,34 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 		logger.Error(err, "unable to persist owner reference for VirtualMachineSnapshot")
 		return ctrl.Result{}, err
 	}
+
+	// The snapshot is taken of the VM's Proxmox guest, so it must go through
+	// the VM's connection, and only once the VM owns its spec.name.
+	claim := guestname.ForVM(vm)
+	snapshotConn := ""
+	if vmSnapshot.Spec.ConnectionRef != nil {
+		snapshotConn = vmSnapshot.Spec.ConnectionRef.Name
+	}
+	if snapshotConn != claim.Conn() {
+		patch := client.MergeFrom(vmSnapshot.DeepCopy())
+		vmSnapshot.Status.ErrorMessage = fmt.Sprintf("connectionRef %q does not match %q, the connection of VirtualMachine %s",
+			snapshotConn, claim.Conn(), vm.Name)
+		return ctrl.Result{}, client.IgnoreNotFound(r.Status().Patch(ctx, vmSnapshot, patch))
+	}
+	owner, err := guestname.Owner(ctx, r.Client, claim)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if !owner.SameObject(claim) {
+		logger.Info("Waiting for the VirtualMachine to own its spec.name", "owner", owner.String())
+		return ctrl.Result{RequeueAfter: nameConflictRequeue}, nil
+	}
+
+	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, vm.Spec.ConnectionRef)
+	if err != nil {
+		logger.Error(err, "unable to get Proxmox client")
+		return ctrl.Result{}, err
+	}
 	snapshotName := vmSnapshot.Spec.SnapshotName
 	if snapshotName == "" {
 		// If snapshot name is not specified, use the timestamp as the snapshot name
@@ -115,7 +137,7 @@ func (r *VirtualMachineSnapshotReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	// Handle snapshot creation
-	err = r.handleSnapshotCreation(ctx, pc, vmSnapshot, snapshotName)
+	err = r.handleSnapshotCreation(ctx, pc, vmSnapshot, vm, snapshotName)
 	if err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -168,11 +190,12 @@ func (r *VirtualMachineSnapshotReconciler) getVMreference(ctx context.Context,
 }
 
 func (r *VirtualMachineSnapshotReconciler) handleSnapshotCreation(ctx context.Context,
-	pc *proxmox.ProxmoxClient, vmSnapshot *proxmoxv1alpha1.VirtualMachineSnapshot, snapshotName string) error {
+	pc *proxmox.ProxmoxClient, vmSnapshot *proxmoxv1alpha1.VirtualMachineSnapshot,
+	vm *proxmoxv1alpha1.VirtualMachine, snapshotName string) error {
 	logger := log.FromContext(ctx)
-	vmName := vmSnapshot.Spec.VirtualMachineName
+	vmName, nodeName := vm.Spec.Name, vm.Spec.NodeName
 	// Get all the snapshots of the VM
-	snapshots, err := pc.GetVMSnapshots(vmName)
+	snapshots, err := pc.GetVMSnapshots(vmName, nodeName)
 	if err != nil {
 		logger.Error(err, "Failed to get VM snapshots")
 		return err
@@ -188,7 +211,7 @@ func (r *VirtualMachineSnapshotReconciler) handleSnapshotCreation(ctx context.Co
 		return nil
 	} else if vmSnapshot.Status.Status != snapshotCreatedStatus {
 		// Create the snapshot
-		statusCode, err := pc.CreateVMSnapshot(vmName, snapshotName)
+		statusCode, err := pc.CreateVMSnapshot(vmName, nodeName, snapshotName)
 		if err != nil {
 			logger.Error(err, "Failed to create VM snapshot")
 			return client.IgnoreNotFound(err)

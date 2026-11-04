@@ -58,10 +58,8 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               labelSelector:
-                description: |-
-                  A label selector is a label query over a set of resources. The result of matchLabels and
-                  matchExpressions are ANDed. An empty label selector matches all objects. A null
-                  label selector matches no objects.
+                description: LabelSelector picks VirtualMachines in the policy's own
+                  namespace.
                 properties:
                   matchExpressions:
                     description: matchExpressions is a list of label selector requirements.
@@ -106,13 +104,6 @@ spec:
                     type: object
                 type: object
                 x-kubernetes-map-type: atomic
-              namespaceSelector:
-                properties:
-                  namespaces:
-                    items:
-                      type: string
-                    type: array
-                type: object
               snapshotSchedule:
                 type: string
             required:
