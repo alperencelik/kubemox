@@ -9,9 +9,11 @@ import (
 	"github.com/alperencelik/kube-external-watcher/watcher"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
+	"github.com/alperencelik/kubemox/pkg/guestname"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	gopxmx "github.com/luthermonson/go-proxmox"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	cc "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -169,6 +171,10 @@ func (f *VirtualMachineFetcher) UpdateResourceStatus(ctx context.Context, key ty
 	if err := f.Client.Get(ctx, key, vm); err != nil {
 		return err
 	}
+	// The guest belongs to another resource; don't report its state as ours.
+	if meta.IsStatusConditionTrue(vm.Status.Conditions, guestname.ConditionNameConflict) {
+		return nil
+	}
 	pc, err := NewProxmoxClientFromRef(ctx, f.Client, vm.Spec.ConnectionRef)
 	if err != nil {
 		return err
@@ -244,6 +250,10 @@ func (f *ContainerFetcher) UpdateResourceStatus(ctx context.Context, key types.N
 	container := &proxmoxv1alpha1.Container{}
 	if err := f.Client.Get(ctx, key, container); err != nil {
 		return err
+	}
+	// The guest belongs to another resource; don't report its state as ours.
+	if meta.IsStatusConditionTrue(container.Status.Conditions, guestname.ConditionNameConflict) {
+		return nil
 	}
 	pc, err := NewProxmoxClientFromRef(ctx, f.Client, container.Spec.ConnectionRef)
 	if err != nil {

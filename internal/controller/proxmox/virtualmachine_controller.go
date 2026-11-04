@@ -41,6 +41,7 @@ import (
 	"github.com/alperencelik/kube-external-watcher/watcher"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
+	"github.com/alperencelik/kubemox/pkg/guestname"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 	"github.com/alperencelik/kubemox/pkg/utils"
@@ -85,6 +86,10 @@ func (r *VirtualMachineReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	err := r.Get(ctx, req.NamespacedName, vm)
 	if err != nil {
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
+	}
+	if owned, res, claimErr := claimGuest(ctx, r.Client, vm, guestname.ForVM(vm),
+		virtualMachineFinalizerName); !owned || claimErr != nil {
+		return res, claimErr
 	}
 
 	// If this reconcile was triggered by the external watcher detecting an
