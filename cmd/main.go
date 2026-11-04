@@ -292,8 +292,8 @@ func main() {
 		os.Exit(1)
 	}
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
-		if err = proxmoxwebhook.SetupVirtualMachineWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "VirtualMachine")
+		if err = proxmoxwebhook.SetupNameWebhooksWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhooks")
 			os.Exit(1)
 		}
 	}

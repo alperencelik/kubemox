@@ -113,18 +113,20 @@ metadata:
     cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ $fullname }}-webhook
   {{- end }}
 webhooks:
-  - name: vvirtualmachine-v1alpha1.kb.io
+{{- range $kind := list "virtualmachine" "virtualmachinetemplate" "container" }}
+  - name: v{{ $kind }}-v1alpha1.kb.io
     admissionReviewVersions: ["v1"]
     sideEffects: None
     failurePolicy: Fail
     clientConfig:
       service:
         name: {{ $fullname }}-webhook
-        namespace: {{ .Release.Namespace }}
-        path: /validate-proxmox-alperen-cloud-v1alpha1-virtualmachine
+        namespace: {{ $.Release.Namespace }}
+        path: /validate-proxmox-alperen-cloud-v1alpha1-{{ $kind }}
     rules:
       - apiGroups: ["proxmox.alperen.cloud"]
         apiVersions: ["v1alpha1"]
         operations: ["CREATE", "UPDATE"]
-        resources: ["virtualmachines"]
+        resources: ["{{ $kind }}s"]
+{{- end }}
 {{- end }}

@@ -10,6 +10,26 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /validate-proxmox-alperen-cloud-v1alpha1-container
+  failurePolicy: Fail
+  name: vcontainer-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - proxmox.alperen.cloud
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - containers
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /validate-proxmox-alperen-cloud-v1alpha1-virtualmachine
   failurePolicy: Fail
   name: vvirtualmachine-v1alpha1.kb.io
@@ -23,4 +43,24 @@ webhooks:
     - UPDATE
     resources:
     - virtualmachines
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-proxmox-alperen-cloud-v1alpha1-virtualmachinetemplate
+  failurePolicy: Fail
+  name: vvirtualmachinetemplate-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - proxmox.alperen.cloud
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - virtualmachinetemplates
   sideEffects: None

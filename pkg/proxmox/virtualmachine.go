@@ -199,8 +199,8 @@ func (pc *ProxmoxClient) CheckVM(vmName, nodeName string) (bool, error) {
 	return false, nil
 }
 
-// VMIDsByName returns the VMIDs of every non-template VM on nodeName named
-// vmName, compared case-insensitively.
+// VMIDsByName returns the VMIDs of every QEMU guest on nodeName named vmName,
+// templates included and compared case-insensitively, the way getVMID matches.
 func (pc *ProxmoxClient) VMIDsByName(ctx context.Context, vmName, nodeName string) ([]uint64, error) {
 	node, err := pc.getNode(ctx, nodeName)
 	if err != nil {
@@ -212,8 +212,28 @@ func (pc *ProxmoxClient) VMIDsByName(ctx context.Context, vmName, nodeName strin
 	}
 	var ids []uint64
 	for _, vm := range vmList {
-		if !bool(vm.Template) && strings.EqualFold(vm.Name, vmName) {
+		if strings.EqualFold(vm.Name, vmName) {
 			ids = append(ids, uint64(vm.VMID))
+		}
+	}
+	return ids, nil
+}
+
+// ContainerIDsByName returns the VMIDs of every container on nodeName named
+// containerName exactly, the way GetContainerID matches.
+func (pc *ProxmoxClient) ContainerIDsByName(ctx context.Context, containerName, nodeName string) ([]uint64, error) {
+	node, err := pc.getNode(ctx, nodeName)
+	if err != nil {
+		return nil, err
+	}
+	containers, err := node.Containers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var ids []uint64
+	for _, ct := range containers {
+		if ct.Name == containerName {
+			ids = append(ids, uint64(ct.VMID))
 		}
 	}
 	return ids, nil
