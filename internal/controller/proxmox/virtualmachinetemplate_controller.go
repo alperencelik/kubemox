@@ -401,7 +401,7 @@ func (r *VirtualMachineTemplateReconciler) handleCloudInitOperations(ctx context
 		return err
 	}
 	// 3. Set cloud-init configuration
-	err = pc.SetCloudInitConfig(templateVMName, nodeName, vmTemplate.Spec.CloudInitConfig)
+	err = pc.SetCloudInitConfig(templateVMName, nodeName, vmTemplate.Namespace, vmTemplate.Spec.CloudInitConfig)
 	if err != nil {
 		logger.Error(err, "Failed to set cloud-init configuration")
 		return err

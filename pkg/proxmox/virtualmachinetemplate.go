@@ -2,7 +2,6 @@ package proxmox
 
 import (
 	"fmt"
-	"os"
 	"reflect"
 	"strings"
 
@@ -68,7 +67,8 @@ func (pc *ProxmoxClient) ConvertVMToTemplate(vmName, nodeName string) error {
 	return nil
 }
 
-func (pc *ProxmoxClient) SetCloudInitConfig(vmName, nodeName string, ciConfig *proxmoxv1alpha1.CloudInitConfig) error {
+func (pc *ProxmoxClient) SetCloudInitConfig(vmName, nodeName, namespace string,
+	ciConfig *proxmoxv1alpha1.CloudInitConfig) error {
 	VirtualMachine, err := pc.getVirtualMachine(vmName, nodeName)
 	if err != nil {
 		log.Log.Error(err, "Error getting VM for updating cloud-init config")
@@ -82,7 +82,7 @@ func (pc *ProxmoxClient) SetCloudInitConfig(vmName, nodeName string, ciConfig *p
 	// Compare with the desired VM
 	if !cmp.Equal(*ciConfig, actualCloudInitConfig, cloudInitcompareOptions(ciConfig)...) {
 		log.Log.Info(fmt.Sprintf("Cloud-init config is updating with new values for VM %s", vmName))
-		CloudInitOptions := constructCloudInitOptions(ciConfig)
+		CloudInitOptions := constructCloudInitOptions(ciConfig, namespace)
 		// Empty the current cloud-init config
 		err := pc.EmptyCloudInitConfig(vmName, nodeName)
 		if err != nil {
@@ -322,7 +322,8 @@ func (pc *ProxmoxClient) UpdateVirtualMachineTemplate(vmTemplate *proxmoxv1alpha
 	}
 	// Update cloud-init config
 	if reconfigureCloudInit, _ := pc.CheckVirtualMachineTemplateCIConfig(vmTemplate); reconfigureCloudInit {
-		err := pc.SetCloudInitConfig(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName, vmTemplate.Spec.CloudInitConfig)
+		err := pc.SetCloudInitConfig(vmTemplate.Spec.Name, vmTemplate.Spec.NodeName, vmTemplate.Namespace,
+			vmTemplate.Spec.CloudInitConfig)
 		if err != nil {
 			log.Log.Error(err, "Error updating cloud-init config")
 		}
@@ -349,7 +350,8 @@ func (pc *ProxmoxClient) CheckVirtualMachineTemplateCIConfig(vmTemplate *proxmox
 	return false, nil
 }
 
-func constructCloudInitOptions(cloudInitConfig *proxmoxv1alpha1.CloudInitConfig) []proxmox.VirtualMachineOption {
+func constructCloudInitOptions(cloudInitConfig *proxmoxv1alpha1.CloudInitConfig,
+	namespace string) []proxmox.VirtualMachineOption {
 	// Reflection to get the non-empty fields and their corresponding cloud-init options
 	v := reflect.ValueOf(*cloudInitConfig)
 	t := reflect.TypeOf(*cloudInitConfig)
@@ -410,7 +412,7 @@ func constructCloudInitOptions(cloudInitConfig *proxmoxv1alpha1.CloudInitConfig)
 	}
 
 	// Handle password separately
-	Password, err := GetPasswordValue(cloudInitConfig)
+	Password, err := GetPasswordValue(cloudInitConfig, namespace)
 	if err != nil {
 		log.Log.Error(err, "Error getting password value")
 	}
@@ -576,7 +578,9 @@ func IPConfigParser(ipConfigStr string) *proxmoxv1alpha1.IPConfig {
 	return &ipConfig
 }
 
-func GetPasswordValue(config *proxmoxv1alpha1.CloudInitConfig) (string, error) {
+// GetPasswordValue reads passwordFrom from the Secret in namespace, the namespace
+// of the resource that carries the cloud-init config.
+func GetPasswordValue(config *proxmoxv1alpha1.CloudInitConfig, namespace string) (string, error) {
 	switch {
 	case config.Password != nil && config.PasswordFrom != nil:
 		return "", fmt.Errorf("both password and passwordFrom are set")
@@ -585,7 +589,7 @@ func GetPasswordValue(config *proxmoxv1alpha1.CloudInitConfig) (string, error) {
 		return *config.Password, nil
 	case config.PasswordFrom != nil:
 		// Fetch the password from the Secret
-		secretData, err := kubernetes.GetSecretData(os.Getenv("POD_NAMESPACE"), config.PasswordFrom)
+		secretData, err := kubernetes.GetSecretData(namespace, config.PasswordFrom)
 		if err != nil {
 			return "", err
 		}
