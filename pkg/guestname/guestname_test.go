@@ -15,9 +15,9 @@ import (
 
 var t0 = metav1.NewTime(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 
-func vm(ns, name, guest string, created metav1.Time) *proxmoxv1alpha1.VirtualMachine {
+func vm(ns, guest string, created metav1.Time) *proxmoxv1alpha1.VirtualMachine {
 	return &proxmoxv1alpha1.VirtualMachine{
-		ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name, CreationTimestamp: created},
+		ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: "web", CreationTimestamp: created},
 		Spec: proxmoxv1alpha1.VirtualMachineSpec{Name: guest, NodeName: "pve1",
 			ConnectionRef: &corev1.LocalObjectReference{Name: "pve"}},
 	}
@@ -33,10 +33,11 @@ func reader(t *testing.T, objs ...client.Object) client.Reader {
 }
 
 func TestOwnerIsOldestClaim(t *testing.T) {
-	older := vm("team-b", "web", "web", t0)
-	newer := vm("team-a", "web", "WEB", metav1.NewTime(t0.Add(time.Second)))
+	older := vm("team-b", "web", t0)
+	newer := vm("team-a", "WEB", metav1.NewTime(t0.Add(time.Second)))
 	tmpl := &proxmoxv1alpha1.VirtualMachineTemplate{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "team-c", Name: "t", CreationTimestamp: metav1.NewTime(t0.Add(-time.Second))},
+		ObjectMeta: metav1.ObjectMeta{Namespace: "team-c", Name: "t",
+			CreationTimestamp: metav1.NewTime(t0.Add(-time.Second))},
 		Spec: proxmoxv1alpha1.VirtualMachineTemplateSpec{Name: "other", NodeName: "pve1",
 			ConnectionRef: &corev1.LocalObjectReference{Name: "pve"}},
 	}
@@ -62,8 +63,8 @@ func TestOwnerIsOldestClaim(t *testing.T) {
 }
 
 func TestOwnerTieBreak(t *testing.T) {
-	a := vm("team-a", "web", "web", t0)
-	b := vm("team-b", "web", "web", t0)
+	a := vm("team-a", "web", t0)
+	b := vm("team-b", "web", t0)
 	r := reader(t, a, b)
 	for _, c := range []Claim{ForVM(a), ForVM(b)} {
 		owner, err := Owner(context.Background(), r, c)

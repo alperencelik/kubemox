@@ -13,12 +13,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+const (
+	testNode           = "pve1"
+	caseOtherNamespace = "same name in another namespace"
+	caseItself         = "the existing object itself"
+)
+
 func testVM(namespace, name, specName, conn string) *proxmoxv1alpha1.VirtualMachine {
 	return &proxmoxv1alpha1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name},
 		Spec: proxmoxv1alpha1.VirtualMachineSpec{
 			Name:          specName,
-			NodeName:      "pve1",
+			NodeName:      testNode,
 			ConnectionRef: &corev1.LocalObjectReference{Name: conn},
 		},
 	}
@@ -29,7 +35,7 @@ func testTemplate(namespace, name, specName string) *proxmoxv1alpha1.VirtualMach
 		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name},
 		Spec: proxmoxv1alpha1.VirtualMachineTemplateSpec{
 			Name:          specName,
-			NodeName:      "pve1",
+			NodeName:      testNode,
 			ConnectionRef: &corev1.LocalObjectReference{Name: "pve"},
 		},
 	}
@@ -40,7 +46,7 @@ func testContainer(namespace, name, specName string) *proxmoxv1alpha1.Container 
 		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: name},
 		Spec: proxmoxv1alpha1.ContainerSpec{
 			Name:          specName,
-			NodeName:      "pve1",
+			NodeName:      testNode,
 			ConnectionRef: &corev1.LocalObjectReference{Name: "pve"},
 		},
 	}
@@ -71,14 +77,14 @@ func TestVirtualMachineNames(t *testing.T) {
 		vm      *proxmoxv1alpha1.VirtualMachine
 		wantErr bool
 	}{
-		{"same name in another namespace", testVM("team-b", "web", "web", "pve"), true},
+		{caseOtherNamespace, testVM("team-b", "web", "web", "pve"), true},
 		{"case-insensitive match", testVM("team-b", "other", "WEB", "pve"), true},
 		{"name of a VirtualMachineTemplate", testVM("team-b", "x", "Ubuntu-Tmpl", "pve"), true},
 		{"name of a Container", testVM("team-b", "db", "db", "pve"), false},
 		{"same name on another connection", testVM("team-b", "web", "web", "pve-2"), false},
 		{"same name on another node", onNode2, false},
 		{"distinct name", testVM("team-b", "api", "api", "pve"), false},
-		{"the existing object itself", existing, false},
+		{caseItself, existing, false},
 	}
 	for _, tc := range cases {
 		_, err := v.ValidateCreate(ctx, tc.vm)
@@ -114,10 +120,10 @@ func TestVirtualMachineTemplateNames(t *testing.T) {
 		tmpl    *proxmoxv1alpha1.VirtualMachineTemplate
 		wantErr bool
 	}{
-		{"same name in another namespace", testTemplate("team-b", "ubuntu", "ubuntu"), true},
+		{caseOtherNamespace, testTemplate("team-b", "ubuntu", "ubuntu"), true},
 		{"name of a VirtualMachine", testTemplate("team-b", "x", "WEB"), true},
 		{"distinct name", testTemplate("team-b", "debian", "debian"), false},
-		{"the existing object itself", existing, false},
+		{caseItself, existing, false},
 	}
 	for _, tc := range cases {
 		_, err := v.ValidateCreate(ctx, tc.tmpl)
@@ -138,11 +144,11 @@ func TestContainerNames(t *testing.T) {
 		ct      *proxmoxv1alpha1.Container
 		wantErr bool
 	}{
-		{"same name in another namespace", testContainer("team-b", "db", "db"), true},
+		{caseOtherNamespace, testContainer("team-b", "db", "db"), true},
 		// The container controller matches names exactly.
 		{"different case", testContainer("team-b", "db", "DB"), false},
 		{"name of a VirtualMachine", testContainer("team-b", "web", "web"), false},
-		{"the existing object itself", existing, false},
+		{caseItself, existing, false},
 	}
 	for _, tc := range cases {
 		_, err := v.ValidateCreate(ctx, tc.ct)

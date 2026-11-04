@@ -18,6 +18,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+const tenantB = "team-b"
+
 // fakeProxmox serves two guests: "web" (vmid 100) on pve1, which belongs to
 // another tenant, and "b-web" (vmid 200) on pve2. It records every path asked.
 func fakeProxmox(t *testing.T) (*httptest.Server, func() []string) {
@@ -87,7 +89,7 @@ func TestVirtualMachineSnapshotTarget(t *testing.T) {
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(append(objs, connection)...).
 			WithStatusSubresource(&proxmoxv1alpha1.VirtualMachineSnapshot{}).Build()
 		r := &VirtualMachineSnapshotReconciler{Client: c, Scheme: scheme}
-		key := client.ObjectKey{Namespace: "team-b", Name: "snap"}
+		key := client.ObjectKey{Namespace: tenantB, Name: "snap"}
 		res, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: key})
 		if err != nil {
 			t.Fatal(err)
@@ -101,8 +103,8 @@ func TestVirtualMachineSnapshotTarget(t *testing.T) {
 
 	// The VM object is called "web" but manages "b-web" on pve2. The snapshot
 	// must go to vmid 200, never to the other tenant's "web" (vmid 100).
-	vm := snapshotTestVM("team-b", "web", "b-web", "pve2", conn, now)
-	_, snap := reconcileSnapshot(vm, snapshotTestSnapshot("team-b", "web", conn))
+	vm := snapshotTestVM(tenantB, "web", "b-web", "pve2", conn, now)
+	_, snap := reconcileSnapshot(vm, snapshotTestSnapshot(tenantB, "web", conn))
 	if snap.Status.Status != snapshotCreatedStatus {
 		t.Errorf("status = %q, want %q (error %q)", snap.Status.Status, snapshotCreatedStatus, snap.Status.ErrorMessage)
 	}
@@ -119,7 +121,7 @@ func TestVirtualMachineSnapshotTarget(t *testing.T) {
 
 	// A connectionRef other than the VM's is refused before Proxmox is asked.
 	before := len(paths())
-	_, snap = reconcileSnapshot(vm, snapshotTestSnapshot("team-b", "web", "another-conn"))
+	_, snap = reconcileSnapshot(vm, snapshotTestSnapshot(tenantB, "web", "another-conn"))
 	if snap.Status.ErrorMessage == "" || snap.Status.Status == snapshotCreatedStatus {
 		t.Errorf("mismatched connection: status %q, error %q", snap.Status.Status, snap.Status.ErrorMessage)
 	}
@@ -129,7 +131,7 @@ func TestVirtualMachineSnapshotTarget(t *testing.T) {
 
 	// A VM that lost its spec.name to an older one waits and isn't snapshotted.
 	older := snapshotTestVM("team-a", "first", "b-web", "pve2", conn, now.Add(-time.Minute))
-	res, snap := reconcileSnapshot(vm, older, snapshotTestSnapshot("team-b", "web", conn))
+	res, snap := reconcileSnapshot(vm, older, snapshotTestSnapshot(tenantB, "web", conn))
 	if res.RequeueAfter != nameConflictRequeue || snap.Status.Status == snapshotCreatedStatus {
 		t.Errorf("name owned by another VM: requeue %v, status %q", res.RequeueAfter, snap.Status.Status)
 	}
@@ -149,12 +151,12 @@ func TestSnapshotPolicyStaysInItsNamespace(t *testing.T) {
 	}
 	now := time.Now()
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
-		labelled(snapshotTestVM("team-b", "mine", "mine", "pve1", "pve", now)),
-		labelled(snapshotTestVM("team-b", "elsewhere", "elsewhere", "pve1", "other-pve", now)),
+		labelled(snapshotTestVM(tenantB, "mine", "mine", "pve1", "pve", now)),
+		labelled(snapshotTestVM(tenantB, "elsewhere", "elsewhere", "pve1", "other-pve", now)),
 		labelled(snapshotTestVM("team-a", "theirs", "theirs", "pve1", "pve", now)),
 	).Build()
 	policy := &proxmoxv1alpha1.VirtualMachineSnapshotPolicy{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "team-b", Name: "nightly"},
+		ObjectMeta: metav1.ObjectMeta{Namespace: tenantB, Name: "nightly"},
 		Spec: proxmoxv1alpha1.VirtualMachineSnapshotPolicySpec{
 			LabelSelector: metav1.LabelSelector{MatchLabels: map[string]string{"backup": "yes"}},
 			ConnectionRef: &corev1.LocalObjectReference{Name: "pve"},
@@ -163,7 +165,7 @@ func TestSnapshotPolicyStaysInItsNamespace(t *testing.T) {
 	r := &VirtualMachineSnapshotPolicyReconciler{Client: c, Scheme: scheme}
 
 	got := GetMatchingVirtualMachines(policy, r, context.Background())
-	if len(got) != 1 || got[0].Namespace != "team-b" || got[0].Name != "mine" {
+	if len(got) != 1 || got[0].Namespace != tenantB || got[0].Name != "mine" {
 		names := make([]string, 0, len(got))
 		for _, vm := range got {
 			names = append(names, vm.Namespace+"/"+vm.Name)
