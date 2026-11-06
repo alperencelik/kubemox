@@ -172,3 +172,20 @@ spec:
       userData: "ubuntu-cloud-config-workers.yaml" # That should be inside snippets folder in Proxmox node
 EOF
 ```
+
+## VLANs and addresses from Cluster API IPAM
+
+```yaml
+spec:
+  vmSpec:
+    network:
+      - model: virtio
+        bridge: vmbr70
+        vlan: 101
+        ipAddressClaimRef:
+          name: web-0
+```
+
+`vlan` tags the port on the bridge. `ipAddressClaimRef` names an `IPAddressClaim` (`ipam.cluster.x-k8s.io/v1beta1`) in the same namespace; once an IPAM provider binds it to an `IPAddress`, the address, prefix and gateway are written into the matching `ipconfigN` of the machine, which a cloud-init drive turns into the guest's network configuration. Until every claimed port has its address the machine is not started, and the `NetworkReady` condition says which claim it waits for. `status.networks` lists each port with its MAC and the address it got.
+
+Changing a port's bridge or VLAN keeps its MAC: the guest sees the same network card on another network, not a new card. The operator only reads the IPAM objects; it does not create claims, and on a cluster without the IPAM CRDs a ref is reported as `IPAMUnavailable`.

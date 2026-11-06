@@ -69,6 +69,10 @@ type VirtualMachineReconciler struct {
 	Scheme   *runtime.Scheme
 	Watcher  *watcher.ExternalWatcher
 	Recorder events.EventRecorder
+	// APIReader reads the optional IPAM objects straight from the API server,
+	// so that a cluster without those CRDs starts no informer for them. Nil
+	// falls back to the cached client.
+	APIReader client.Reader
 }
 
 // +kubebuilder:rbac:groups=proxmox.alperen.cloud,resources=virtualmachines,verbs=get;list;watch;create;update;patch;delete
@@ -296,6 +300,15 @@ func (r *VirtualMachineReconciler) handleVirtualMachineOperations(ctx context.Co
 			logger.Error(err, "Error handling additional configuration")
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
+		// Addresses from IPAddressClaims go into ipconfigN before the machine
+		// is (re)started; a claim without an address keeps it stopped.
+		if netRes, netErr := r.reconcileNetworkIPs(ctx, pc, vm); netErr != nil || netRes != nil {
+			if netErr != nil {
+				logger.Error(netErr, "Error reconciling network addresses")
+				return ctrl.Result{}, client.IgnoreNotFound(netErr)
+			}
+			return *netRes, nil
+		}
 		// Check if auto start is enabled
 		var res ctrl.Result
 		res, err = r.handleAutoStart(ctx, pc, vm)
@@ -366,6 +379,12 @@ func (r *VirtualMachineReconciler) handleCreateFromTemplate(ctx context.Context,
 		logger.Error(err, "Error handling additional configuration")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	if netRes, netErr := r.reconcileNetworkIPs(ctx, pc, vm); netErr != nil || netRes != nil {
+		if netErr != nil {
+			return dontRequeue, netErr
+		}
+		return *netRes, nil
+	}
 	return r.startCreatedVM(ctx, pc, vm, nodeName)
 }
 
@@ -392,6 +411,12 @@ func (r *VirtualMachineReconciler) handleCreateFromScratch(ctx context.Context, 
 	err = r.handleCloudInitOperations(ctx, pc, vm)
 	if err != nil {
 		return dontRequeue, err
+	}
+	if netRes, netErr := r.reconcileNetworkIPs(ctx, pc, vm); netErr != nil || netRes != nil {
+		if netErr != nil {
+			return dontRequeue, netErr
+		}
+		return *netRes, nil
 	}
 
 	return r.startCreatedVM(ctx, pc, vm, nodeName)
