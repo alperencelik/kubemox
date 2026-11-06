@@ -71,6 +71,15 @@ tracing:
   # -- OTLP HTTP endpoint for trace export
   otlpEndpoint: "otel-collector.tracing.svc.cluster.local:4318"
 
+webhook:
+  # -- Enable the validating webhook that keeps VirtualMachine spec.name unique
+  # per ProxmoxConnection across namespaces.
+  enabled: true
+  # -- Who issues the webhook's serving certificate. "auto" uses cert-manager
+  # when its API is installed and lets the operator issue a self-signed one
+  # otherwise; "true" or "false" forces either.
+  certManager: auto
+
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""

@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/alperencelik/kube-external-watcher/watcher"
+	"github.com/alperencelik/kubemox/pkg/guestname"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
@@ -83,6 +84,10 @@ func (r *ContainerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	err := r.Get(ctx, req.NamespacedName, container)
 	if err != nil {
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
+	}
+	if owned, res, claimErr := claimGuest(ctx, r.Client, container, guestname.ForContainer(container),
+		containerFinalizerName); !owned || claimErr != nil {
+		return res, claimErr
 	}
 	// Get the Proxmox client reference
 	pc, err := proxmox.NewProxmoxClientFromRef(ctx, r.Client, container.Spec.ConnectionRef)

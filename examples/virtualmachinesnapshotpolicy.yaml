@@ -13,8 +13,6 @@ spec:
     # Name of the ProxmoxConnection resource
     name: proxmoxconnection-sample
   snapshotSchedule: "*/30 * * * *" # Every 30 minutes
-  namespaceSelector:
-    namespaces: ["default", "my-namespace"]
   labelSelector:
     matchLabels:
       app.kubernetes.io/name: virtualmachine-sample-clone

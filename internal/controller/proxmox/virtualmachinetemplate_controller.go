@@ -38,6 +38,7 @@ import (
 
 	"github.com/alperencelik/kube-external-watcher/watcher"
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
+	"github.com/alperencelik/kubemox/pkg/guestname"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	"github.com/alperencelik/kubemox/pkg/proxmox"
 )
@@ -89,6 +90,10 @@ func (r *VirtualMachineTemplateReconciler) Reconcile(ctx context.Context, req ct
 	vmTemplate := &proxmoxv1alpha1.VirtualMachineTemplate{}
 	if err := r.Get(ctx, req.NamespacedName, vmTemplate); err != nil {
 		return ctrl.Result{}, r.handleResourceNotFound(ctx, err)
+	}
+	if owned, res, claimErr := claimGuest(ctx, r.Client, vmTemplate, guestname.ForTemplate(vmTemplate),
+		virtualMachineTemplateFinalizerName); !owned || claimErr != nil {
+		return res, claimErr
 	}
 
 	reconcileMode := kubernetes.GetReconcileMode(vmTemplate)
@@ -401,7 +406,7 @@ func (r *VirtualMachineTemplateReconciler) handleCloudInitOperations(ctx context
 		return err
 	}
 	// 3. Set cloud-init configuration
-	err = pc.SetCloudInitConfig(templateVMName, nodeName, vmTemplate.Spec.CloudInitConfig)
+	err = pc.SetCloudInitConfig(templateVMName, nodeName, vmTemplate.Namespace, vmTemplate.Spec.CloudInitConfig)
 	if err != nil {
 		logger.Error(err, "Failed to set cloud-init configuration")
 		return err

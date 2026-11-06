@@ -10,8 +10,6 @@ metadata:
   name: virtualmachinesnapshotpolicy-sample
 spec:
   snapshotSchedule: "*/30 * * * *" # Every 30 minutes
-  namespaceSelector:
-    namespaces: ["default", "my-namespace"]
   labelSelector:
     matchLabels:
       owner: virtualmachineset2-test

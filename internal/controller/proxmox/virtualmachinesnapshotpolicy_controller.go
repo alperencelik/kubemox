@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	proxmoxv1alpha1 "github.com/alperencelik/kubemox/api/proxmox/v1alpha1"
+	"github.com/alperencelik/kubemox/pkg/guestname"
 	"github.com/alperencelik/kubemox/pkg/kubernetes"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -109,21 +110,28 @@ func (r *VirtualMachineSnapshotPolicyReconciler) SetupWithManager(mgr ctrl.Manag
 		Complete(r)
 }
 
+// GetMatchingVirtualMachines returns the VirtualMachines in the policy's own
+// namespace that match its labels and use its ProxmoxConnection. A policy never
+// reaches into other namespaces: the operator would be acting there on behalf
+// of someone who may have no rights in them.
 func GetMatchingVirtualMachines(vmSnapshotPolicy *proxmoxv1alpha1.VirtualMachineSnapshotPolicy,
 	r *VirtualMachineSnapshotPolicyReconciler, ctx context.Context) []proxmoxv1alpha1.VirtualMachine {
-	matchingNamepaces := vmSnapshotPolicy.Spec.NamespaceSelector
-	matchingLabels := vmSnapshotPolicy.Spec.LabelSelector.MatchLabels
-	// Find matching VirtualMachines on matching namespaces
-	matchingVirtualMachines := make([]proxmoxv1alpha1.VirtualMachine, 0, len(matchingNamepaces.Namespaces))
-	for _, namespace := range matchingNamepaces.Namespaces {
-		// Append to vmList
-		virtualMachineList := &proxmoxv1alpha1.VirtualMachineList{}
-		if err := r.List(ctx, virtualMachineList, client.InNamespace(namespace), client.MatchingLabels(matchingLabels)); err != nil {
-			log.Log.Error(err, "unable to list VirtualMachines")
-		}
-		matchingVirtualMachines = append(matchingVirtualMachines, virtualMachineList.Items...)
+	virtualMachineList := &proxmoxv1alpha1.VirtualMachineList{}
+	if err := r.List(ctx, virtualMachineList, client.InNamespace(vmSnapshotPolicy.Namespace),
+		client.MatchingLabels(vmSnapshotPolicy.Spec.LabelSelector.MatchLabels)); err != nil {
+		log.Log.Error(err, "unable to list VirtualMachines")
 	}
-	return matchingVirtualMachines
+	policyConn := ""
+	if vmSnapshotPolicy.Spec.ConnectionRef != nil {
+		policyConn = vmSnapshotPolicy.Spec.ConnectionRef.Name
+	}
+	var matching []proxmoxv1alpha1.VirtualMachine
+	for i := range virtualMachineList.Items {
+		if guestname.ForVM(&virtualMachineList.Items[i]).Conn() == policyConn {
+			matching = append(matching, virtualMachineList.Items[i])
+		}
+	}
+	return matching
 }
 
 func VMSnapshotCR(vmName, snapshotName, namespace, connectionName string) *proxmoxv1alpha1.VirtualMachineSnapshot {
@@ -160,7 +168,7 @@ func (r *VirtualMachineSnapshotPolicyReconciler) StartSnapshotCronJobs(ctx conte
 		matchingVMs := GetMatchingVirtualMachines(vmSnapshotPolicy, r, ctx)
 		for i := range matchingVMs {
 			vm := &matchingVMs[i]
-			vmName := vm.Spec.Name
+			vmName := vm.Name
 			snapshotName := fmt.Sprintf("snapshot_%s", time.Now().Format("2006_01_02T15_04_05"))
 			namespace := vm.Namespace
 			// Create VirtualMachineSnapshot object
