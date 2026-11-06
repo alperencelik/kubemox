@@ -1,0 +1,1668 @@
+<!DOCTYPE html><html lang="en" class="no-js"><head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+        <link rel="prev" href="../v0.3.0/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../images/kubemox.jpg">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>v0.8.0 - Kubemox - Proxmox Operator for Kubernetes</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Work+Sans:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Work Sans";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  <link href="../../assets/stylesheets/glightbox.min.css" rel="stylesheet"><script src="../../assets/javascripts/glightbox.min.js"></script><style id="glightbox-style">
+            html.glightbox-open { overflow: initial; height: 100%; }
+            .gslide-title { margin-top: 0px; user-select: text; }
+            .gslide-desc { color: #666; user-select: text; }
+            .gslide-image img { background: white; }
+            .gscrollbar-fixer { padding-right: 15px; }
+            .gdesc-inner { font-size: 0.75rem; }
+            body[data-md-color-scheme="slate"] .gdesc-inner { background: var(--md-default-bg-color); }
+            body[data-md-color-scheme="slate"] .gslide-title { color: var(--md-default-fg-color); }
+            body[data-md-color-scheme="slate"] .gslide-desc { color: var(--md-default-fg-color); }
+        </style></head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#upgrade-to-v080" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden="">
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Kubemox - Proxmox Operator for Kubernetes" class="md-header__button md-logo" aria-label="Kubemox - Proxmox Operator for Kubernetes" data-md-component="logo">
+      
+  <img src="../../images/kubemox.jpg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Kubemox - Proxmox Operator for Kubernetes
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              v0.8.0
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo" aria-label="Switch to dark mode" type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden="">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo" aria-label="Switch to light mode" type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden="">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/alperencelik/kubemox" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Kubemox - Proxmox Operator for Kubernetes" class="md-nav__button md-logo" aria-label="Kubemox - Proxmox Operator for Kubernetes" data-md-component="logo">
+      
+  <img src="../../images/kubemox.jpg" alt="logo">
+
+    </a>
+    Kubemox - Proxmox Operator for Kubernetes
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/alperencelik/kubemox" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix="">
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting_started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3">
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom Resources
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Custom Resources
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crds/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2">
+        
+          
+          <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Virtual Machines (QEMU)
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Virtual Machines (QEMU)
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crds/virtualmachine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VirtualMachine
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crds/virtualmachinetemplate/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VirtualMachineTemplate
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crds/virtualmachineset/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VirtualMachineSet
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crds/virtualmachinesnapshot/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VirtualMachineSnapshot
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crds/virtualmachinesnapshotpolicy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    VirtualMachineSnapshotPolicy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3">
+        
+          
+          <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Containers (LXC)
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Containers (LXC)
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crds/container/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Container
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4">
+        
+          
+          <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Storage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crds/storagedownloadurl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5">
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Certificates
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Certificates
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crds/customcertificate/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CustomCertificate
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reconciliation-modes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reconciliation Mode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked="">
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Upgrading
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix="">
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../v0.3.0/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    v0.3.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    v0.8.0
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    v0.8.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#what-changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What changed
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What changed">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#five-kinds-are-now-namespaced" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Five kinds are now namespaced
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-webhook-rejects-duplicate-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A webhook rejects duplicate names
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-oldest-object-owns-a-duplicate-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The oldest object owns a duplicate name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snapshot-policies-lost-namespaceselector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snapshot policies lost namespaceSelector
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snapshots-follow-the-virtualmachine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snapshots follow the VirtualMachine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#passwordfrom-reads-from-the-template-namespace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        passwordFrom reads from the template namespace
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrade-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrade steps
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrade steps">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-stop-the-operator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Stop the operator
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-back-up-the-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Back up the objects
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-delete-the-old-objects-and-crds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Delete the old objects and CRDs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-upgrade-the-chart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Upgrade the chart
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-restore-the-objects-into-one-namespace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Restore the objects into one namespace
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Verify
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/alperencelik/kubemox/releases" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releases ⧉
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+      
+        <li class="md-nav__item">
+  <a href="#what-changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What changed
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What changed">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#five-kinds-are-now-namespaced" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Five kinds are now namespaced
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-webhook-rejects-duplicate-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A webhook rejects duplicate names
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-oldest-object-owns-a-duplicate-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The oldest object owns a duplicate name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snapshot-policies-lost-namespaceselector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snapshot policies lost namespaceSelector
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snapshots-follow-the-virtualmachine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snapshots follow the VirtualMachine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#passwordfrom-reads-from-the-template-namespace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        passwordFrom reads from the template namespace
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upgrade-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrade steps
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Upgrade steps">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-stop-the-operator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Stop the operator
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-back-up-the-objects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Back up the objects
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-delete-the-old-objects-and-crds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Delete the old objects and CRDs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-upgrade-the-chart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Upgrade the chart
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-restore-the-objects-into-one-namespace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Restore the objects into one namespace
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Verify
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="upgrade-to-v080">Upgrade to v0.8.0</h1>
+<p>Use this guide to upgrade Kubemox from a version below 0.8.0 to v0.8.X.</p>
+<p>The commands assume two things:</p>
+<ul>
+<li>The Helm release is named <code>kubemox</code>.</li>
+<li>Your kubectl context points to the namespace of the release.</li>
+</ul>
+<h2 id="what-changed">What changed</h2>
+<h3 id="five-kinds-are-now-namespaced">Five kinds are now namespaced</h3>
+<p><code>VirtualMachine</code>, <code>VirtualMachineSet</code>, <code>VirtualMachineTemplate</code>, <code>Container</code> and <code>StorageDownloadURL</code> are now namespaced.</p>
+<p><code>ProxmoxConnection</code> and <code>CustomCertificate</code> stay cluster scoped. The steps below do not touch them.</p>
+<p>Kubernetes cannot change the scope of a CRD in place. You must delete the five CRDs and re-create every object of those kinds.</p>
+<h3 id="a-webhook-rejects-duplicate-names">A webhook rejects duplicate names</h3>
+<p>A validating webhook checks <code>spec.name</code> of each <code>VirtualMachine</code>, <code>VirtualMachineTemplate</code> and <code>Container</code>. It rejects the object when:</p>
+<ul>
+<li>Another object in any namespace already uses the name on the same node and <code>ProxmoxConnection</code>.</li>
+<li>More than one guest on that Proxmox node has the name.</li>
+</ul>
+<p>Name rules:</p>
+<ul>
+<li><code>VirtualMachine</code> and <code>VirtualMachineTemplate</code> share one set of names. The comparison ignores case.</li>
+<li><code>Container</code> names are compared exactly, and only against other <code>Container</code>s.</li>
+<li>The same name on different nodes is allowed.</li>
+</ul>
+<p>Certificate of the webhook:</p>
+<ul>
+<li>With <a href="https://cert-manager.io/docs/installation/">cert-manager</a> installed, cert-manager issues the certificate.</li>
+<li>Without cert-manager, the operator issues a self-signed certificate. It stores the certificate in the <code>&lt;release&gt;-webhook-cert</code> Secret. It injects the CA into the webhook configuration.</li>
+<li>Force one of the two with <code>--set webhook.certManager=true|false</code>.</li>
+<li>Disable the webhook with <code>--set webhook.enabled=false</code>. The controllers then catch duplicate names. See the next section.</li>
+</ul>
+<h3 id="the-oldest-object-owns-a-duplicate-name">The oldest object owns a duplicate name</h3>
+<p>Two objects can still claim one name. This happens when they are created at the same moment, or when the webhook is disabled. Then:</p>
+<ul>
+<li>The oldest object owns the guest.</li>
+<li>The other objects get the condition <code>NameConflict=True</code>. The condition names the owner.</li>
+<li>The other objects are not reconciled against Proxmox.</li>
+<li>Deleting one of the other objects does not delete the guest.</li>
+<li>When the owner is gone, the next object takes the name within about 30 seconds.</li>
+</ul>
+<h3 id="snapshot-policies-lost-namespaceselector">Snapshot policies lost <code>namespaceSelector</code></h3>
+<p>A <code>VirtualMachineSnapshotPolicy</code> only snapshots <code>VirtualMachine</code>s in its own namespace. It selects them with its <code>labelSelector</code> and its <code>connectionRef</code>.</p>
+<ul>
+<li>Create one policy per namespace.</li>
+<li>Remove <code>namespaceSelector</code> from your manifests. Some clients reject the field. Other clients drop it silently.</li>
+</ul>
+<h3 id="snapshots-follow-the-virtualmachine">Snapshots follow the VirtualMachine</h3>
+<p>A <code>VirtualMachineSnapshot</code> looks up its <code>VirtualMachine</code> in its own namespace. It snapshots the guest named <code>spec.name</code> on <code>spec.nodeName</code> of that VirtualMachine.</p>
+<ul>
+<li>Keep each snapshot in the same namespace as its VirtualMachine.</li>
+<li>The <code>connectionRef</code> of the snapshot must name the connection of the VirtualMachine. If not, the snapshot reports an error and does nothing.</li>
+</ul>
+<h3 id="passwordfrom-reads-from-the-template-namespace"><code>passwordFrom</code> reads from the template namespace</h3>
+<p><code>cloudInitConfig.passwordFrom</code> of a <code>VirtualMachineTemplate</code> now reads the Secret from the namespace of the template. Before, it read from the namespace of the operator. Copy the Secret into the namespace you restore the template into.</p>
+<h2 id="upgrade-steps">Upgrade steps</h2>
+<div class="admonition danger">
+<p class="admonition-title">Danger</p>
+<p>Deleting a <code>VirtualMachine</code>, <code>Container</code> or <code>VirtualMachineTemplate</code> while the operator runs deletes the guest on Proxmox. Do the steps in order. Do not skip step 1.</p>
+</div>
+<h3 id="1-stop-the-operator">1. Stop the operator</h3>
+<pre><code class="language-shell">kubectl scale deployment kubemox --replicas=0
+</code></pre>
+<h3 id="2-back-up-the-objects">2. Back up the objects</h3>
+<p>This also backs up the <code>VirtualMachineSnapshot</code> objects. Step 3 deletes them.</p>
+<pre><code class="language-shell">for kind in virtualmachines virtualmachinesets virtualmachinetemplates containers storagedownloadurls virtualmachinesnapshots; do
+  kubectl get "$kind.proxmox.alperen.cloud" -A -o yaml &gt; "backup-$kind.yaml"
+done
+</code></pre>
+<h3 id="3-delete-the-old-objects-and-crds">3. Delete the old objects and CRDs</h3>
+<p>First remove the finalizers. Then the CRD deletion does not touch Proxmox.</p>
+<pre><code class="language-shell">for kind in virtualmachines virtualmachinesets virtualmachinetemplates containers storagedownloadurls; do
+  kubectl get "$kind.proxmox.alperen.cloud" -o name | \
+    xargs -r -I{} kubectl patch {} --type=merge -p '{"metadata":{"finalizers":null}}'
+  kubectl delete crd "$kind.proxmox.alperen.cloud"
+done
+</code></pre>
+<p>Then delete the <code>VirtualMachineSnapshot</code> objects. They point to the old VirtualMachines. Kubernetes deletes them on its own after step 4, because their owners are gone. Delete them now, so you control when. This does not delete snapshots on Proxmox.</p>
+<pre><code class="language-shell">kubectl delete virtualmachinesnapshots.proxmox.alperen.cloud -A --all
+</code></pre>
+<h3 id="4-upgrade-the-chart">4. Upgrade the chart</h3>
+<p>The upgrade installs the new CRDs. It also sets the operator back to 1 replica. The operator starts.</p>
+<pre><code class="language-shell">helm repo update
+helm upgrade kubemox alperencelik/kubemox
+</code></pre>
+<p>Wait until the operator is ready. The webhook runs inside the operator. Step 5 fails until the webhook is ready.</p>
+<pre><code class="language-shell">kubectl rollout status deployment/kubemox
+</code></pre>
+<h3 id="5-restore-the-objects-into-one-namespace">5. Restore the objects into one namespace</h3>
+<p>Pick the namespace. Then restore the five kinds. The command removes the server-set fields. It skips the objects that another Kubemox object owns:</p>
+<ul>
+<li>A <code>VirtualMachineSet</code> re-creates its <code>VirtualMachine</code>s.</li>
+<li>A <code>VirtualMachineTemplate</code> re-creates its <code>StorageDownloadURL</code>.</li>
+<li>Both adopt the existing guests on Proxmox by name.</li>
+</ul>
+<pre><code class="language-shell">NAMESPACE=default
+STRIP='del(.metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp,
+            .metadata.generation, .metadata.managedFields, .metadata.finalizers, .status)'
+for kind in virtualmachines virtualmachinesets virtualmachinetemplates containers storagedownloadurls; do
+  yq ".items[] | select(.metadata.ownerReferences == null) | $STRIP | split_doc" "backup-$kind.yaml" \
+    | kubectl apply -n "$NAMESPACE" -f -
+done
+</code></pre>
+<p>Then restore the snapshots. This command also removes the old owner and the old namespace. The operator sets the new owner. A snapshot that already exists on Proxmox is not taken again.</p>
+<pre><code class="language-shell">yq ".items[] | del(.metadata.ownerReferences, .metadata.namespace) | $STRIP | split_doc" backup-virtualmachinesnapshots.yaml \
+  | kubectl apply -n "$NAMESPACE" -f -
+</code></pre>
+<p>If <code>kubectl apply</code> fails with <code>failed calling webhook</code>, wait a few seconds. Then run the command again. The webhook certificate was not ready yet.</p>
+<h3 id="6-verify">6. Verify</h3>
+<pre><code class="language-shell">kubectl get vm,vmset,vmt,lxc,sdu,virtualmachinesnapshots -n "$NAMESPACE"
+</code></pre>
+<p>Check that every object reaches its desired state. Check that no object has the condition <code>NameConflict=True</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+    
+  
+<script id="init-glightbox">const lightbox = GLightbox({"touchNavigation": true, "loop": false, "zoomable": true, "draggable": true, "openEffect": "zoom", "closeEffect": "zoom", "slideEffect": "slide"});
+document$.subscribe(()=>{ lightbox.reload(); });
+</script></body></html>
