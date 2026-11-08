@@ -172,3 +172,23 @@ spec:
       userData: "ubuntu-cloud-config-workers.yaml" # That should be inside snippets folder in Proxmox node
 EOF
 ```
+
+## Attaching a VirtualMachineVolume
+
+A drive in `disk` is either a disk the VM owns, given by `storage` and `size`, or a [`VirtualMachineVolume`](virtualmachinevolume.md) from the same namespace attached at the device by `volumeRef`:
+
+```yaml
+spec:
+  vmSpec:
+    disk:
+      - device: scsi0
+        storage: local-zfs
+        size: 20
+      - device: scsi1
+        volumeRef:
+          name: web-data
+```
+
+The volume has to be `Ready` and on the VM's node. It is reassigned from its holder onto the device before the VM is first started, and given back to the holder when the `volumeRef` is removed or the `VirtualMachine` is deleted — before the VM is destroyed, because Proxmox destroys every drive still attached. While attached, the volume shows `Phase: Attached` and names the VM in `status.attachedTo`.
+
+Removing a `volumeRef` from a running VM does not stop it: the volume is given back once the VM is stopped, and the `VirtualMachine` carries a `DetachWaitsForStop` event until then. A volume attached to one VM cannot be attached to another; the second VM waits with a `VolumeHeldByOtherVM` event.

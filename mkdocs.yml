@@ -13,6 +13,7 @@ nav:
     - VirtualMachineSet: crds/virtualmachineset.md
     - VirtualMachineSnapshot: crds/virtualmachinesnapshot.md
     - VirtualMachineSnapshotPolicy: crds/virtualmachinesnapshotpolicy.md
+    - VirtualMachineVolume: crds/virtualmachinevolume.md
   - Containers (LXC): 
     - Container: crds/container.md
   - Storage: 

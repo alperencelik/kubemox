@@ -170,22 +170,49 @@ spec:
                   disk:
                     description: Disks is the list of disks
                     items:
+                      description: |-
+                        VirtualMachineDisk is one drive of a VM: either a new disk the VM owns,
+                        given by storage and size, or a VirtualMachineVolume from the same
+                        namespace attached at the device by volumeRef.
                       properties:
                         device:
                           description: Device is the name of the device
                           type: string
                         size:
-                          description: Size is the size of the disk in GB
+                          description: Size is the size of the disk in GB. Required
+                            unless volumeRef is set.
                           minimum: 1
                           type: integer
                         storage:
-                          description: Storage is the name of the storage
+                          description: Storage is the name of the storage. Required
+                            unless volumeRef is set.
                           type: string
+                        volumeRef:
+                          description: |-
+                            VolumeRef attaches an existing VirtualMachineVolume from this namespace
+                            at Device instead of allocating a new disk. The volume has to be Ready
+                            and on the VM's node. It is given back to its holder when the ref is
+                            removed or the VirtualMachine is deleted, so its data survives the VM.
+                          properties:
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                          type: object
+                          x-kubernetes-map-type: atomic
                       required:
                       - device
-                      - size
-                      - storage
                       type: object
+                      x-kubernetes-validations:
+                      - message: a disk is either a volumeRef, or a storage and a
+                          size
+                        rule: 'has(self.volumeRef) ? (!has(self.storage) && !has(self.size))
+                          : (has(self.storage) && has(self.size))'
                     type: array
                   memory:
                     description: Memory is the amount of memory in MB

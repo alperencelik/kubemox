@@ -166,14 +166,29 @@ type PciDevice struct {
 	PCIE bool `json:"pcie,omitempty"`
 }
 
+// VirtualMachineDisk is one drive of a VM: either a new disk the VM owns,
+// given by storage and size, or a VirtualMachineVolume from the same
+// namespace attached at the device by volumeRef.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.volumeRef) ? (!has(self.storage) && !has(self.size)) : (has(self.storage) && has(self.size))",message="a disk is either a volumeRef, or a storage and a size"
+//
+//nolint:lll // CEL validation rule is too long
 type VirtualMachineDisk struct {
-	// Storage is the name of the storage
-	Storage string `json:"storage"`
-	// Size is the size of the disk in GB
+	// Storage is the name of the storage. Required unless volumeRef is set.
+	// +optional
+	Storage string `json:"storage,omitempty"`
+	// Size is the size of the disk in GB. Required unless volumeRef is set.
 	// +kubebuilder:validation:Minimum=1
-	Size int `json:"size"`
+	// +optional
+	Size int `json:"size,omitempty"`
 	// Device is the name of the device
 	Device string `json:"device"`
+	// VolumeRef attaches an existing VirtualMachineVolume from this namespace
+	// at Device instead of allocating a new disk. The volume has to be Ready
+	// and on the VM's node. It is given back to its holder when the ref is
+	// removed or the VirtualMachine is deleted, so its data survives the VM.
+	// +optional
+	VolumeRef *corev1.LocalObjectReference `json:"volumeRef,omitempty"`
 }
 
 type VirtualMachineNetwork struct {
