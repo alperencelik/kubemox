@@ -13,7 +13,7 @@ spec:
     # Name of the ProxmoxConnection resource
     name: proxmoxconnection-sample
   deletionProtection: false
-  enableAutoStart: false
+  enableAutoStart: true
   # Number of VMs to be created
   replicas: 3
   nodeName: lowtower

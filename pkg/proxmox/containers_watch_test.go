@@ -55,7 +55,7 @@ func TestContainerWatcher_Drift(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			comparator := ContainerStateComparator()
+			comparator := RunningStateComparator()
 			drift, err := comparator.HasDrifted(desired, actual)
 			if err != nil {
 				t.Fatal(err)
@@ -267,7 +267,7 @@ func containerWatcherFixture(t *testing.T, f *fakeLXCHost, connName string, auto
 	ct := &proxmoxv1alpha1.Container{
 		ObjectMeta: metav1.ObjectMeta{Name: testCTName},
 		Spec: proxmoxv1alpha1.ContainerSpec{
-			Name: testCTName, NodeName: lxcTestNode, EnableAutoStart: autoStart, ConnectionRef: connRef,
+			Name: testCTName, NodeName: lxcTestNode, EnableAutoStart: &autoStart, ConnectionRef: connRef,
 			Template: proxmoxv1alpha1.ContainerTemplate{Cores: 2, Memory: 512},
 		},
 	}

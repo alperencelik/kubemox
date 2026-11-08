@@ -52,7 +52,7 @@ type ContainerSpec struct {
 	// If true, the resource will start automatically when it's powered off.
 	// If not set, it defaults to true.
 	// +kubebuilder:default:=true
-	EnableAutoStart bool `json:"enableAutoStart,omitempty"`
+	EnableAutoStart *bool `json:"enableAutoStart,omitempty"`
 	// CloneMode selects how the template container is cloned: Full copies it,
 	// Linked references the template's base snapshot and pins the template for
 	// as long as the clone exists.

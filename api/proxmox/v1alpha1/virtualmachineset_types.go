@@ -51,7 +51,7 @@ type VirtualMachineSetSpec struct {
 	// If true, the VM will start automatically when it's powered off.
 	// If not set, it defaults to true.
 	// +kubebuilder:default:=true
-	EnableAutoStart bool `json:"enableAutoStart,omitempty"`
+	EnableAutoStart *bool `json:"enableAutoStart,omitempty"`
 	// Replicas is the number of VMs
 	// +kubebuilder:validation:Minimum=0
 	Replicas int `json:"replicas"`
