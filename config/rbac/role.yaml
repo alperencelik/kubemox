@@ -34,6 +34,15 @@ rules:
   - list
   - watch
 - apiGroups:
+  - ipam.cluster.x-k8s.io
+  resources:
+  - ipaddressclaims
+  - ipaddresses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - proxmox.alperen.cloud
   resources:
   - containers

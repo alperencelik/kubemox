@@ -204,9 +204,33 @@ spec:
                         bridge:
                           description: Bridge is the name of the bridge
                           type: string
+                        ipAddressClaimRef:
+                          description: |-
+                            IPAddressClaimRef names an IPAddressClaim (ipam.cluster.x-k8s.io) in
+                            this namespace. Once the claim holds an IPAddress, its address, prefix
+                            and gateway are written into the matching ipconfigN of the machine for
+                            cloud-init to apply; until then the machine is not started.
+                          properties:
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                          type: object
+                          x-kubernetes-map-type: atomic
                         model:
                           description: Model is the model of the network card
                           type: string
+                        vlan:
+                          description: VLAN is the 802.1Q tag of the port on the bridge.
+                            Zero leaves the port untagged.
+                          maximum: 4094
+                          minimum: 1
+                          type: integer
                       required:
                       - bridge
                       - model
