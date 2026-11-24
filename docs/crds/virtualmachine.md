@@ -172,3 +172,13 @@ spec:
       userData: "ubuntu-cloud-config-workers.yaml" # That should be inside snippets folder in Proxmox node
 EOF
 ```
+
+## Pool and tags
+
+```yaml
+spec:
+  pool: tenant-a             # Proxmox resource pool, applied at creation
+  tags: [web, tenant-a]      # kept on the machine next to the operator's own tag
+```
+
+`pool` is applied when the machine is created (on the clone call for a machine cloned from a template) and a change afterwards is not applied. `tags` are added to the machine on every reconcile next to the operator's own tag; tags added in Proxmox by hand are left alone.

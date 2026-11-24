@@ -58,6 +58,14 @@ type VirtualMachineSpec struct {
 	// AdditionalConfig is the additional configuration of the VM
 	// +kubebuilder:validation:Optional
 	AdditionalConfig map[string]string `json:"additionalConfig,omitempty"`
+	// Pool is the Proxmox resource pool the machine is created in. It is
+	// applied at creation; a change afterwards is not applied.
+	// +optional
+	Pool string `json:"pool,omitempty"`
+	// Tags are Proxmox tags kept on the machine next to the operator's own
+	// tag. Tags present on the machine but not listed here are left alone.
+	// +optional
+	Tags []string `json:"tags,omitempty"`
 	// CloneMode selects how the template's disks are cloned. Full copies them,
 	// which costs the size of the template per VM. Linked keeps a reference to
 	// the template's base snapshot, which costs almost nothing at creation but
