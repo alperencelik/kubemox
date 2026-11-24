@@ -38,6 +38,7 @@ type fakeLXCHost struct {
 	mu    sync.Mutex
 	url   string // API base URL, for a ProxmoxConnection endpoint
 	cts   map[int]*fakeCT
+	vms   map[int]*fakeVM
 	calls []string // "METHOD path" in order
 	// taskExit is the exit status of every task; empty means OK.
 	taskExit string
@@ -105,6 +106,12 @@ func (f *fakeLXCHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			list = append(list, ct.summary(id))
 		}
 		writeCTData(w, list)
+	case path == "/qemu":
+		f.serveVMList(w)
+	case fakeVMPath.MatchString(path):
+		m := fakeVMPath.FindStringSubmatch(path)
+		id, _ := strconv.Atoi(m[1])
+		f.serveVM(w, r, id, m[2])
 	case strings.HasPrefix(path, "/tasks/"):
 		exit := f.taskExit
 		if exit == "" {

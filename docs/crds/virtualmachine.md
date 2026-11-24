@@ -172,3 +172,12 @@ spec:
       userData: "ubuntu-cloud-config-workers.yaml" # That should be inside snippets folder in Proxmox node
 EOF
 ```
+
+## Power
+
+```yaml
+spec:
+  enableAutoStart: true      # false: the operator never starts the machine
+```
+
+`enableAutoStart: true` keeps the machine running: one found stopped on the next watcher poll (60 s) is started again. `false` means the operator never starts it: a new machine is created stopped and an existing one stays in whatever power state it is in. To keep a machine off, set `false` and power it off.
