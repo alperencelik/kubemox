@@ -52,9 +52,11 @@ type VirtualMachineSpec struct {
 	DeletionProtection bool `json:"deletionProtection,omitempty"`
 	// EnableAutoStart is a flag that indicates whether the VM should automatically start when it's powered off.
 	// If true, the VM will start automatically when it's powered off.
+	// If false, the operator never starts it: a new VM is created stopped and
+	// an existing one stays in whatever power state it is in.
 	// If not set, it defaults to true.
 	// +kubebuilder:default:=true
-	EnableAutoStart bool `json:"enableAutoStart,omitempty"`
+	EnableAutoStart *bool `json:"enableAutoStart,omitempty"`
 	// AdditionalConfig is the additional configuration of the VM
 	// +kubebuilder:validation:Optional
 	AdditionalConfig map[string]string `json:"additionalConfig,omitempty"`
