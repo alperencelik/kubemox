@@ -104,6 +104,7 @@ func (pc *ProxmoxClient) CreateVMFromTemplate(vm *proxmoxv1alpha1.VirtualMachine
 	CloneOptions.Full = proxmox.IntOrBool(vm.Spec.CloneMode.IsFullClone())
 	CloneOptions.Name = vm.Name
 	CloneOptions.Target = nodeName
+	CloneOptions.Pool = vm.Spec.Pool
 	log.Log.Info(fmt.Sprintf("Creating VM from template: %s", templateVMName))
 	// Make sure that not two VMs are created at the exact time
 	mutex.Lock()
@@ -500,6 +501,7 @@ func (pc *ProxmoxClient) CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine)
 			Value: vm.Spec.Name,
 		},
 	}
+	VMOptions = append(VMOptions, poolTagOptions(vm)...)
 	// handle the disks and networks
 	// for each disk and network, add the disk and network to the VMOptions
 	if len(virtualMachineSpec.Disk) != 0 {
@@ -802,6 +804,11 @@ func (pc *ProxmoxClient) ConfigureVirtualMachine(vm *proxmoxv1alpha1.VirtualMach
 		return err
 	}
 	err = pc.configureVirtualMachineDisk(vm)
+	if err != nil {
+		return err
+	}
+
+	err = pc.ConfigureTags(vm)
 	if err != nil {
 		return err
 	}

@@ -127,6 +127,18 @@ spec:
               nodeName:
                 description: NodeName is the name of the target node of Proxmox
                 type: string
+              pool:
+                description: |-
+                  Pool is the Proxmox resource pool the machine is created in. It is
+                  applied at creation; a change afterwards is not applied.
+                type: string
+              tags:
+                description: |-
+                  Tags are Proxmox tags kept on the machine next to the operator's own
+                  tag. Tags present on the machine but not listed here are left alone.
+                items:
+                  type: string
+                type: array
               template:
                 description: TemplateSpec of the source VM
                 properties:
