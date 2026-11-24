@@ -518,6 +518,7 @@ func (pc *ProxmoxClient) CreateVMFromScratch(vm *proxmoxv1alpha1.VirtualMachine)
 			})
 		}
 	}
+	VMOptions = append(VMOptions, firmwareOptions(vm)...)
 	// Make sure that not two VMs are created at the exact time
 	var vmID int
 	var task *proxmox.Task
@@ -810,7 +811,8 @@ func (pc *ProxmoxClient) ConfigureVirtualMachine(vm *proxmoxv1alpha1.VirtualMach
 	if err != nil {
 		return err
 	}
-	return nil
+	// SMBIOS UUID, BIOS, machine type, SCSI controller and guest agent.
+	return pc.ConfigureFirmware(vm)
 }
 
 func (pc *ProxmoxClient) deleteVirtualMachineOption(vm *proxmoxv1alpha1.VirtualMachine,

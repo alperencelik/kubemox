@@ -172,3 +172,24 @@ spec:
       userData: "ubuntu-cloud-config-workers.yaml" # That should be inside snippets folder in Proxmox node
 EOF
 ```
+
+## Firmware
+
+```yaml
+spec:
+  vmSpec:
+    guestAgent: true          # agent=1; a scratch machine has no agent channel otherwise
+    smbiosUUID: 0d9c1e2a-1111-4222-8333-444455556666
+    firmware:
+      bios: ovmf             # seabios (default) | ovmf
+      machine: q35
+      scsiController: virtio-scsi-single   # Proxmox defaults to lsi, which virtio-only cloud images cannot boot from
+      efiDisk:
+        storage: local-zfs
+        preEnrolledKeys: true
+      tpm:
+        storage: local-zfs
+        version: v2.0
+```
+
+The EFI vars disk (`efiDisk`) and the TPM state disk (`tpm`) are created with the machine and left alone afterwards. `bios`, `machine`, `scsiController`, `guestAgent` and `smbiosUUID` are kept in line on every reconcile; a changed value applies on the next boot, nothing restarts the machine for it. A new `smbiosUUID` is what cloud-init takes as a new instance, so it runs again on the next boot.
